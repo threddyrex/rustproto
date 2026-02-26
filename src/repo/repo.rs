@@ -13,7 +13,7 @@
 //! - https://atproto.com/specs/repository
 
 use std::fs::File;
-use std::io::{self, BufReader, Read};
+use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::path::Path;
 
 use super::repo_header::RepoHeader;
@@ -130,6 +130,91 @@ impl Repo {
             header,
             done: false,
         })
+    }
+
+    /// Writes a repository to a stream.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use rstproto::repo::{Repo, RepoHeader, RepoRecord};
+    /// use std::fs::File;
+    ///
+    /// let header: RepoHeader = /* create header */;
+    /// let records: Vec<RepoRecord> = vec![/* records */];
+    /// let file = File::create("output.car").unwrap();
+    /// Repo::write_repo(file, &header, &records).unwrap();
+    /// ```
+    pub fn write_repo<W: Write>(
+        writer: W,
+        header: &RepoHeader,
+        records: &[RepoRecord],
+    ) -> io::Result<()> {
+        let mut buf_writer = BufWriter::new(writer);
+
+        // Write header
+        header.write_to_stream(&mut buf_writer)?;
+
+        // Write records
+        for record in records {
+            record.write_to_stream(&mut buf_writer)?;
+        }
+
+        buf_writer.flush()?;
+        Ok(())
+    }
+
+    /// Writes a repository to a file.
+    pub fn write_repo_file<P: AsRef<Path>>(
+        path: P,
+        header: &RepoHeader,
+        records: &[RepoRecord],
+    ) -> io::Result<()> {
+        let file = File::create(path)?;
+        Self::write_repo(file, header, records)
+    }
+
+    /// Reads a repository from a stream into memory.
+    ///
+    /// Returns the header and all records.
+    pub fn read_repo<R: Read>(reader: R) -> io::Result<(RepoHeader, Vec<RepoRecord>)> {
+        let mut buf_reader = BufReader::new(reader);
+
+        let header = RepoHeader::read_from_stream(&mut buf_reader)?;
+        let mut records = Vec::new();
+
+        loop {
+            match RepoRecord::read_from_stream(&mut buf_reader) {
+                Ok(record) => records.push(record),
+                Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => break,
+                Err(e) => return Err(e),
+            }
+        }
+
+        Ok((header, records))
+    }
+
+    /// Reads a repository from a file into memory.
+    pub fn read_repo_file<P: AsRef<Path>>(path: P) -> io::Result<(RepoHeader, Vec<RepoRecord>)> {
+        let file = File::open(path)?;
+        Self::read_repo(file)
+    }
+
+    /// Copies a repository from one stream to another.
+    /// This reads the repository, then writes it back out.
+    pub fn copy_repo<R: Read, W: Write>(reader: R, writer: W) -> io::Result<()> {
+        let (header, records) = Self::read_repo(reader)?;
+        Self::write_repo(writer, &header, &records)
+    }
+
+    /// Copies a repository file to another file.
+    pub fn copy_repo_file<P1: AsRef<Path>, P2: AsRef<Path>>(
+        input_path: P1,
+        output_path: P2,
+    ) -> io::Result<()> {
+        let input_file = File::open(input_path)?;
+        let output_file = File::create(output_path)?;
+        Self::copy_repo(input_file, output_file)
     }
 }
 

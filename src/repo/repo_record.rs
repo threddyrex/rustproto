@@ -3,7 +3,7 @@
 //! Represents a single record (block) within a CAR file.
 //! Each item in a repo (post, like, follow, etc.) is stored as a record.
 
-use std::io::{self, Read, Cursor};
+use std::io::{self, Read, Write, Cursor};
 
 use super::cid::CidV1;
 use super::dag_cbor::{DagCborObject, DagCborValue};
@@ -140,6 +140,27 @@ impl RepoRecord {
             "REPO RECORD (GENERIC)"
         }
     }
+
+    /// Writes this RepoRecord to a stream.
+    pub fn write_to_stream<W: Write>(&self, writer: &mut W) -> io::Result<()> {
+        // Get CID bytes
+        let mut cid_bytes = Vec::new();
+        self.cid.write_cid(&mut cid_bytes)?;
+
+        // Get data block bytes
+        let data_block_bytes = self.data_block.to_bytes()?;
+
+        // Calculate total block length (CID + data block)
+        let block_length = cid_bytes.len() + data_block_bytes.len();
+        let block_length_varint = VarInt::from_long(block_length as i64);
+
+        // Write: varint length | CID | data block
+        block_length_varint.write_varint(writer)?;
+        writer.write_all(&cid_bytes)?;
+        writer.write_all(&data_block_bytes)?;
+
+        Ok(())
+    }
 }
 
 impl std::fmt::Display for RepoRecord {
@@ -150,5 +171,91 @@ impl std::fmt::Display for RepoRecord {
             self.cid.get_base32(),
             self.at_proto_type
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use super::super::dag_cbor::{DagCborType, DagCborMajorType};
+    use std::collections::HashMap;
+
+    fn create_test_cid() -> CidV1 {
+        CidV1 {
+            version: VarInt::from_long(1),
+            multicodec: VarInt::from_long(0x71),
+            hash_function: VarInt::from_long(0x12),
+            digest_size: VarInt::from_long(32),
+            digest_bytes: vec![0xCD; 32],
+            all_bytes: Vec::new(),
+            base32: String::new(),
+        }
+    }
+
+    fn create_test_data_block() -> DagCborObject {
+        let mut map = HashMap::new();
+        map.insert(
+            "$type".to_string(),
+            DagCborObject {
+                cbor_type: DagCborType {
+                    major_type: DagCborMajorType::Text,
+                    additional_info: 0,
+                    original_byte: 0,
+                },
+                value: DagCborValue::Text("app.bsky.feed.post".to_string()),
+            },
+        );
+        map.insert(
+            "text".to_string(),
+            DagCborObject {
+                cbor_type: DagCborType {
+                    major_type: DagCborMajorType::Text,
+                    additional_info: 0,
+                    original_byte: 0,
+                },
+                value: DagCborValue::Text("Hello, world!".to_string()),
+            },
+        );
+
+        DagCborObject {
+            cbor_type: DagCborType {
+                major_type: DagCborMajorType::Map,
+                additional_info: 2,
+                original_byte: 0,
+            },
+            value: DagCborValue::Map(map),
+        }
+    }
+
+    #[test]
+    fn test_repo_record_roundtrip() {
+        let cid = create_test_cid();
+        let data_block = create_test_data_block();
+        
+        let record = RepoRecord {
+            cid,
+            data_block,
+            json_string: String::new(),
+            at_proto_type: Some("app.bsky.feed.post".to_string()),
+            created_at: None,
+            is_error: false,
+            error_message: None,
+        };
+
+        // Write to bytes
+        let mut buf = Vec::new();
+        record.write_to_stream(&mut buf).unwrap();
+
+        // Read back
+        let mut cursor = Cursor::new(&buf);
+        let decoded = RepoRecord::read_from_stream(&mut cursor).unwrap();
+
+        assert_eq!(record.cid.digest_bytes, decoded.cid.digest_bytes);
+        assert_eq!(record.at_proto_type, decoded.at_proto_type);
+        
+        // Verify the text field
+        let original_text = record.data_block.select_string(&["text"]);
+        let decoded_text = decoded.data_block.select_string(&["text"]);
+        assert_eq!(original_text, decoded_text);
     }
 }

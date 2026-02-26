@@ -607,4 +607,492 @@ mod tests {
         
         assert_eq!(obj.to_json_string(), obj2.to_json_string());
     }
+
+    // ========== Round-trip tests for each DAG-CBOR type ==========
+
+    #[test]
+    fn test_roundtrip_unsigned_int_small() {
+        // Small unsigned integers (0-23) encode in single byte
+        for n in 0..24i64 {
+            let obj = DagCborObject {
+                cbor_type: DagCborType {
+                    major_type: DagCborMajorType::UnsignedInt,
+                    additional_info: n as u8,
+                    original_byte: 0,
+                },
+                value: DagCborValue::UnsignedInt(n),
+            };
+
+            let encoded = obj.to_bytes().unwrap();
+            let decoded = DagCborObject::from_bytes(&encoded).unwrap();
+
+            match decoded.value {
+                DagCborValue::UnsignedInt(v) => assert_eq!(v, n, "Failed for {}", n),
+                _ => panic!("Expected UnsignedInt for {}", n),
+            }
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_unsigned_int_large() {
+        // Test various sizes of unsigned integers
+        let values = [24, 100, 255, 256, 1000, 65535, 65536, 1_000_000, i64::MAX / 2];
+        
+        for &n in &values {
+            let obj = DagCborObject {
+                cbor_type: DagCborType {
+                    major_type: DagCborMajorType::UnsignedInt,
+                    additional_info: 0,
+                    original_byte: 0,
+                },
+                value: DagCborValue::UnsignedInt(n),
+            };
+
+            let encoded = obj.to_bytes().unwrap();
+            let decoded = DagCborObject::from_bytes(&encoded).unwrap();
+
+            match decoded.value {
+                DagCborValue::UnsignedInt(v) => assert_eq!(v, n, "Failed for {}", n),
+                _ => panic!("Expected UnsignedInt for {}", n),
+            }
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_negative_int() {
+        // Test negative integers
+        let values = [-1, -10, -100, -1000, -1_000_000];
+        
+        for &n in &values {
+            let obj = DagCborObject {
+                cbor_type: DagCborType {
+                    major_type: DagCborMajorType::NegativeInt,
+                    additional_info: 0,
+                    original_byte: 0,
+                },
+                value: DagCborValue::NegativeInt(n),
+            };
+
+            let encoded = obj.to_bytes().unwrap();
+            let decoded = DagCborObject::from_bytes(&encoded).unwrap();
+
+            match decoded.value {
+                DagCborValue::NegativeInt(v) => assert_eq!(v, n, "Failed for {}", n),
+                _ => panic!("Expected NegativeInt for {}", n),
+            }
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_text() {
+        let texts = ["", "a", "hello", "Hello, World!", "こんにちは", "🚀"];
+        
+        for text in &texts {
+            let obj = DagCborObject {
+                cbor_type: DagCborType {
+                    major_type: DagCborMajorType::Text,
+                    additional_info: 0,
+                    original_byte: 0,
+                },
+                value: DagCborValue::Text(text.to_string()),
+            };
+
+            let encoded = obj.to_bytes().unwrap();
+            let decoded = DagCborObject::from_bytes(&encoded).unwrap();
+
+            match &decoded.value {
+                DagCborValue::Text(v) => assert_eq!(v, *text, "Failed for {}", text),
+                _ => panic!("Expected Text for {}", text),
+            }
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_byte_string() {
+        let byte_arrays: Vec<Vec<u8>> = vec![
+            vec![],
+            vec![0],
+            vec![1, 2, 3, 4, 5],
+            vec![0xFF; 100],
+            (0..256).map(|i| i as u8).collect(),
+        ];
+        
+        for bytes in &byte_arrays {
+            let obj = DagCborObject {
+                cbor_type: DagCborType {
+                    major_type: DagCborMajorType::ByteString,
+                    additional_info: 0,
+                    original_byte: 0,
+                },
+                value: DagCborValue::ByteString(bytes.clone()),
+            };
+
+            let encoded = obj.to_bytes().unwrap();
+            let decoded = DagCborObject::from_bytes(&encoded).unwrap();
+
+            match &decoded.value {
+                DagCborValue::ByteString(v) => assert_eq!(v, bytes, "Failed for {:?}", bytes),
+                _ => panic!("Expected ByteString for {:?}", bytes),
+            }
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_bool() {
+        for b in [true, false] {
+            let obj = DagCborObject {
+                cbor_type: DagCborType {
+                    major_type: DagCborMajorType::SimpleValue,
+                    additional_info: if b { 0x15 } else { 0x14 },
+                    original_byte: 0,
+                },
+                value: DagCborValue::Bool(b),
+            };
+
+            let encoded = obj.to_bytes().unwrap();
+            let decoded = DagCborObject::from_bytes(&encoded).unwrap();
+
+            match decoded.value {
+                DagCborValue::Bool(v) => assert_eq!(v, b, "Failed for {}", b),
+                _ => panic!("Expected Bool for {}", b),
+            }
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_null() {
+        let obj = DagCborObject {
+            cbor_type: DagCborType {
+                major_type: DagCborMajorType::SimpleValue,
+                additional_info: 0x16,
+                original_byte: 0,
+            },
+            value: DagCborValue::Null,
+        };
+
+        let encoded = obj.to_bytes().unwrap();
+        let decoded = DagCborObject::from_bytes(&encoded).unwrap();
+
+        match decoded.value {
+            DagCborValue::Null => {},
+            _ => panic!("Expected Null"),
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_array() {
+        // Empty array
+        let obj = DagCborObject {
+            cbor_type: DagCborType {
+                major_type: DagCborMajorType::Array,
+                additional_info: 0,
+                original_byte: 0,
+            },
+            value: DagCborValue::Array(vec![]),
+        };
+
+        let encoded = obj.to_bytes().unwrap();
+        let decoded = DagCborObject::from_bytes(&encoded).unwrap();
+
+        match &decoded.value {
+            DagCborValue::Array(arr) => assert_eq!(arr.len(), 0),
+            _ => panic!("Expected Array"),
+        }
+
+        // Array with mixed types
+        let items = vec![
+            DagCborObject {
+                cbor_type: DagCborType {
+                    major_type: DagCborMajorType::UnsignedInt,
+                    additional_info: 0,
+                    original_byte: 0,
+                },
+                value: DagCborValue::UnsignedInt(42),
+            },
+            DagCborObject {
+                cbor_type: DagCborType {
+                    major_type: DagCborMajorType::Text,
+                    additional_info: 0,
+                    original_byte: 0,
+                },
+                value: DagCborValue::Text("hello".to_string()),
+            },
+            DagCborObject {
+                cbor_type: DagCborType {
+                    major_type: DagCborMajorType::SimpleValue,
+                    additional_info: 0x15,
+                    original_byte: 0,
+                },
+                value: DagCborValue::Bool(true),
+            },
+        ];
+
+        let obj = DagCborObject {
+            cbor_type: DagCborType {
+                major_type: DagCborMajorType::Array,
+                additional_info: 3,
+                original_byte: 0,
+            },
+            value: DagCborValue::Array(items),
+        };
+
+        let encoded = obj.to_bytes().unwrap();
+        let decoded = DagCborObject::from_bytes(&encoded).unwrap();
+
+        match &decoded.value {
+            DagCborValue::Array(arr) => {
+                assert_eq!(arr.len(), 3);
+                assert!(matches!(&arr[0].value, DagCborValue::UnsignedInt(42)));
+                assert!(matches!(&arr[1].value, DagCborValue::Text(s) if s == "hello"));
+                assert!(matches!(&arr[2].value, DagCborValue::Bool(true)));
+            }
+            _ => panic!("Expected Array"),
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_map() {
+        let mut map = HashMap::new();
+        map.insert(
+            "name".to_string(),
+            DagCborObject {
+                cbor_type: DagCborType {
+                    major_type: DagCborMajorType::Text,
+                    additional_info: 0,
+                    original_byte: 0,
+                },
+                value: DagCborValue::Text("Alice".to_string()),
+            },
+        );
+        map.insert(
+            "age".to_string(),
+            DagCborObject {
+                cbor_type: DagCborType {
+                    major_type: DagCborMajorType::UnsignedInt,
+                    additional_info: 0,
+                    original_byte: 0,
+                },
+                value: DagCborValue::UnsignedInt(30),
+            },
+        );
+        map.insert(
+            "active".to_string(),
+            DagCborObject {
+                cbor_type: DagCborType {
+                    major_type: DagCborMajorType::SimpleValue,
+                    additional_info: 0x15,
+                    original_byte: 0,
+                },
+                value: DagCborValue::Bool(true),
+            },
+        );
+
+        let obj = DagCborObject {
+            cbor_type: DagCborType {
+                major_type: DagCborMajorType::Map,
+                additional_info: 3,
+                original_byte: 0,
+            },
+            value: DagCborValue::Map(map),
+        };
+
+        let encoded = obj.to_bytes().unwrap();
+        let decoded = DagCborObject::from_bytes(&encoded).unwrap();
+
+        match &decoded.value {
+            DagCborValue::Map(m) => {
+                assert_eq!(m.len(), 3);
+                assert!(m.contains_key("name"));
+                assert!(m.contains_key("age"));
+                assert!(m.contains_key("active"));
+                
+                assert_eq!(decoded.select_string(&["name"]), Some("Alice".to_string()));
+                assert_eq!(decoded.select_string(&["age"]), Some("30".to_string()));
+            }
+            _ => panic!("Expected Map"),
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_nested_map() {
+        // Create a nested structure like {"person": {"name": "Bob", "score": 100}}
+        let mut inner_map = HashMap::new();
+        inner_map.insert(
+            "name".to_string(),
+            DagCborObject {
+                cbor_type: DagCborType {
+                    major_type: DagCborMajorType::Text,
+                    additional_info: 0,
+                    original_byte: 0,
+                },
+                value: DagCborValue::Text("Bob".to_string()),
+            },
+        );
+        inner_map.insert(
+            "score".to_string(),
+            DagCborObject {
+                cbor_type: DagCborType {
+                    major_type: DagCborMajorType::UnsignedInt,
+                    additional_info: 0,
+                    original_byte: 0,
+                },
+                value: DagCborValue::UnsignedInt(100),
+            },
+        );
+
+        let mut outer_map = HashMap::new();
+        outer_map.insert(
+            "person".to_string(),
+            DagCborObject {
+                cbor_type: DagCborType {
+                    major_type: DagCborMajorType::Map,
+                    additional_info: 2,
+                    original_byte: 0,
+                },
+                value: DagCborValue::Map(inner_map),
+            },
+        );
+
+        let obj = DagCborObject {
+            cbor_type: DagCborType {
+                major_type: DagCborMajorType::Map,
+                additional_info: 1,
+                original_byte: 0,
+            },
+            value: DagCborValue::Map(outer_map),
+        };
+
+        let encoded = obj.to_bytes().unwrap();
+        let decoded = DagCborObject::from_bytes(&encoded).unwrap();
+
+        assert_eq!(decoded.select_string(&["person", "name"]), Some("Bob".to_string()));
+        assert_eq!(decoded.select_string(&["person", "score"]), Some("100".to_string()));
+    }
+
+    #[test]
+    fn test_roundtrip_cid() {
+        use super::super::varint::VarInt;
+
+        let cid = CidV1 {
+            version: VarInt::from_long(1),
+            multicodec: VarInt::from_long(0x71),
+            hash_function: VarInt::from_long(0x12),
+            digest_size: VarInt::from_long(32),
+            digest_bytes: vec![0xDE; 32],
+            all_bytes: Vec::new(),
+            base32: String::new(),
+        };
+
+        let obj = DagCborObject {
+            cbor_type: DagCborType {
+                major_type: DagCborMajorType::Tag,
+                additional_info: 24,
+                original_byte: 0,
+            },
+            value: DagCborValue::Cid(cid.clone()),
+        };
+
+        let encoded = obj.to_bytes().unwrap();
+        let decoded = DagCborObject::from_bytes(&encoded).unwrap();
+
+        match &decoded.value {
+            DagCborValue::Cid(decoded_cid) => {
+                assert_eq!(decoded_cid.version.value, cid.version.value);
+                assert_eq!(decoded_cid.multicodec.value, cid.multicodec.value);
+                assert_eq!(decoded_cid.digest_bytes, cid.digest_bytes);
+            }
+            _ => panic!("Expected Cid"),
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_atproto_record() {
+        // Create a structure similar to an AT Protocol record
+        use super::super::varint::VarInt;
+
+        let mut map = HashMap::new();
+        map.insert(
+            "$type".to_string(),
+            DagCborObject {
+                cbor_type: DagCborType {
+                    major_type: DagCborMajorType::Text,
+                    additional_info: 0,
+                    original_byte: 0,
+                },
+                value: DagCborValue::Text("app.bsky.feed.post".to_string()),
+            },
+        );
+        map.insert(
+            "text".to_string(),
+            DagCborObject {
+                cbor_type: DagCborType {
+                    major_type: DagCborMajorType::Text,
+                    additional_info: 0,
+                    original_byte: 0,
+                },
+                value: DagCborValue::Text("Hello, Bluesky! 🦋".to_string()),
+            },
+        );
+        map.insert(
+            "createdAt".to_string(),
+            DagCborObject {
+                cbor_type: DagCborType {
+                    major_type: DagCborMajorType::Text,
+                    additional_info: 0,
+                    original_byte: 0,
+                },
+                value: DagCborValue::Text("2024-01-01T00:00:00.000Z".to_string()),
+            },
+        );
+
+        // Add a CID reference
+        let cid = CidV1 {
+            version: VarInt::from_long(1),
+            multicodec: VarInt::from_long(0x71),
+            hash_function: VarInt::from_long(0x12),
+            digest_size: VarInt::from_long(32),
+            digest_bytes: vec![0xAA; 32],
+            all_bytes: Vec::new(),
+            base32: String::new(),
+        };
+        map.insert(
+            "ref".to_string(),
+            DagCborObject {
+                cbor_type: DagCborType {
+                    major_type: DagCborMajorType::Tag,
+                    additional_info: 24,
+                    original_byte: 0,
+                },
+                value: DagCborValue::Cid(cid),
+            },
+        );
+
+        let obj = DagCborObject {
+            cbor_type: DagCborType {
+                major_type: DagCborMajorType::Map,
+                additional_info: 4,
+                original_byte: 0,
+            },
+            value: DagCborValue::Map(map),
+        };
+
+        let encoded = obj.to_bytes().unwrap();
+        let decoded = DagCborObject::from_bytes(&encoded).unwrap();
+
+        assert_eq!(decoded.select_string(&["$type"]), Some("app.bsky.feed.post".to_string()));
+        assert_eq!(decoded.select_string(&["text"]), Some("Hello, Bluesky! 🦋".to_string()));
+        assert_eq!(decoded.select_string(&["createdAt"]), Some("2024-01-01T00:00:00.000Z".to_string()));
+        
+        // Verify the CID is preserved
+        if let Some(ref_obj) = decoded.select_object(&["ref"]) {
+            match &ref_obj.value {
+                DagCborValue::Cid(cid) => {
+                    assert_eq!(cid.digest_bytes, vec![0xAA; 32]);
+                }
+                _ => panic!("Expected Cid for ref"),
+            }
+        } else {
+            panic!("Missing ref field");
+        }
+    }
 }

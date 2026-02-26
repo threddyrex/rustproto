@@ -37,7 +37,7 @@ mod repo;
 pub use base32::Base32Encoding;
 pub use varint::VarInt;
 pub use cid::CidV1;
-pub use dag_cbor::{DagCborObject, DagCborType, DagCborMajorType};
+pub use dag_cbor::{DagCborObject, DagCborType, DagCborMajorType, DagCborValue};
 pub use repo_header::RepoHeader;
 pub use repo_record::{RepoRecord, AtProtoType};
 pub use repo::Repo;
