@@ -8,6 +8,7 @@
 //! - DagCborObject: DAG-CBOR encoded data blocks
 //! - RepoHeader: CAR file header
 //! - RepoRecord: Individual records within a repository
+//! - RepoMst: MST integration helpers
 //!
 //! # Example
 //!
@@ -32,6 +33,7 @@ mod dag_cbor;
 mod repo_header;
 mod repo_record;
 mod repo;
+mod repo_mst;
 
 // Re-exports
 pub use base32::Base32Encoding;
@@ -41,3 +43,4 @@ pub use dag_cbor::{DagCborObject, DagCborType, DagCborMajorType, DagCborValue};
 pub use repo_header::RepoHeader;
 pub use repo_record::{RepoRecord, AtProtoType};
 pub use repo::Repo;
+pub use repo_mst::{RepoMst, MstNodeKey};

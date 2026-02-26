@@ -7,7 +7,8 @@ use chrono::Datelike;
 use rstproto::firehose::Firehose;
 use rstproto::fs::LocalFileSystem;
 use rstproto::log::{init_logger, logger, FileDestination, LogLevel};
-use rstproto::repo::{DagCborValue, Repo, RepoRecord, AtProtoType};
+use rstproto::mst::Mst;
+use rstproto::repo::{CidV1, DagCborObject, DagCborValue, Repo, RepoMst, RepoRecord, AtProtoType, MstNodeKey};
 use rstproto::ws::{ActorQueryOptions, BlueskyClient};
 
 #[tokio::main]
@@ -54,6 +55,7 @@ async fn main() {
         "getrepo" => cmd_get_repo(&arguments).await,
         "printrepostats" => cmd_print_repo_stats(&arguments).await,
         "printreporecords" => cmd_print_repo_records(&arguments).await,
+        "walkmst" => cmd_walk_mst(&arguments).await,
         "startfirehoseconsumer" => cmd_start_firehose_consumer(&arguments).await,
         "help" => print_usage(),
         _ => {
@@ -104,6 +106,7 @@ fn print_usage() {
     println!("  GetRepo                Download repository (CAR file) for an actor");
     println!("  PrintRepoStats         Print statistics about a repository");
     println!("  PrintRepoRecords       Print records from a repository");
+    println!("  WalkMst                Walk and print the MST structure of a repository");
     println!("  StartFirehoseConsumer  Listen to a PDS firehose and print events");
     println!("  Help                   Show this help message");
     println!();
@@ -127,6 +130,8 @@ fn print_usage() {
     println!("  rstproto /command PrintRepoStats /repoFile ./data/repos/did_plc_xxx/repo.car");
     println!("  rstproto /command PrintRepoRecords /actor alice.bsky.social /dataDir ./data");
     println!("  rstproto /command PrintRepoRecords /repoFile ./repo.car /collection app.bsky.feed.post");
+    println!("  rstproto /command WalkMst /actor alice.bsky.social /dataDir ./data");
+    println!("  rstproto /command WalkMst /repoFile ./repo.car");
     println!("  rstproto /command StartFirehoseConsumer /actor alice.bsky.social /dataDir ./data");
 }
 
@@ -620,6 +625,157 @@ async fn cmd_print_repo_records(args: &HashMap<String, String>) {
     for (record_type, count) in sorted_types {
         log.info(&format!("  {} - {}", record_type, count));
     }
+}
+
+async fn cmd_walk_mst(args: &HashMap<String, String>) {
+    use rstproto::mst::MstNode;
+
+    let log = logger();
+
+    // Get arguments
+    let actor = get_arg(args, "actor");
+    let repo_file_arg = get_arg(args, "repofile");
+
+    // Determine repo file path
+    let repo_file: String = if let Some(rf) = repo_file_arg {
+        rf.to_string()
+    } else if let Some(act) = actor {
+        let data_dir = match get_arg(args, "datadir") {
+            Some(d) => d,
+            None => {
+                log.error("missing /dataDir argument when using /actor");
+                log.error("Usage: rstproto /command WalkMst /actor <handle_or_did> /dataDir <path>");
+                log.error("   or: rstproto /command WalkMst /repoFile <path>");
+                return;
+            }
+        };
+
+        let lfs = match LocalFileSystem::initialize(data_dir) {
+            Ok(lfs) => lfs,
+            Err(e) => {
+                log.error(&format!("Error initializing data directory: {}", e));
+                return;
+            }
+        };
+
+        // Resolve actor to get DID
+        let client = BlueskyClient::new();
+        let info = match client.resolve_actor_info(act, None).await {
+            Ok(info) => info,
+            Err(e) => {
+                log.error(&format!("Error resolving actor: {}", e));
+                return;
+            }
+        };
+
+        let did = match &info.did {
+            Some(d) => d.clone(),
+            None => {
+                log.error("Could not resolve DID for actor");
+                return;
+            }
+        };
+
+        match lfs.get_path_repo_file(&did) {
+            Ok(path) => path.to_string_lossy().to_string(),
+            Err(e) => {
+                log.error(&format!("Error getting repo path for actor: {}", e));
+                return;
+            }
+        }
+    } else {
+        log.error("missing /actor or /repoFile argument");
+        log.error("Usage: rstproto /command WalkMst /actor <handle_or_did> /dataDir <path>");
+        log.error("   or: rstproto /command WalkMst /repoFile <path>");
+        return;
+    };
+
+    // Check if file exists
+    if !std::path::Path::new(&repo_file).exists() {
+        log.error(&format!("Repo file does not exist: {}", repo_file));
+        return;
+    }
+
+    // Load MST items from repo
+    log.info(&format!("Loading MST from: {}", repo_file));
+    let mst_items = match RepoMst::load_mst_items_from_repo_file(&repo_file, log) {
+        Ok(items) => items,
+        Err(e) => {
+            log.error(&format!("Error loading MST items: {}", e));
+            return;
+        }
+    };
+
+    // Assemble tree
+    let mst = Mst::assemble_tree_from_items(&mst_items);
+    let all_mst_nodes = mst.find_all_nodes();
+
+    // Convert to DAG-CBOR and cache CIDs
+    let mst_node_cache = match RepoMst::convert_mst_to_dag_cbor(&mst) {
+        Ok(cache) => cache,
+        Err(e) => {
+            log.error(&format!("Error converting MST to DAG-CBOR: {}", e));
+            return;
+        }
+    };
+
+    // Compute stats
+    let mut mst_entry_count = 0;
+    for node in &all_mst_nodes {
+        mst_entry_count += node.entries.len();
+    }
+
+    // Print stats
+    log.info("");
+    log.info(&format!("mst_items.len(): {}", mst_items.len()));
+    log.info(&format!("all_mst_nodes.len(): {}", all_mst_nodes.len()));
+    log.info(&format!("mst_node_cache.len(): {}", mst_node_cache.len()));
+    log.info(&format!("mst_entry_count: {}", mst_entry_count));
+    log.info(&format!("root depth: {}", mst.root.key_depth));
+    log.info("");
+
+    // Walk and print tree structure
+    fn visit_node(
+        log: &rstproto::log::Logger,
+        mst_node_cache: &HashMap<MstNodeKey, (CidV1, DagCborObject)>,
+        node: &MstNode,
+        indent: usize,
+        direction: &str,
+    ) {
+        let indent_str = " ".repeat(indent);
+        let node_key = MstNodeKey::from_node(node);
+        
+        let cid_str = mst_node_cache
+            .get(&node_key)
+            .map(|(cid, _)| cid.get_base32().to_string())
+            .unwrap_or_else(|| "<unknown>".to_string());
+
+        log.trace(&format!(
+            "{} [{}] [{}] {}",
+            indent_str, direction, node.key_depth, cid_str
+        ));
+
+        for entry in &node.entries {
+            log.trace(&format!("{} {}: {}", indent_str, entry.key, entry.value));
+        }
+
+        log.trace("");
+
+        if let Some(ref left) = node.left_tree {
+            visit_node(log, mst_node_cache, left, indent + 2, "left");
+            log.trace("");
+        }
+
+        for entry in &node.entries {
+            if let Some(ref right) = entry.right_tree {
+                visit_node(log, mst_node_cache, right, indent + 2, "right");
+            }
+        }
+    }
+
+    log.trace("");
+    visit_node(log, &mst_node_cache, &mst.root, 0, "root");
+    log.trace("");
 }
 
 async fn cmd_start_firehose_consumer(args: &HashMap<String, String>) {

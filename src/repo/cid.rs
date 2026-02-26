@@ -9,8 +9,11 @@
 
 use std::io::{self, Read, Write, Cursor};
 
+use sha2::{Sha256, Digest};
+
 use super::base32::Base32Encoding;
 use super::varint::VarInt;
+use super::dag_cbor::DagCborObject;
 
 /// Multicodec values for CID types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -144,6 +147,82 @@ impl CidV1 {
     /// Returns whether this CID uses raw multicodec (for blobs).
     pub fn is_raw(&self) -> bool {
         self.multicodec.value == Multicodec::Raw as i64
+    }
+
+    /// Computes a CIDv1 for a DAG-CBOR object.
+    ///
+    /// This hashes the serialized DAG-CBOR bytes with SHA-256 and creates
+    /// a CIDv1 with the dag-cbor multicodec (0x71).
+    pub fn compute_cid_for_dag_cbor(dag_cbor_object: &DagCborObject) -> io::Result<Self> {
+        let bytes = dag_cbor_object.to_bytes()?;
+        
+        let mut hasher = Sha256::new();
+        hasher.update(&bytes);
+        let hash = hasher.finalize();
+
+        // Create CIDv1 with dag-cbor multicodec (0x71) and sha256 (0x12)
+        let version = VarInt::from_long(1);
+        let multicodec = VarInt::from_long(0x71);
+        let hash_function = VarInt::from_long(0x12);
+        let digest_size = VarInt::from_long(32);
+        let digest_bytes: Vec<u8> = hash.to_vec();
+
+        // Build all_bytes
+        let mut all_bytes = Vec::new();
+        version.write_varint(&mut all_bytes)?;
+        multicodec.write_varint(&mut all_bytes)?;
+        hash_function.write_varint(&mut all_bytes)?;
+        digest_size.write_varint(&mut all_bytes)?;
+        all_bytes.extend(&digest_bytes);
+
+        let base32 = format!("b{}", Base32Encoding::bytes_to_base32(&all_bytes));
+
+        Ok(CidV1 {
+            version,
+            multicodec,
+            hash_function,
+            digest_size,
+            digest_bytes,
+            all_bytes,
+            base32,
+        })
+    }
+
+    /// Computes a CIDv1 for raw blob bytes.
+    ///
+    /// This hashes the bytes with SHA-256 and creates a CIDv1 with
+    /// the raw multicodec (0x55).
+    pub fn compute_cid_for_blob_bytes(blob_bytes: &[u8]) -> io::Result<Self> {
+        let mut hasher = Sha256::new();
+        hasher.update(blob_bytes);
+        let hash = hasher.finalize();
+
+        // Create CIDv1 with raw multicodec (0x55) and sha256 (0x12)
+        let version = VarInt::from_long(1);
+        let multicodec = VarInt::from_long(0x55);
+        let hash_function = VarInt::from_long(0x12);
+        let digest_size = VarInt::from_long(32);
+        let digest_bytes: Vec<u8> = hash.to_vec();
+
+        // Build all_bytes
+        let mut all_bytes = Vec::new();
+        version.write_varint(&mut all_bytes)?;
+        multicodec.write_varint(&mut all_bytes)?;
+        hash_function.write_varint(&mut all_bytes)?;
+        digest_size.write_varint(&mut all_bytes)?;
+        all_bytes.extend(&digest_bytes);
+
+        let base32 = format!("b{}", Base32Encoding::bytes_to_base32(&all_bytes));
+
+        Ok(CidV1 {
+            version,
+            multicodec,
+            hash_function,
+            digest_size,
+            digest_bytes,
+            all_bytes,
+            base32,
+        })
     }
 }
 

@@ -472,6 +472,30 @@ impl DagCborObject {
         obj.try_get_string()
     }
 
+    /// Selects an integer value at the given property path.
+    pub fn select_int(&self, property_names: &[&str]) -> Option<i64> {
+        let obj = self.select_object(property_names)?;
+        obj.value.as_int()
+    }
+
+    /// Selects an array at the given property path.
+    pub fn select_array(&self, property_names: &[&str]) -> Option<&Vec<DagCborObject>> {
+        let obj = self.select_object(property_names)?;
+        obj.value.as_array()
+    }
+
+    /// Selects a byte string at the given property path.
+    pub fn select_bytes(&self, property_names: &[&str]) -> Option<&Vec<u8>> {
+        let obj = self.select_object(property_names)?;
+        obj.value.as_bytes()
+    }
+
+    /// Selects a CID at the given property path.
+    pub fn select_cid(&self, property_names: &[&str]) -> Option<&CidV1> {
+        let obj = self.select_object(property_names)?;
+        obj.value.as_cid()
+    }
+
     /// Selects an object at the given property path.
     pub fn select_object(&self, property_names: &[&str]) -> Option<&DagCborObject> {
         let mut current = self;
@@ -486,6 +510,92 @@ impl DagCborObject {
         }
 
         Some(current)
+    }
+
+    // ==================== CONSTRUCTORS ====================
+
+    /// Creates a new DagCborObject containing a map.
+    pub fn new_map(map: HashMap<String, DagCborObject>) -> Self {
+        Self {
+            cbor_type: DagCborType {
+                major_type: DagCborMajorType::Map,
+                additional_info: 0,
+                original_byte: 0,
+            },
+            value: DagCborValue::Map(map),
+        }
+    }
+
+    /// Creates a new DagCborObject containing an array.
+    pub fn new_array(array: Vec<DagCborObject>) -> Self {
+        Self {
+            cbor_type: DagCborType {
+                major_type: DagCborMajorType::Array,
+                additional_info: 0,
+                original_byte: 0,
+            },
+            value: DagCborValue::Array(array),
+        }
+    }
+
+    /// Creates a new DagCborObject containing a CID.
+    pub fn new_cid(cid: CidV1) -> Self {
+        Self {
+            cbor_type: DagCborType {
+                major_type: DagCborMajorType::Tag,
+                additional_info: 42,
+                original_byte: 0,
+            },
+            value: DagCborValue::Cid(cid),
+        }
+    }
+
+    /// Creates a new DagCborObject containing an unsigned integer.
+    pub fn new_unsigned_int(value: i64) -> Self {
+        Self {
+            cbor_type: DagCborType {
+                major_type: DagCborMajorType::UnsignedInt,
+                additional_info: 0,
+                original_byte: 0,
+            },
+            value: DagCborValue::UnsignedInt(value),
+        }
+    }
+
+    /// Creates a new DagCborObject containing a byte string.
+    pub fn new_byte_string(bytes: Vec<u8>) -> Self {
+        Self {
+            cbor_type: DagCborType {
+                major_type: DagCborMajorType::ByteString,
+                additional_info: 0,
+                original_byte: 0,
+            },
+            value: DagCborValue::ByteString(bytes),
+        }
+    }
+
+    /// Creates a new DagCborObject containing a text string.
+    pub fn new_text(text: String) -> Self {
+        Self {
+            cbor_type: DagCborType {
+                major_type: DagCborMajorType::Text,
+                additional_info: 0,
+                original_byte: 0,
+            },
+            value: DagCborValue::Text(text),
+        }
+    }
+
+    /// Creates a new DagCborObject containing null.
+    pub fn new_null() -> Self {
+        Self {
+            cbor_type: DagCborType {
+                major_type: DagCborMajorType::SimpleValue,
+                additional_info: 0x16,
+                original_byte: 0,
+            },
+            value: DagCborValue::Null,
+        }
     }
 
     /// Converts this DAG-CBOR object to a JSON-compatible value for display.
