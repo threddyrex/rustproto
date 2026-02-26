@@ -344,6 +344,75 @@ impl BlueskyClient {
             "No public key found in DID document".to_string(),
         ))
     }
+
+    /// Downloads a repository (CAR file) for the given DID from a PDS.
+    ///
+    /// Calls `com.atproto.sync.getRepo` on the PDS.
+    ///
+    /// # Arguments
+    ///
+    /// * `pds` - The PDS hostname (e.g., "bsky.social")
+    /// * `did` - The DID to fetch the repo for
+    /// * `output_path` - Path to write the CAR file to
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use rstproto::ws::BlueskyClient;
+    /// use std::path::Path;
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let client = BlueskyClient::new();
+    ///     client.get_repo(
+    ///         "bsky.social",
+    ///         "did:plc:abc123",
+    ///         Path::new("./repo.car")
+    ///     ).await.unwrap();
+    /// }
+    /// ```
+    pub async fn get_repo(
+        &self,
+        pds: &str,
+        did: &str,
+        output_path: &std::path::Path,
+    ) -> Result<u64, BlueskyClientError> {
+        use tokio::io::AsyncWriteExt;
+
+        if pds.is_empty() || did.is_empty() {
+            return Err(BlueskyClientError::InvalidActor(
+                "PDS and DID are required".to_string(),
+            ));
+        }
+
+        let url = format!(
+            "https://{}/xrpc/com.atproto.sync.getRepo?did={}",
+            pds, did
+        );
+
+        let response = self.client.get(&url).send().await?;
+
+        if !response.status().is_success() {
+            return Err(BlueskyClientError::ResolutionFailed(format!(
+                "HTTP {} from PDS",
+                response.status()
+            )));
+        }
+
+        // Stream the response to a file
+        let bytes = response.bytes().await?;
+        let bytes_written = bytes.len() as u64;
+
+        let mut file = tokio::fs::File::create(output_path).await.map_err(|e| {
+            BlueskyClientError::ResolutionFailed(format!("Failed to create output file: {}", e))
+        })?;
+
+        file.write_all(&bytes).await.map_err(|e| {
+            BlueskyClientError::ResolutionFailed(format!("Failed to write to file: {}", e))
+        })?;
+
+        Ok(bytes_written)
+    }
 }
 
 #[cfg(test)]

@@ -1,6 +1,7 @@
 //! rstproto CLI - AT Protocol / Bluesky tools
 
 use std::collections::HashMap;
+use rstproto::fs::LocalFileSystem;
 use rstproto::ws::{ActorQueryOptions, BlueskyClient};
 
 #[tokio::main]
@@ -23,6 +24,7 @@ async fn main() {
 
     match command.to_lowercase().as_str() {
         "resolve" | "resolveactorinfo" => cmd_resolve_actor(&arguments).await,
+        "getrepo" => cmd_get_repo(&arguments).await,
         "help" => print_usage(),
         _ => {
             eprintln!("Unknown command: {}", command);
@@ -69,16 +71,19 @@ fn print_usage() {
     println!();
     println!("Commands:");
     println!("  ResolveActorInfo   Resolve actor info (DID, PDS, etc.)");
+    println!("  GetRepo            Download repository (CAR file) for an actor");
     println!("  Help               Show this help message");
     println!();
     println!("Arguments:");
     println!("  /command <name>    Command to run");
     println!("  /actor <handle>    Handle or DID to resolve");
     println!("  /all <true|false>  Use all resolution methods");
+    println!("  /dataDir <path>    Path to data directory (for GetRepo)");
     println!();
     println!("Examples:");
     println!("  rstproto /command ResolveActorInfo /actor alice.bsky.social");
     println!("  rstproto /command ResolveActorInfo /actor did:plc:abc123 /all true");
+    println!("  rstproto /command GetRepo /actor alice.bsky.social /dataDir ./data");
 }
 
 async fn cmd_resolve_actor(args: &HashMap<String, String>) {
@@ -129,6 +134,89 @@ async fn cmd_resolve_actor(args: &HashMap<String, String>) {
         }
         Err(e) => {
             eprintln!("Error resolving actor: {}", e);
+        }
+    }
+}
+
+async fn cmd_get_repo(args: &HashMap<String, String>) {
+    let actor = match get_arg(args, "actor") {
+        Some(a) => a,
+        None => {
+            eprintln!("Error: missing /actor argument");
+            eprintln!("Usage: rstproto /command GetRepo /actor <handle_or_did> /dataDir <path>");
+            return;
+        }
+    };
+
+    let data_dir = match get_arg(args, "datadir") {
+        Some(d) => d,
+        None => {
+            eprintln!("Error: missing /dataDir argument");
+            eprintln!("Usage: rstproto /command GetRepo /actor <handle_or_did> /dataDir <path>");
+            return;
+        }
+    };
+
+    // Initialize the local file system
+    let lfs = match LocalFileSystem::initialize_with_create(data_dir) {
+        Ok(lfs) => lfs,
+        Err(e) => {
+            eprintln!("Error initializing data directory: {}", e);
+            return;
+        }
+    };
+
+    let client = BlueskyClient::new();
+
+    println!("Resolving actor: {}", actor);
+
+    // First, resolve actor to get DID and PDS
+    let info = match client.resolve_actor_info(actor, None).await {
+        Ok(info) => info,
+        Err(e) => {
+            eprintln!("Error resolving actor: {}", e);
+            return;
+        }
+    };
+
+    let did = match &info.did {
+        Some(d) => d.clone(),
+        None => {
+            eprintln!("Error: Could not resolve DID for actor");
+            return;
+        }
+    };
+
+    let pds = match &info.pds {
+        Some(p) => p.clone(),
+        None => {
+            eprintln!("Error: Could not resolve PDS for actor");
+            return;
+        }
+    };
+
+    println!("DID: {}", did);
+    println!("PDS: {}", pds);
+
+    // Get the repo file path
+    let repo_file = match lfs.get_path_repo_file(&did) {
+        Ok(path) => path,
+        Err(e) => {
+            eprintln!("Error getting repo file path: {}", e);
+            return;
+        }
+    };
+
+    println!("Downloading repo to: {}", repo_file.display());
+
+    // Download the repo
+    match client.get_repo(&pds, &did, &repo_file).await {
+        Ok(bytes) => {
+            println!("Downloaded {} bytes", bytes);
+            println!("Repo saved to: {}", repo_file.display());
+        }
+        Err(e) => {
+            eprintln!("Error downloading repo: {}", e);
         }
     }
 }

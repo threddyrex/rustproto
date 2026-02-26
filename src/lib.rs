@@ -25,7 +25,9 @@
 //! }
 //! ```
 
+pub mod fs;
 pub mod ws;
 
 // Re-export commonly used types at crate root
+pub use fs::LocalFileSystem;
 pub use ws::{ActorInfo, ActorQueryOptions, BlueskyClient, BlueskyClientError};
