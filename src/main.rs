@@ -1,7 +1,9 @@
 //! rstproto CLI - AT Protocol / Bluesky tools
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use rstproto::fs::LocalFileSystem;
+use rstproto::log::{init_logger, logger, FileDestination, LogLevel};
 use rstproto::ws::{ActorQueryOptions, BlueskyClient};
 
 #[tokio::main]
@@ -17,6 +19,27 @@ async fn main() {
         }
     };
 
+    // Initialize logger based on arguments
+    let log_level = get_arg(&arguments, "loglevel")
+        .map(|s| s.parse::<LogLevel>().unwrap_or_default())
+        .unwrap_or(LogLevel::Info);
+
+    let log = init_logger(log_level);
+
+    // Add file destination if logToDataDir is true
+    let log_to_data_dir = get_arg(&arguments, "logtodatadir")
+        .map(|v| v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    if log_to_data_dir {
+        if let Some(data_dir) = get_arg(&arguments, "datadir") {
+            let command = get_arg(&arguments, "command").unwrap_or("unknown");
+            if let Ok(file_dest) = FileDestination::from_data_dir(data_dir, command) {
+                log.add_destination(Arc::new(file_dest));
+            }
+        }
+    }
+
     let command = arguments
         .get("command")
         .map(|s| s.as_str())
@@ -27,7 +50,7 @@ async fn main() {
         "getrepo" => cmd_get_repo(&arguments).await,
         "help" => print_usage(),
         _ => {
-            eprintln!("Unknown command: {}", command);
+            logger().error(&format!("Unknown command: {}", command));
             print_usage();
         }
     }
@@ -75,23 +98,28 @@ fn print_usage() {
     println!("  Help               Show this help message");
     println!();
     println!("Arguments:");
-    println!("  /command <name>    Command to run");
-    println!("  /actor <handle>    Handle or DID to resolve");
-    println!("  /all <true|false>  Use all resolution methods");
-    println!("  /dataDir <path>    Path to data directory (for GetRepo)");
+    println!("  /command <name>       Command to run");
+    println!("  /actor <handle>       Handle or DID to resolve");
+    println!("  /all <true|false>     Use all resolution methods");
+    println!("  /dataDir <path>       Path to data directory");
+    println!("  /logLevel <level>     Log level: trace, info, warning, error");
+    println!("  /logToDataDir <bool>  Write logs to data directory");
     println!();
     println!("Examples:");
     println!("  rstproto /command ResolveActorInfo /actor alice.bsky.social");
     println!("  rstproto /command ResolveActorInfo /actor did:plc:abc123 /all true");
     println!("  rstproto /command GetRepo /actor alice.bsky.social /dataDir ./data");
+    println!("  rstproto /command GetRepo /actor alice.bsky.social /dataDir ./data /logLevel trace /logToDataDir true");
 }
 
 async fn cmd_resolve_actor(args: &HashMap<String, String>) {
+    let log = logger();
+
     let actor = match get_arg(args, "actor") {
         Some(a) => a,
         None => {
-            eprintln!("Error: missing /actor argument");
-            eprintln!("Usage: rstproto /command ResolveActorInfo /actor <handle_or_did>");
+            log.error("missing /actor argument");
+            log.error("Usage: rstproto /command ResolveActorInfo /actor <handle_or_did>");
             return;
         }
     };
@@ -108,42 +136,46 @@ async fn cmd_resolve_actor(args: &HashMap<String, String>) {
 
     let client = BlueskyClient::new();
 
-    println!("Resolving actor: {}", actor);
+    log.info(&format!("Resolving actor: {}", actor));
 
     match client.resolve_actor_info(actor, Some(options)).await {
         Ok(info) => {
-            println!("\n=== Actor Info ===");
+            log.info("");
+            log.info("=== Actor Info ===");
             if let Some(ref handle) = info.handle {
-                println!("Handle: {}", handle);
+                log.info(&format!("Handle: {}", handle));
             }
             if let Some(ref did) = info.did {
-                println!("DID: {}", did);
+                log.info(&format!("DID: {}", did));
             }
             if let Some(ref pds) = info.pds {
-                println!("PDS: {}", pds);
+                log.info(&format!("PDS: {}", pds));
             }
             if let Some(ref pubkey) = info.public_key_multibase {
-                println!("Public Key: {}", pubkey);
+                log.info(&format!("Public Key: {}", pubkey));
             }
 
             // Output as JSON
             if let Ok(json) = info.to_json_string() {
-                println!("\n=== JSON ===");
-                println!("{}", json);
+                log.info("");
+                log.info("=== JSON ===");
+                log.info(&json);
             }
         }
         Err(e) => {
-            eprintln!("Error resolving actor: {}", e);
+            log.error(&format!("Error resolving actor: {}", e));
         }
     }
 }
 
 async fn cmd_get_repo(args: &HashMap<String, String>) {
+    let log = logger();
+
     let actor = match get_arg(args, "actor") {
         Some(a) => a,
         None => {
-            eprintln!("Error: missing /actor argument");
-            eprintln!("Usage: rstproto /command GetRepo /actor <handle_or_did> /dataDir <path>");
+            log.error("missing /actor argument");
+            log.error("Usage: rstproto /command GetRepo /actor <handle_or_did> /dataDir <path>");
             return;
         }
     };
@@ -151,8 +183,8 @@ async fn cmd_get_repo(args: &HashMap<String, String>) {
     let data_dir = match get_arg(args, "datadir") {
         Some(d) => d,
         None => {
-            eprintln!("Error: missing /dataDir argument");
-            eprintln!("Usage: rstproto /command GetRepo /actor <handle_or_did> /dataDir <path>");
+            log.error("missing /dataDir argument");
+            log.error("Usage: rstproto /command GetRepo /actor <handle_or_did> /dataDir <path>");
             return;
         }
     };
@@ -161,20 +193,20 @@ async fn cmd_get_repo(args: &HashMap<String, String>) {
     let lfs = match LocalFileSystem::initialize_with_create(data_dir) {
         Ok(lfs) => lfs,
         Err(e) => {
-            eprintln!("Error initializing data directory: {}", e);
+            log.error(&format!("Error initializing data directory: {}", e));
             return;
         }
     };
 
     let client = BlueskyClient::new();
 
-    println!("Resolving actor: {}", actor);
+    log.info(&format!("Resolving actor: {}", actor));
 
     // First, resolve actor to get DID and PDS
     let info = match client.resolve_actor_info(actor, None).await {
         Ok(info) => info,
         Err(e) => {
-            eprintln!("Error resolving actor: {}", e);
+            log.error(&format!("Error resolving actor: {}", e));
             return;
         }
     };
@@ -182,7 +214,7 @@ async fn cmd_get_repo(args: &HashMap<String, String>) {
     let did = match &info.did {
         Some(d) => d.clone(),
         None => {
-            eprintln!("Error: Could not resolve DID for actor");
+            log.error("Could not resolve DID for actor");
             return;
         }
     };
@@ -190,33 +222,33 @@ async fn cmd_get_repo(args: &HashMap<String, String>) {
     let pds = match &info.pds {
         Some(p) => p.clone(),
         None => {
-            eprintln!("Error: Could not resolve PDS for actor");
+            log.error("Could not resolve PDS for actor");
             return;
         }
     };
 
-    println!("DID: {}", did);
-    println!("PDS: {}", pds);
+    log.info(&format!("DID: {}", did));
+    log.info(&format!("PDS: {}", pds));
 
     // Get the repo file path
     let repo_file = match lfs.get_path_repo_file(&did) {
         Ok(path) => path,
         Err(e) => {
-            eprintln!("Error getting repo file path: {}", e);
+            log.error(&format!("Error getting repo file path: {}", e));
             return;
         }
     };
 
-    println!("Downloading repo to: {}", repo_file.display());
+    log.info(&format!("Downloading repo to: {}", repo_file.display()));
 
     // Download the repo
     match client.get_repo(&pds, &did, &repo_file).await {
         Ok(bytes) => {
-            println!("Downloaded {} bytes", bytes);
-            println!("Repo saved to: {}", repo_file.display());
+            log.info(&format!("Downloaded {} bytes", bytes));
+            log.info(&format!("Repo saved to: {}", repo_file.display()));
         }
         Err(e) => {
-            eprintln!("Error downloading repo: {}", e);
+            log.error(&format!("Error downloading repo: {}", e));
         }
     }
 }

@@ -26,8 +26,10 @@
 //! ```
 
 pub mod fs;
+pub mod log;
 pub mod ws;
 
 // Re-export commonly used types at crate root
 pub use fs::LocalFileSystem;
+pub use log::{init_logger, logger, ConsoleDestination, FileDestination, LogDestination, LogLevel, Logger};
 pub use ws::{ActorInfo, ActorQueryOptions, BlueskyClient, BlueskyClientError};
