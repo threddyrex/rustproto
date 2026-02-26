@@ -2,8 +2,10 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use chrono::Datelike;
 use rstproto::fs::LocalFileSystem;
 use rstproto::log::{init_logger, logger, FileDestination, LogLevel};
+use rstproto::repo::{Repo, RepoRecord, AtProtoType};
 use rstproto::ws::{ActorQueryOptions, BlueskyClient};
 
 #[tokio::main]
@@ -48,6 +50,8 @@ async fn main() {
     match command.to_lowercase().as_str() {
         "resolve" | "resolveactorinfo" => cmd_resolve_actor(&arguments).await,
         "getrepo" => cmd_get_repo(&arguments).await,
+        "printrepostats" => cmd_print_repo_stats(&arguments).await,
+        "printreporecords" => cmd_print_repo_records(&arguments).await,
         "help" => print_usage(),
         _ => {
             logger().error(&format!("Unknown command: {}", command));
@@ -95,6 +99,8 @@ fn print_usage() {
     println!("Commands:");
     println!("  ResolveActorInfo   Resolve actor info (DID, PDS, etc.)");
     println!("  GetRepo            Download repository (CAR file) for an actor");
+    println!("  PrintRepoStats     Print statistics about a repository");
+    println!("  PrintRepoRecords   Print records from a repository");
     println!("  Help               Show this help message");
     println!();
     println!("Arguments:");
@@ -102,6 +108,9 @@ fn print_usage() {
     println!("  /actor <handle>       Handle or DID to resolve");
     println!("  /all <true|false>     Use all resolution methods");
     println!("  /dataDir <path>       Path to data directory");
+    println!("  /repoFile <path>      Path to CAR file (for repo commands)");
+    println!("  /collection <type>    Filter by collection type (e.g., app.bsky.feed.post)");
+    println!("  /month <yyyy-MM>      Filter by month (e.g., 2024-01)");
     println!("  /logLevel <level>     Log level: trace, info, warning, error");
     println!("  /logToDataDir <bool>  Write logs to data directory");
     println!();
@@ -109,7 +118,9 @@ fn print_usage() {
     println!("  rstproto /command ResolveActorInfo /actor alice.bsky.social");
     println!("  rstproto /command ResolveActorInfo /actor did:plc:abc123 /all true");
     println!("  rstproto /command GetRepo /actor alice.bsky.social /dataDir ./data");
-    println!("  rstproto /command GetRepo /actor alice.bsky.social /dataDir ./data /logLevel trace /logToDataDir true");
+    println!("  rstproto /command PrintRepoStats /repoFile ./data/repos/did_plc_xxx/repo.car");
+    println!("  rstproto /command PrintRepoRecords /actor alice.bsky.social /dataDir ./data");
+    println!("  rstproto /command PrintRepoRecords /repoFile ./repo.car /collection app.bsky.feed.post");
 }
 
 async fn cmd_resolve_actor(args: &HashMap<String, String>) {
@@ -250,5 +261,356 @@ async fn cmd_get_repo(args: &HashMap<String, String>) {
         Err(e) => {
             log.error(&format!("Error downloading repo: {}", e));
         }
+    }
+}
+
+/// Resolves the repo file path from arguments.
+/// Supports either /repoFile directly or /actor + /dataDir combination.
+/// If actor is not cached, resolves online via BlueskyClient.
+async fn resolve_repo_file(args: &HashMap<String, String>) -> Option<std::path::PathBuf> {
+    // Check for direct repoFile argument
+    if let Some(repo_file) = get_arg(args, "repofile") {
+        let path = std::path::PathBuf::from(repo_file);
+        if path.exists() {
+            return Some(path);
+        } else {
+            logger().error(&format!("Repo file does not exist: {}", repo_file));
+            return None;
+        }
+    }
+
+    // Try to resolve from actor + dataDir
+    let actor = get_arg(args, "actor")?;
+    let data_dir = get_arg(args, "datadir")?;
+
+    let lfs = match LocalFileSystem::initialize(data_dir) {
+        Ok(lfs) => lfs,
+        Err(e) => {
+            logger().error(&format!("Error initializing data directory: {}", e));
+            return None;
+        }
+    };
+
+    // Resolve actor to DID
+    let did = if actor.starts_with("did:") {
+        // Already a DID
+        actor.to_string()
+    } else {
+        // Try to resolve handle from cached actor info
+        match lfs.resolve_actor_info(actor, None) {
+            Ok(info) => {
+                match info.did {
+                    Some(d) => d,
+                    None => {
+                        logger().error("Cached actor info does not contain a DID");
+                        return None;
+                    }
+                }
+            }
+            Err(_) => {
+                // Cache miss - resolve online
+                logger().trace("Cache miss, resolving actor online...");
+                let client = BlueskyClient::new();
+                match client.resolve_actor_info(actor, None).await {
+                    Ok(info) => {
+                        // Save to cache for future use
+                        if let Err(e) = lfs.save_actor_info(actor, &info) {
+                            logger().warning(&format!("Failed to cache actor info: {}", e));
+                        }
+                        match info.did {
+                            Some(d) => d,
+                            None => {
+                                logger().error("Resolved actor info does not contain a DID");
+                                return None;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        logger().error(&format!("Could not resolve actor: {}", e));
+                        return None;
+                    }
+                }
+            }
+        }
+    };
+    
+    match lfs.get_path_repo_file(&did) {
+        Ok(path) => {
+            if path.exists() {
+                Some(path)
+            } else {
+                logger().error(&format!("Repo file does not exist: {}", path.display()));
+                None
+            }
+        }
+        Err(e) => {
+            logger().error(&format!("Error getting repo file path: {}", e));
+            None
+        }
+    }
+}
+
+async fn cmd_print_repo_stats(args: &HashMap<String, String>) {
+    let log = logger();
+
+    let repo_file = match resolve_repo_file(args).await {
+        Some(path) => path,
+        None => {
+            log.error("Could not resolve repo file. Use /repoFile <path> or /actor <handle> /dataDir <path>");
+            return;
+        }
+    };
+
+    log.info(&format!("Reading repo file: {}", repo_file.display()));
+
+    // Stats tracking
+    let mut earliest_date: Option<chrono::NaiveDateTime> = None;
+    let mut latest_date: Option<chrono::NaiveDateTime> = None;
+    let mut record_type_counts: HashMap<String, usize> = HashMap::new();
+    let mut record_counts_by_month: HashMap<String, usize> = HashMap::new();
+    let mut record_type_counts_by_month: HashMap<String, HashMap<String, usize>> = HashMap::new();
+    let mut error_count = 0;
+    let mut total_record_count = 0;
+
+    // Walk the repo
+    let result = Repo::walk_repo_file(
+        &repo_file,
+        |_header| true,
+        |record: &RepoRecord| {
+            total_record_count += 1;
+
+            if record.is_error {
+                error_count += 1;
+                log.trace(&format!("ERROR: {}", record.json_string));
+                return true;
+            }
+
+            let record_type = record.at_proto_type.clone().unwrap_or_else(|| "<null>".to_string());
+
+            // Total counts
+            *record_type_counts.entry(record_type.clone()).or_insert(0) += 1;
+
+            // Counts by month
+            if let Some(created_at) = &record.created_at {
+                if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(created_at, "%Y-%m-%dT%H:%M:%S%.fZ") {
+                    // Convert UTC to local time to match .NET DateTime.TryParse behavior
+                    let local_dt = dt.and_utc().with_timezone(&chrono::Local).naive_local();
+                    
+                    // Update earliest/latest dates
+                    match &earliest_date {
+                        None => earliest_date = Some(local_dt),
+                        Some(e) if local_dt < *e => earliest_date = Some(local_dt),
+                        _ => {}
+                    }
+                    match &latest_date {
+                        None => latest_date = Some(local_dt),
+                        Some(l) if local_dt > *l => latest_date = Some(local_dt),
+                        _ => {}
+                    }
+
+                    let month = local_dt.format("%Y-%m").to_string();
+
+                    // Initialize if needed
+                    record_counts_by_month.entry(month.clone()).or_insert(0);
+                    record_type_counts_by_month.entry(month.clone()).or_insert_with(HashMap::new);
+
+                    *record_counts_by_month.get_mut(&month).unwrap() += 1;
+                    *record_type_counts_by_month
+                        .get_mut(&month)
+                        .unwrap()
+                        .entry(record_type)
+                        .or_insert(0) += 1;
+                }
+            }
+
+            true
+        },
+    );
+
+    if let Err(e) = result {
+        log.error(&format!("Error walking repo: {}", e));
+        return;
+    }
+
+    // Print stats
+    log.info("");
+    log.info(&format!("repoFile: {}", repo_file.display()));
+    log.info("");
+    log.info(&format!(
+        "earliestDate: {}",
+        earliest_date.map(|d| d.to_string()).unwrap_or_else(|| "<none>".to_string())
+    ));
+    log.info(&format!(
+        "latestDate: {}",
+        latest_date.map(|d| d.to_string()).unwrap_or_else(|| "<none>".to_string())
+    ));
+    log.info("");
+    log.info(&format!("errorCount: {}", error_count));
+    log.info("");
+    log.info(&format!("totalRecordCount: {}", total_record_count));
+    log.info("");
+
+    // Print monthly breakdown
+    if let (Some(start), Some(end)) = (earliest_date, latest_date) {
+        let mut current = start;
+        while current <= end + chrono::Duration::days(31) {
+            let month = current.format("%Y-%m").to_string();
+
+            let record_count = record_counts_by_month.get(&month).copied().unwrap_or(0);
+            let type_counts = record_type_counts_by_month.get(&month);
+
+            let post_count = type_counts.and_then(|tc| tc.get(AtProtoType::BLUESKY_POST)).copied().unwrap_or(0);
+            let like_count = type_counts.and_then(|tc| tc.get(AtProtoType::BLUESKY_LIKE)).copied().unwrap_or(0);
+            let repost_count = type_counts.and_then(|tc| tc.get(AtProtoType::BLUESKY_REPOST)).copied().unwrap_or(0);
+            let follow_count = type_counts.and_then(|tc| tc.get(AtProtoType::BLUESKY_FOLLOW)).copied().unwrap_or(0);
+            let block_count = type_counts.and_then(|tc| tc.get(AtProtoType::BLUESKY_BLOCK)).copied().unwrap_or(0);
+
+            log.info(&format!(
+                "{}: records={}, follows={}, posts={}, likes={}, reposts={}, blocks={}",
+                month, record_count, follow_count, post_count, like_count, repost_count, block_count
+            ));
+
+            // Move to next month
+            let year = current.date().year();
+            let month_num = current.date().month();
+            if month_num == 12 {
+                current = chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1)
+                    .unwrap()
+                    .and_hms_opt(0, 0, 0)
+                    .unwrap();
+            } else {
+                current = chrono::NaiveDate::from_ymd_opt(year, month_num + 1, 1)
+                    .unwrap()
+                    .and_hms_opt(0, 0, 0)
+                    .unwrap();
+            }
+        }
+    }
+
+    // Print record type counts, descending
+    log.info("");
+    log.info("");
+    log.info("RECORD TYPE COUNTS:");
+    log.info("");
+
+    let mut sorted_types: Vec<_> = record_type_counts.iter().collect();
+    sorted_types.sort_by(|a, b| b.1.cmp(a.1));
+
+    for (record_type, count) in sorted_types {
+        log.info(&format!("{}: {}", record_type, count));
+    }
+    log.info("");
+
+    if error_count > 0 {
+        log.info(&format!(
+            "Note: {} records could not be parsed. Use log level 'trace' to see details.",
+            error_count
+        ));
+        log.info("");
+    }
+}
+
+async fn cmd_print_repo_records(args: &HashMap<String, String>) {
+    let log = logger();
+
+    let repo_file = match resolve_repo_file(args).await {
+        Some(path) => path,
+        None => {
+            log.error("Could not resolve repo file. Use /repoFile <path> or /actor <handle> /dataDir <path>");
+            return;
+        }
+    };
+
+    let collection_filter = get_arg(args, "collection").map(|s| s.to_string());
+    let month_filter = get_arg(args, "month").map(|s| s.to_string());
+
+    log.info(&format!("Reading repo file: {}", repo_file.display()));
+    if let Some(ref col) = collection_filter {
+        log.info(&format!("Filtering by collection: {}", col));
+    }
+    if let Some(ref month) = month_filter {
+        log.info(&format!("Filtering by month: {}", month));
+    }
+
+    // Stats tracking
+    let mut total_records = 0;
+    let mut dag_cbor_type_counts: HashMap<String, usize> = HashMap::new();
+    let mut record_type_counts: HashMap<String, usize> = HashMap::new();
+
+    // Walk the repo
+    let result = Repo::walk_repo_file(
+        &repo_file,
+        |header| {
+            log.trace("");
+            log.trace("REPO HEADER:");
+            log.trace(&format!("   roots: {}", header.repo_commit_cid.get_base32()));
+            log.trace(&format!("   version: {}", header.version));
+            true
+        },
+        |record: &RepoRecord| {
+            let record_type = record.at_proto_type.clone().unwrap_or_else(|| "<null>".to_string());
+
+            // Apply collection filter
+            if let Some(ref col) = collection_filter {
+                if record.at_proto_type.as_ref() != Some(col) {
+                    return true;
+                }
+            }
+
+            // Apply month filter
+            if let Some(ref month) = month_filter {
+                if let Some(created_at) = &record.created_at {
+                    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(created_at, "%Y-%m-%dT%H:%M:%S%.fZ") {
+                        // Convert UTC to local time to match .NET DateTime.TryParse behavior
+                        let local_dt = dt.and_utc().with_timezone(&chrono::Local).naive_local();
+                        let record_month = local_dt.format("%Y-%m").to_string();
+                        if &record_month != month {
+                            return true;
+                        }
+                    } else {
+                        // Skip records without valid CreatedAt when month filter is active
+                        return true;
+                    }
+                } else {
+                    return true;
+                }
+            }
+
+            let record_type_str = record.get_record_type_string();
+
+            log.trace("");
+            log.trace(&format!("{}:", record_type_str));
+            log.trace(&format!("  cid: {}", record.cid.get_base32()));
+            log.trace(&format!("  blockJson:\n {}", record.json_string));
+
+            // For stats
+            total_records += 1;
+            let type_string = record.data_block.cbor_type.get_major_type_string().to_string();
+            *dag_cbor_type_counts.entry(type_string).or_insert(0) += 1;
+            *record_type_counts.entry(record_type).or_insert(0) += 1;
+
+            true
+        },
+    );
+
+    if let Err(e) = result {
+        log.error(&format!("Error walking repo: {}", e));
+        return;
+    }
+
+    // Print stats
+    log.info("TOTAL RECORDS:");
+    log.info(&format!("   {}", total_records));
+
+    log.trace("DAG CBOR TYPE COUNTS:");
+    for (type_name, count) in &dag_cbor_type_counts {
+        log.trace(&format!("  {} - {}", type_name, count));
+    }
+
+    log.info("RECORD TYPE COUNTS:");
+    let mut sorted_types: Vec<_> = record_type_counts.iter().collect();
+    sorted_types.sort_by(|a, b| b.1.cmp(a.1));
+    for (record_type, count) in sorted_types {
+        log.info(&format!("  {} - {}", record_type, count));
     }
 }

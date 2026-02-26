@@ -1,7 +1,7 @@
 //! rstproto - Rust AT Protocol / Bluesky SDK
 //!
 //! This crate provides utilities for working with the AT Protocol and Bluesky,
-//! including actor resolution, identity lookup, and related functionality.
+//! including actor resolution, identity lookup, repository parsing, and related functionality.
 //!
 //! # Example
 //!
@@ -27,9 +27,11 @@
 
 pub mod fs;
 pub mod log;
+pub mod repo;
 pub mod ws;
 
 // Re-export commonly used types at crate root
 pub use fs::LocalFileSystem;
 pub use log::{init_logger, logger, ConsoleDestination, FileDestination, LogDestination, LogLevel, Logger};
+pub use repo::{Repo, RepoHeader, RepoRecord, CidV1, DagCborObject, VarInt};
 pub use ws::{ActorInfo, ActorQueryOptions, BlueskyClient, BlueskyClientError};

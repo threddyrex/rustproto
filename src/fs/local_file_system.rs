@@ -5,7 +5,10 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 use thiserror::Error;
+
+use crate::ws::ActorInfo;
 
 /// Errors that can occur during file system operations.
 #[derive(Error, Debug)]
@@ -18,6 +21,12 @@ pub enum LocalFileSystemError {
 
     #[error("Invalid argument: {0}")]
     InvalidArgument(String),
+
+    #[error("Actor info not found or expired: {0}")]
+    ActorInfoNotFound(String),
+
+    #[error("JSON parse error: {0}")]
+    JsonError(#[from] serde_json::Error),
 }
 
 /// Subdirectories to create in the data directory.
@@ -221,6 +230,119 @@ impl LocalFileSystem {
         self.data_dir.join("pds").join("pds.db")
     }
 
+    /// Default cache expiry time in minutes for actor info files.
+    pub const DEFAULT_CACHE_EXPIRY_MINUTES: u64 = 15;
+
+    /// Resolves actor info from the local cache (file system).
+    ///
+    /// Loads the actor info from disk if the file exists and is fresh
+    /// (not older than `cache_expiry_minutes`).
+    ///
+    /// # Arguments
+    ///
+    /// * `actor` - The actor handle or DID to resolve
+    /// * `cache_expiry_minutes` - Maximum age of the cached file in minutes (default: 15)
+    ///
+    /// # Returns
+    ///
+    /// The cached ActorInfo if found and fresh, or an error if not found/expired.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use rstproto::fs::LocalFileSystem;
+    ///
+    /// let lfs = LocalFileSystem::initialize("./data").unwrap();
+    /// match lfs.resolve_actor_info("alice.bsky.social", None) {
+    ///     Ok(info) => println!("Cached DID: {:?}", info.did),
+    ///     Err(e) => println!("Not in cache: {}", e),
+    /// }
+    /// ```
+    pub fn resolve_actor_info(
+        &self,
+        actor: &str,
+        cache_expiry_minutes: Option<u64>,
+    ) -> Result<ActorInfo, LocalFileSystemError> {
+        if actor.is_empty() {
+            return Err(LocalFileSystemError::InvalidArgument(
+                "actor is null or empty".to_string(),
+            ));
+        }
+
+        let cache_expiry = cache_expiry_minutes.unwrap_or(Self::DEFAULT_CACHE_EXPIRY_MINUTES);
+        let actor_file = self.get_path_actor_file(actor)?;
+
+        if !actor_file.exists() {
+            return Err(LocalFileSystemError::ActorInfoNotFound(format!(
+                "Actor info file not found: {}",
+                actor_file.display()
+            )));
+        }
+
+        // Check file age
+        let metadata = fs::metadata(&actor_file)?;
+        let modified = metadata.modified()?;
+        let age = SystemTime::now()
+            .duration_since(modified)
+            .unwrap_or(Duration::MAX);
+        let age_minutes = age.as_secs() / 60;
+
+        if age_minutes > cache_expiry {
+            return Err(LocalFileSystemError::ActorInfoNotFound(format!(
+                "Actor info file expired (age: {} minutes, max: {} minutes)",
+                age_minutes, cache_expiry
+            )));
+        }
+
+        // Load and parse the file
+        let json = fs::read_to_string(&actor_file)?;
+        let info = ActorInfo::from_json_string(&json)?;
+
+        // Validate that the file has a DID
+        if !info.has_did() {
+            return Err(LocalFileSystemError::ActorInfoNotFound(
+                "Actor info loaded from file is missing DID".to_string(),
+            ));
+        }
+
+        Ok(info)
+    }
+
+    /// Saves actor info to the local cache (file system).
+    ///
+    /// # Arguments
+    ///
+    /// * `actor` - The actor handle or DID (used for the filename)
+    /// * `info` - The ActorInfo to save
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use rstproto::fs::LocalFileSystem;
+    /// use rstproto::ws::ActorInfo;
+    ///
+    /// let lfs = LocalFileSystem::initialize("./data").unwrap();
+    /// let info = ActorInfo::with_actor("alice.bsky.social");
+    /// lfs.save_actor_info("alice.bsky.social", &info).unwrap();
+    /// ```
+    pub fn save_actor_info(
+        &self,
+        actor: &str,
+        info: &ActorInfo,
+    ) -> Result<(), LocalFileSystemError> {
+        if actor.is_empty() {
+            return Err(LocalFileSystemError::InvalidArgument(
+                "actor is null or empty".to_string(),
+            ));
+        }
+
+        let actor_file = self.get_path_actor_file(actor)?;
+        let json = info.to_json_string()?;
+        fs::write(&actor_file, json)?;
+
+        Ok(())
+    }
+
     /// Makes a string safe for use as a file or directory name.
     ///
     /// Replaces `:`, `/`, `.`, and `@` with underscores.
@@ -278,6 +400,45 @@ mod tests {
         let lfs = LocalFileSystem::initialize(&temp_dir).unwrap();
         let result = lfs.get_path_repo_file("");
 
+        assert!(result.is_err());
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_save_and_resolve_actor_info() {
+        let temp_dir = env::temp_dir().join("rstproto_test_actor_info");
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        let lfs = LocalFileSystem::initialize(&temp_dir).unwrap();
+
+        // Create an ActorInfo to save
+        let mut info = ActorInfo::with_actor("alice.bsky.social");
+        info.did = Some("did:plc:abc123".to_string());
+        info.pds = Some("bsky.social".to_string());
+
+        // Save it
+        lfs.save_actor_info("alice.bsky.social", &info).unwrap();
+
+        // Resolve it (should succeed since it's fresh)
+        let resolved = lfs.resolve_actor_info("alice.bsky.social", None).unwrap();
+        assert_eq!(resolved.did, Some("did:plc:abc123".to_string()));
+        assert_eq!(resolved.pds, Some("bsky.social".to_string()));
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_resolve_actor_info_not_found() {
+        let temp_dir = env::temp_dir().join("rstproto_test_actor_not_found");
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        let lfs = LocalFileSystem::initialize(&temp_dir).unwrap();
+
+        // Try to resolve a non-existent actor
+        let result = lfs.resolve_actor_info("nonexistent.bsky.social", None);
         assert!(result.is_err());
 
         let _ = fs::remove_dir_all(&temp_dir);
