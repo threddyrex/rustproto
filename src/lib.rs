@@ -25,12 +25,14 @@
 //! }
 //! ```
 
+pub mod firehose;
 pub mod fs;
 pub mod log;
 pub mod repo;
 pub mod ws;
 
 // Re-export commonly used types at crate root
+pub use firehose::{Firehose, FirehoseError};
 pub use fs::LocalFileSystem;
 pub use log::{init_logger, logger, ConsoleDestination, FileDestination, LogDestination, LogLevel, Logger};
 pub use repo::{Repo, RepoHeader, RepoRecord, CidV1, DagCborObject, VarInt};

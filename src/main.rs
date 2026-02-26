@@ -1,11 +1,13 @@
 //! rstproto CLI - AT Protocol / Bluesky tools
 
 use std::collections::HashMap;
+use std::io::Cursor;
 use std::sync::Arc;
 use chrono::Datelike;
+use rstproto::firehose::Firehose;
 use rstproto::fs::LocalFileSystem;
 use rstproto::log::{init_logger, logger, FileDestination, LogLevel};
-use rstproto::repo::{Repo, RepoRecord, AtProtoType};
+use rstproto::repo::{DagCborValue, Repo, RepoRecord, AtProtoType};
 use rstproto::ws::{ActorQueryOptions, BlueskyClient};
 
 #[tokio::main]
@@ -52,6 +54,7 @@ async fn main() {
         "getrepo" => cmd_get_repo(&arguments).await,
         "printrepostats" => cmd_print_repo_stats(&arguments).await,
         "printreporecords" => cmd_print_repo_records(&arguments).await,
+        "startfirehoseconsumer" => cmd_start_firehose_consumer(&arguments).await,
         "help" => print_usage(),
         _ => {
             logger().error(&format!("Unknown command: {}", command));
@@ -97,11 +100,12 @@ fn print_usage() {
     println!("Usage: rstproto /command <name> [/arg1 val1 /arg2 val2 ...]");
     println!();
     println!("Commands:");
-    println!("  ResolveActorInfo   Resolve actor info (DID, PDS, etc.)");
-    println!("  GetRepo            Download repository (CAR file) for an actor");
-    println!("  PrintRepoStats     Print statistics about a repository");
-    println!("  PrintRepoRecords   Print records from a repository");
-    println!("  Help               Show this help message");
+    println!("  ResolveActorInfo       Resolve actor info (DID, PDS, etc.)");
+    println!("  GetRepo                Download repository (CAR file) for an actor");
+    println!("  PrintRepoStats         Print statistics about a repository");
+    println!("  PrintRepoRecords       Print records from a repository");
+    println!("  StartFirehoseConsumer  Listen to a PDS firehose and print events");
+    println!("  Help                   Show this help message");
     println!();
     println!("Arguments:");
     println!("  /command <name>       Command to run");
@@ -111,6 +115,8 @@ fn print_usage() {
     println!("  /repoFile <path>      Path to CAR file (for repo commands)");
     println!("  /collection <type>    Filter by collection type (e.g., app.bsky.feed.post)");
     println!("  /month <yyyy-MM>      Filter by month (e.g., 2024-01)");
+    println!("  /cursor <int>         Firehose cursor position");
+    println!("  /showDagCborTypes     Show DAG-CBOR type debug info (true/false)");
     println!("  /logLevel <level>     Log level: trace, info, warning, error");
     println!("  /logToDataDir <bool>  Write logs to data directory");
     println!();
@@ -121,6 +127,7 @@ fn print_usage() {
     println!("  rstproto /command PrintRepoStats /repoFile ./data/repos/did_plc_xxx/repo.car");
     println!("  rstproto /command PrintRepoRecords /actor alice.bsky.social /dataDir ./data");
     println!("  rstproto /command PrintRepoRecords /repoFile ./repo.car /collection app.bsky.feed.post");
+    println!("  rstproto /command StartFirehoseConsumer /actor alice.bsky.social /dataDir ./data");
 }
 
 async fn cmd_resolve_actor(args: &HashMap<String, String>) {
@@ -612,5 +619,127 @@ async fn cmd_print_repo_records(args: &HashMap<String, String>) {
     sorted_types.sort_by(|a, b| b.1.cmp(a.1));
     for (record_type, count) in sorted_types {
         log.info(&format!("  {} - {}", record_type, count));
+    }
+}
+
+async fn cmd_start_firehose_consumer(args: &HashMap<String, String>) {
+    let log = logger();
+
+    // Get actor argument
+    let actor = match get_arg(args, "actor") {
+        Some(a) => a,
+        None => {
+            log.error("missing /actor argument");
+            log.error("Usage: rstproto /command StartFirehoseConsumer /actor <handle_or_did> /dataDir <path>");
+            return;
+        }
+    };
+
+    let cursor = get_arg(args, "cursor");
+    let show_dag_cbor_types = get_arg(args, "showdagcbortypes")
+        .map(|v| v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    let client = BlueskyClient::new();
+
+    // Resolve actor info to get PDS and DID
+    log.info(&format!("Resolving actor: {}", actor));
+    let actor_info = match client.resolve_actor_info(actor, None).await {
+        Ok(info) => info,
+        Err(e) => {
+            log.error(&format!("Failed to resolve actor info: {}", e));
+            return;
+        }
+    };
+
+    let pds = match &actor_info.pds {
+        Some(p) => p.clone(),
+        None => {
+            log.error("Could not resolve PDS for actor");
+            return;
+        }
+    };
+
+    let target_did = match &actor_info.did {
+        Some(d) => d.clone(),
+        None => {
+            log.error("Could not resolve DID for actor");
+            return;
+        }
+    };
+
+    // Build the firehose URL
+    let mut url = format!("wss://{}/xrpc/com.atproto.sync.subscribeRepos", pds);
+    if let Some(c) = cursor {
+        url = format!("{}?cursor={}", url, c);
+    }
+
+    log.info(&format!("Connecting to firehose at: {}", url));
+
+    // Listen on firehose
+    let result = Firehose::listen(&url, |header, body| {
+        // Filter to only our DID
+        let did = body.select_string(&["repo"]);
+        if did.as_ref() != Some(&target_did) {
+            return true; // continue listening
+        }
+
+        log.info(" -----------------------------------------------------------------------------------------------------------");
+        log.info(" NEW FIREHOSE FRAME");
+        log.info(" -----------------------------------------------------------------------------------------------------------");
+
+        log.info(&format!("DAG CBOR OBJECT 1 (HEADER):\n{}", header.to_json_string()));
+        log.info(&format!("DAG CBOR OBJECT 2 (MESSAGE):\n{}", body.to_json_string()));
+
+        if show_dag_cbor_types {
+            log.trace(&format!("\nDAG CBOR OBJECT 1 TYPES (HEADER):\n{}", header.get_recursive_debug_string(0)));
+            log.trace(&format!("\nDAG CBOR OBJECT 2 TYPES (MESSAGE):\n{}", body.get_recursive_debug_string(0)));
+        }
+
+        log.info(" PARSING BLOCKS");
+
+        // Look for the "blocks" key in the message
+        // "blocks" should be a byte array of records, in repo format
+        if let Some(blocks_obj) = body.select_object(&["blocks"]) {
+            if let DagCborValue::ByteString(blocks_bytes) = &blocks_obj.value {
+                let mut cursor = Cursor::new(blocks_bytes);
+
+                // Walk it like a repo
+                let walk_result = Repo::walk_repo(
+                    &mut cursor,
+                    |repo_header| {
+                        log.info("REPO HEADER:");
+                        log.info(&format!("   roots: {}", repo_header.repo_commit_cid.get_base32()));
+                        log.info(&format!("   version: {}", repo_header.version));
+                        true
+                    },
+                    |repo_record| {
+                        log.info(&format!("cid: {}", repo_record.cid.get_base32()));
+                        log.info("BLOCK JSON:");
+                        log.info(&format!("\n{}", repo_record.json_string));
+
+                        if show_dag_cbor_types {
+                            log.trace(&format!("\n{}", repo_record.data_block.get_recursive_debug_string(0)));
+                        }
+
+                        true
+                    },
+                );
+
+                if let Err(e) = walk_result {
+                    log.error(&format!("Error walking blocks: {}", e));
+                }
+            } else {
+                log.info("No blocks found in message (blocks is not a byte string).");
+            }
+        } else {
+            log.info("No blocks found in message.");
+        }
+
+        true // continue listening
+    }).await;
+
+    if let Err(e) = result {
+        log.error(&format!("Firehose error: {}", e));
     }
 }

@@ -167,6 +167,14 @@ impl DagCborValue {
             _ => None,
         }
     }
+
+    /// Tries to get the value as a byte string.
+    pub fn as_bytes(&self) -> Option<&Vec<u8>> {
+        match self {
+            DagCborValue::ByteString(bytes) => Some(bytes),
+            _ => None,
+        }
+    }
 }
 
 /// A DAG-CBOR object representing a data block in a repository record.
@@ -513,6 +521,56 @@ impl DagCborObject {
     pub fn to_json_string(&self) -> String {
         let json_value = self.to_json_value();
         serde_json::to_string_pretty(&json_value).unwrap_or_else(|_| "{}".to_string())
+    }
+
+    /// Returns a recursive debug string showing the structure and types of this object.
+    pub fn get_recursive_debug_string(&self, indent: usize) -> String {
+        let indent_str = "  ".repeat(indent);
+        let mut result = format!(
+            "{}Type: {}, Value: {:?}\n",
+            indent_str,
+            self.cbor_type.get_major_type_string(),
+            self.get_value_summary()
+        );
+
+        match &self.value {
+            DagCborValue::Map(map) => {
+                for (key, value) in map {
+                    result.push_str(&format!("{}Key: {}\n", indent_str, key));
+                    result.push_str(&value.get_recursive_debug_string(indent + 1));
+                }
+            }
+            DagCborValue::Array(arr) => {
+                for (i, item) in arr.iter().enumerate() {
+                    result.push_str(&format!("{}Index: {}\n", indent_str, i));
+                    result.push_str(&item.get_recursive_debug_string(indent + 1));
+                }
+            }
+            _ => {}
+        }
+
+        result
+    }
+
+    /// Returns a summary of the value for debug display.
+    fn get_value_summary(&self) -> String {
+        match &self.value {
+            DagCborValue::Text(s) => {
+                if s.len() > 50 {
+                    format!("\"{}...\"", &s[..50])
+                } else {
+                    format!("\"{}\"", s)
+                }
+            }
+            DagCborValue::UnsignedInt(n) => n.to_string(),
+            DagCborValue::NegativeInt(n) => n.to_string(),
+            DagCborValue::Bool(b) => b.to_string(),
+            DagCborValue::Null => "null".to_string(),
+            DagCborValue::ByteString(bytes) => format!("<{} bytes>", bytes.len()),
+            DagCborValue::Cid(cid) => cid.get_base32().to_string(),
+            DagCborValue::Map(map) => format!("<map with {} entries>", map.len()),
+            DagCborValue::Array(arr) => format!("<array with {} items>", arr.len()),
+        }
     }
 }
 
