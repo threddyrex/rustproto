@@ -6,5 +6,9 @@
 pub mod db;
 pub mod installer;
 
-pub use db::{PdsDb, PdsDbError, SqliteDb};
+pub use db::{
+    AdminSession, Blob, DbRepoCommit, DbRepoHeader, DbRepoRecord, FirehoseEvent, LegacySession,
+    OauthRequest, OauthSession, Passkey, PasskeyChallenge, PdsDb, PdsDbError, SqliteDb, Statistic,
+    StatisticKey,
+};
 pub use installer::Installer;

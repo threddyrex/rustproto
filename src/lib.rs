@@ -38,6 +38,10 @@ pub use firehose::{Firehose, FirehoseError};
 pub use fs::LocalFileSystem;
 pub use log::{init_logger, logger, ConsoleDestination, FileDestination, LogDestination, LogLevel, Logger};
 pub use mst::{Mst, MstEntry, MstItem, MstNode};
-pub use pds::{Installer, PdsDb, PdsDbError, SqliteDb};
+pub use pds::{
+    AdminSession, Blob, DbRepoCommit, DbRepoHeader, DbRepoRecord, FirehoseEvent, Installer,
+    LegacySession, OauthRequest, OauthSession, Passkey, PasskeyChallenge, PdsDb, PdsDbError,
+    SqliteDb, Statistic, StatisticKey,
+};
 pub use repo::{Repo, RepoHeader, RepoRecord, RepoMst, MstNodeKey, CidV1, DagCborObject, VarInt};
 pub use ws::{ActorInfo, ActorQueryOptions, BlueskyClient, BlueskyClientError};
