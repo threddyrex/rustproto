@@ -11,7 +11,7 @@
 //! # Example
 //!
 //! ```
-//! use rstproto::mst::{Mst, MstItem};
+//! use rustproto::mst::{Mst, MstItem};
 //!
 //! // Create items from repo records
 //! let items = vec![

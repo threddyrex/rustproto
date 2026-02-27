@@ -1,6 +1,6 @@
 # Data Directory
 
-This directory contains local data for rstproto, including:
+This directory contains local data for rustproto, including:
 
 - **actors/** - Cached actor information (JSON files)
 - **repos/** - Downloaded repository CAR files
@@ -15,7 +15,7 @@ This directory contains local data for rstproto, including:
 
 ## Usage
 
-The data directory is created and managed automatically by rstproto commands.
+The data directory is created and managed automatically by rustproto commands.
 To initialize manually, use the `LocalFileSystem::initialize_with_create()` function
 or run any command with the `/dataDir` argument:
 

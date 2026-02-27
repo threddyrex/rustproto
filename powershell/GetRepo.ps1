@@ -10,5 +10,5 @@ param (
 . .\_Defaults.ps1
 
 
-# call rstproto.exe to get repo for the given actor
+# call rustproto.exe to get repo for the given actor
 & $exePath /command GetRepo /actor $actor /logLevel $logLevel /logToDataDir $logToDataDir /dataDir $dataDir

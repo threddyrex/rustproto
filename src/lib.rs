@@ -1,4 +1,4 @@
-//! rstproto - Rust AT Protocol / Bluesky SDK
+//! rustproto - Rust AT Protocol / Bluesky SDK
 //!
 //! This crate provides utilities for working with the AT Protocol and Bluesky,
 //! including actor resolution, identity lookup, repository parsing, and related functionality.
@@ -6,7 +6,7 @@
 //! # Example
 //!
 //! ```no_run
-//! use rstproto::ws::{BlueskyClient, ActorQueryOptions};
+//! use rustproto::ws::{BlueskyClient, ActorQueryOptions};
 //!
 //! #[tokio::main]
 //! async fn main() {

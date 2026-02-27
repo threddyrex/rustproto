@@ -1,16 +1,16 @@
-//! rstproto CLI - AT Protocol / Bluesky tools
+//! rustproto CLI - AT Protocol / Bluesky tools
 
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::sync::Arc;
 use chrono::Datelike;
-use rstproto::firehose::Firehose;
-use rstproto::fs::LocalFileSystem;
-use rstproto::log::{init_logger, logger, FileDestination, LogLevel};
-use rstproto::mst::Mst;
-use rstproto::pds::Installer;
-use rstproto::repo::{CidV1, DagCborObject, DagCborValue, Repo, RepoMst, RepoRecord, AtProtoType, MstNodeKey};
-use rstproto::ws::{ActorQueryOptions, BlueskyClient};
+use rustproto::firehose::Firehose;
+use rustproto::fs::LocalFileSystem;
+use rustproto::log::{init_logger, logger, FileDestination, LogLevel};
+use rustproto::mst::Mst;
+use rustproto::pds::Installer;
+use rustproto::repo::{CidV1, DagCborObject, DagCborValue, Repo, RepoMst, RepoRecord, AtProtoType, MstNodeKey};
+use rustproto::ws::{ActorQueryOptions, BlueskyClient};
 
 #[tokio::main]
 async fn main() {
@@ -100,9 +100,9 @@ fn get_arg<'a>(args: &'a HashMap<String, String>, key: &str) -> Option<&'a str> 
 }
 
 fn print_usage() {
-    println!("rstproto - AT Protocol / Bluesky CLI tools");
+    println!("rustproto - AT Protocol / Bluesky CLI tools");
     println!();
-    println!("Usage: rstproto /command <name> [/arg1 val1 /arg2 val2 ...]");
+    println!("Usage: rustproto /command <name> [/arg1 val1 /arg2 val2 ...]");
     println!();
     println!("Commands:");
     println!("  ResolveActorInfo       Resolve actor info (DID, PDS, etc.)");
@@ -133,17 +133,17 @@ fn print_usage() {
     println!("  /listenPort <int>     Server port number");
     println!();
     println!("Examples:");
-    println!("  rstproto /command ResolveActorInfo /actor alice.bsky.social");
-    println!("  rstproto /command ResolveActorInfo /actor did:plc:abc123 /all true");
-    println!("  rstproto /command GetRepo /actor alice.bsky.social /dataDir ./data");
-    println!("  rstproto /command PrintRepoStats /repoFile ./data/repos/did_plc_xxx/repo.car");
-    println!("  rstproto /command PrintRepoRecords /actor alice.bsky.social /dataDir ./data");
-    println!("  rstproto /command PrintRepoRecords /repoFile ./repo.car /collection app.bsky.feed.post");
-    println!("  rstproto /command WalkMst /actor alice.bsky.social /dataDir ./data");
-    println!("  rstproto /command WalkMst /repoFile ./repo.car");
-    println!("  rstproto /command StartFirehoseConsumer /actor alice.bsky.social /dataDir ./data");
-    println!("  rstproto /command InstallDb /dataDir ./data");
-    println!("  rstproto /command InstallConfig /dataDir ./data /listenScheme https /listenHost example.com /listenPort 443");
+    println!("  rustproto /command ResolveActorInfo /actor alice.bsky.social");
+    println!("  rustproto /command ResolveActorInfo /actor did:plc:abc123 /all true");
+    println!("  rustproto /command GetRepo /actor alice.bsky.social /dataDir ./data");
+    println!("  rustproto /command PrintRepoStats /repoFile ./data/repos/did_plc_xxx/repo.car");
+    println!("  rustproto /command PrintRepoRecords /actor alice.bsky.social /dataDir ./data");
+    println!("  rustproto /command PrintRepoRecords /repoFile ./repo.car /collection app.bsky.feed.post");
+    println!("  rustproto /command WalkMst /actor alice.bsky.social /dataDir ./data");
+    println!("  rustproto /command WalkMst /repoFile ./repo.car");
+    println!("  rustproto /command StartFirehoseConsumer /actor alice.bsky.social /dataDir ./data");
+    println!("  rustproto /command InstallDb /dataDir ./data");
+    println!("  rustproto /command InstallConfig /dataDir ./data /listenScheme https /listenHost example.com /listenPort 443");
 }
 
 fn cmd_install_db(args: &HashMap<String, String>) {
@@ -153,7 +153,7 @@ fn cmd_install_db(args: &HashMap<String, String>) {
         Some(d) => d,
         None => {
             log.error("missing /dataDir argument");
-            log.error("Usage: rstproto /command InstallDb /dataDir <path> [/deleteExistingDb true]");
+            log.error("Usage: rustproto /command InstallDb /dataDir <path> [/deleteExistingDb true]");
             return;
         }
     };
@@ -182,7 +182,7 @@ fn cmd_install_config(args: &HashMap<String, String>) {
         Some(d) => d,
         None => {
             log.error("missing /dataDir argument");
-            log.error("Usage: rstproto /command InstallConfig /dataDir <path> /listenScheme <http|https> /listenHost <host> /listenPort <port>");
+            log.error("Usage: rustproto /command InstallConfig /dataDir <path> /listenScheme <http|https> /listenHost <host> /listenPort <port>");
             return;
         }
     };
@@ -237,7 +237,7 @@ async fn cmd_resolve_actor(args: &HashMap<String, String>) {
         Some(a) => a,
         None => {
             log.error("missing /actor argument");
-            log.error("Usage: rstproto /command ResolveActorInfo /actor <handle_or_did>");
+            log.error("Usage: rustproto /command ResolveActorInfo /actor <handle_or_did>");
             return;
         }
     };
@@ -293,7 +293,7 @@ async fn cmd_get_repo(args: &HashMap<String, String>) {
         Some(a) => a,
         None => {
             log.error("missing /actor argument");
-            log.error("Usage: rstproto /command GetRepo /actor <handle_or_did> /dataDir <path>");
+            log.error("Usage: rustproto /command GetRepo /actor <handle_or_did> /dataDir <path>");
             return;
         }
     };
@@ -302,7 +302,7 @@ async fn cmd_get_repo(args: &HashMap<String, String>) {
         Some(d) => d,
         None => {
             log.error("missing /dataDir argument");
-            log.error("Usage: rstproto /command GetRepo /actor <handle_or_did> /dataDir <path>");
+            log.error("Usage: rustproto /command GetRepo /actor <handle_or_did> /dataDir <path>");
             return;
         }
     };
@@ -723,7 +723,7 @@ async fn cmd_print_repo_records(args: &HashMap<String, String>) {
 }
 
 async fn cmd_walk_mst(args: &HashMap<String, String>) {
-    use rstproto::mst::MstNode;
+    use rustproto::mst::MstNode;
 
     let log = logger();
 
@@ -739,8 +739,8 @@ async fn cmd_walk_mst(args: &HashMap<String, String>) {
             Some(d) => d,
             None => {
                 log.error("missing /dataDir argument when using /actor");
-                log.error("Usage: rstproto /command WalkMst /actor <handle_or_did> /dataDir <path>");
-                log.error("   or: rstproto /command WalkMst /repoFile <path>");
+                log.error("Usage: rustproto /command WalkMst /actor <handle_or_did> /dataDir <path>");
+                log.error("   or: rustproto /command WalkMst /repoFile <path>");
                 return;
             }
         };
@@ -780,8 +780,8 @@ async fn cmd_walk_mst(args: &HashMap<String, String>) {
         }
     } else {
         log.error("missing /actor or /repoFile argument");
-        log.error("Usage: rstproto /command WalkMst /actor <handle_or_did> /dataDir <path>");
-        log.error("   or: rstproto /command WalkMst /repoFile <path>");
+        log.error("Usage: rustproto /command WalkMst /actor <handle_or_did> /dataDir <path>");
+        log.error("   or: rustproto /command WalkMst /repoFile <path>");
         return;
     };
 
@@ -831,7 +831,7 @@ async fn cmd_walk_mst(args: &HashMap<String, String>) {
 
     // Walk and print tree structure
     fn visit_node(
-        log: &rstproto::log::Logger,
+        log: &rustproto::log::Logger,
         mst_node_cache: &HashMap<MstNodeKey, (CidV1, DagCborObject)>,
         node: &MstNode,
         indent: usize,
@@ -881,7 +881,7 @@ async fn cmd_start_firehose_consumer(args: &HashMap<String, String>) {
         Some(a) => a,
         None => {
             log.error("missing /actor argument");
-            log.error("Usage: rstproto /command StartFirehoseConsumer /actor <handle_or_did> /dataDir <path>");
+            log.error("Usage: rustproto /command StartFirehoseConsumer /actor <handle_or_did> /dataDir <path>");
             return;
         }
     };

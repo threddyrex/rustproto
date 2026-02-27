@@ -1,4 +1,4 @@
-//! Integration tests for rstproto repository reading and writing.
+//! Integration tests for rustproto repository reading and writing.
 //!
 //! These tests verify that:
 //! 1. We can read a CAR file into memory
@@ -8,7 +8,7 @@
 use std::fs::{self, File};
 use std::path::PathBuf;
 
-use rstproto::repo::{Repo, RepoHeader, RepoRecord, VarInt, CidV1, DagCborObject, DagCborType, DagCborMajorType, DagCborValue};
+use rustproto::repo::{Repo, RepoHeader, RepoRecord, VarInt, CidV1, DagCborObject, DagCborType, DagCborMajorType, DagCborValue};
 use std::collections::HashMap;
 
 /// Helper to get the test data directory

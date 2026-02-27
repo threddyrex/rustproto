@@ -40,7 +40,7 @@ impl BlueskyClient {
     pub fn new() -> Self {
         Self {
             client: Client::builder()
-                .user_agent("rstproto")
+                .user_agent("rustproto")
                 .build()
                 .expect("Failed to create HTTP client"),
         }
@@ -68,7 +68,7 @@ impl BlueskyClient {
     /// # Examples
     ///
     /// ```no_run
-    /// use rstproto::ws::BlueskyClient;
+    /// use rustproto::ws::BlueskyClient;
     ///
     /// #[tokio::main]
     /// async fn main() {
@@ -358,7 +358,7 @@ impl BlueskyClient {
     /// # Examples
     ///
     /// ```no_run
-    /// use rstproto::ws::BlueskyClient;
+    /// use rustproto::ws::BlueskyClient;
     /// use std::path::Path;
     ///
     /// #[tokio::main]

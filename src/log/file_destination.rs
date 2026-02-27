@@ -78,7 +78,7 @@ mod tests {
 
     #[test]
     fn test_file_destination_creation() {
-        let temp_dir = env::temp_dir().join("rstproto_test_log");
+        let temp_dir = env::temp_dir().join("rustproto_test_log");
         let _ = fs::remove_dir_all(&temp_dir);
         fs::create_dir_all(&temp_dir).unwrap();
 

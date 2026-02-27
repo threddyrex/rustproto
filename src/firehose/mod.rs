@@ -8,8 +8,8 @@
 //! # Example
 //!
 //! ```no_run
-//! use rstproto::firehose::Firehose;
-//! use rstproto::repo::DagCborObject;
+//! use rustproto::firehose::Firehose;
+//! use rustproto::repo::DagCborObject;
 //!
 //! #[tokio::main]
 //! async fn main() {
@@ -75,7 +75,7 @@ impl Firehose {
     /// # Example
     ///
     /// ```no_run
-    /// use rstproto::firehose::Firehose;
+    /// use rustproto::firehose::Firehose;
     ///
     /// #[tokio::main]
     /// async fn main() {

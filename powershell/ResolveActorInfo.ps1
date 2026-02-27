@@ -11,5 +11,5 @@ param (
 . .\_Defaults.ps1
 
 
-# call rstproto.exe to get actor info
+# call rustproto.exe to get actor info
 & $exePath /command ResolveActorInfo /actor $actor /logLevel $logLevel /logToDataDir $logToDataDir /dataDir $dataDir /all $all

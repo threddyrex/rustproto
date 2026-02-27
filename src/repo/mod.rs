@@ -13,7 +13,7 @@
 //! # Example
 //!
 //! ```no_run
-//! use rstproto::repo::Repo;
+//! use rustproto::repo::Repo;
 //! use std::fs::File;
 //!
 //! let file = File::open("repo.car").unwrap();

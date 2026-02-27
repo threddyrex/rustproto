@@ -8,7 +8,7 @@
 /// # Examples
 ///
 /// ```
-/// use rstproto::ws::ActorQueryOptions;
+/// use rustproto::ws::ActorQueryOptions;
 ///
 /// // Default options: Bluesky API + DID doc resolution
 /// let default_opts = ActorQueryOptions::default();

@@ -64,7 +64,7 @@ impl LocalFileSystem {
     /// # Examples
     ///
     /// ```no_run
-    /// use rstproto::fs::LocalFileSystem;
+    /// use rustproto::fs::LocalFileSystem;
     ///
     /// let lfs = LocalFileSystem::initialize("./data").unwrap();
     /// println!("Data dir: {:?}", lfs.get_data_dir());
@@ -250,7 +250,7 @@ impl LocalFileSystem {
     /// # Example
     ///
     /// ```no_run
-    /// use rstproto::fs::LocalFileSystem;
+    /// use rustproto::fs::LocalFileSystem;
     ///
     /// let lfs = LocalFileSystem::initialize("./data").unwrap();
     /// match lfs.resolve_actor_info("alice.bsky.social", None) {
@@ -318,8 +318,8 @@ impl LocalFileSystem {
     /// # Example
     ///
     /// ```no_run
-    /// use rstproto::fs::LocalFileSystem;
-    /// use rstproto::ws::ActorInfo;
+    /// use rustproto::fs::LocalFileSystem;
+    /// use rustproto::ws::ActorInfo;
     ///
     /// let lfs = LocalFileSystem::initialize("./data").unwrap();
     /// let info = ActorInfo::with_actor("alice.bsky.social");
@@ -378,7 +378,7 @@ mod tests {
 
     #[test]
     fn test_get_path_repo_file() {
-        let temp_dir = env::temp_dir().join("rstproto_test_lfs");
+        let temp_dir = env::temp_dir().join("rustproto_test_lfs");
         let _ = fs::remove_dir_all(&temp_dir);
         fs::create_dir_all(&temp_dir).unwrap();
 
@@ -393,7 +393,7 @@ mod tests {
 
     #[test]
     fn test_empty_did_returns_error() {
-        let temp_dir = env::temp_dir().join("rstproto_test_lfs2");
+        let temp_dir = env::temp_dir().join("rustproto_test_lfs2");
         let _ = fs::remove_dir_all(&temp_dir);
         fs::create_dir_all(&temp_dir).unwrap();
 
@@ -407,7 +407,7 @@ mod tests {
 
     #[test]
     fn test_save_and_resolve_actor_info() {
-        let temp_dir = env::temp_dir().join("rstproto_test_actor_info");
+        let temp_dir = env::temp_dir().join("rustproto_test_actor_info");
         let _ = fs::remove_dir_all(&temp_dir);
         fs::create_dir_all(&temp_dir).unwrap();
 
@@ -431,7 +431,7 @@ mod tests {
 
     #[test]
     fn test_resolve_actor_info_not_found() {
-        let temp_dir = env::temp_dir().join("rstproto_test_actor_not_found");
+        let temp_dir = env::temp_dir().join("rustproto_test_actor_not_found");
         let _ = fs::remove_dir_all(&temp_dir);
         fs::create_dir_all(&temp_dir).unwrap();
 

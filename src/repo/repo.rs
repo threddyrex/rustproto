@@ -34,7 +34,7 @@ impl Repo {
     /// # Example
     ///
     /// ```no_run
-    /// use rstproto::repo::Repo;
+    /// use rustproto::repo::Repo;
     /// use std::fs::File;
     ///
     /// let file = File::open("repo.car").unwrap();
@@ -137,7 +137,7 @@ impl Repo {
     /// # Example
     ///
     /// ```ignore
-    /// use rstproto::repo::{Repo, RepoHeader, RepoRecord};
+    /// use rustproto::repo::{Repo, RepoHeader, RepoRecord};
     /// use std::fs::File;
     ///
     /// let header: RepoHeader = /* create header */;

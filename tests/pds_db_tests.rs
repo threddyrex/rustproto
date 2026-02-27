@@ -22,14 +22,14 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use rstproto::fs::LocalFileSystem;
-use rstproto::log::Logger;
-use rstproto::pds::{
+use rustproto::fs::LocalFileSystem;
+use rustproto::log::Logger;
+use rustproto::pds::{
     AdminSession, Blob, DbRepoCommit, DbRepoHeader, FirehoseEvent, Installer,
     LegacySession, OauthRequest, OauthSession, Passkey, PasskeyChallenge, PdsDb, PdsDbError,
     StatisticKey,
 };
-use rstproto::pds::db::{format_datetime_for_db, get_current_datetime_for_db};
+use rustproto::pds::db::{format_datetime_for_db, get_current_datetime_for_db};
 use chrono::{Duration, Utc};
 use uuid::Uuid;
 
@@ -39,7 +39,7 @@ static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 /// Get a unique test data directory for each test.
 fn get_unique_test_dir() -> PathBuf {
     let counter = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let temp_dir = std::env::temp_dir().join(format!("rstproto-pds-db-tests-{}", counter));
+    let temp_dir = std::env::temp_dir().join(format!("rustproto-pds-db-tests-{}", counter));
     if !temp_dir.exists() {
         fs::create_dir_all(&temp_dir).unwrap();
     }

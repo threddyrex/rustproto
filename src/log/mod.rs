@@ -1,4 +1,4 @@
-//! Logging module for rstproto.
+//! Logging module for rustproto.
 //!
 //! This module provides logging functionality with configurable log levels
 //! and multiple destinations (console, file).
