@@ -29,6 +29,7 @@ pub mod firehose;
 pub mod fs;
 pub mod log;
 pub mod mst;
+pub mod pds;
 pub mod repo;
 pub mod ws;
 
@@ -37,5 +38,6 @@ pub use firehose::{Firehose, FirehoseError};
 pub use fs::LocalFileSystem;
 pub use log::{init_logger, logger, ConsoleDestination, FileDestination, LogDestination, LogLevel, Logger};
 pub use mst::{Mst, MstEntry, MstItem, MstNode};
+pub use pds::{Installer, PdsDb, PdsDbError, SqliteDb};
 pub use repo::{Repo, RepoHeader, RepoRecord, RepoMst, MstNodeKey, CidV1, DagCborObject, VarInt};
 pub use ws::{ActorInfo, ActorQueryOptions, BlueskyClient, BlueskyClientError};

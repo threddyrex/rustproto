@@ -8,6 +8,7 @@ use rstproto::firehose::Firehose;
 use rstproto::fs::LocalFileSystem;
 use rstproto::log::{init_logger, logger, FileDestination, LogLevel};
 use rstproto::mst::Mst;
+use rstproto::pds::Installer;
 use rstproto::repo::{CidV1, DagCborObject, DagCborValue, Repo, RepoMst, RepoRecord, AtProtoType, MstNodeKey};
 use rstproto::ws::{ActorQueryOptions, BlueskyClient};
 
@@ -57,6 +58,8 @@ async fn main() {
         "printreporecords" => cmd_print_repo_records(&arguments).await,
         "walkmst" => cmd_walk_mst(&arguments).await,
         "startfirehoseconsumer" => cmd_start_firehose_consumer(&arguments).await,
+        "installdb" => cmd_install_db(&arguments),
+        "installconfig" => cmd_install_config(&arguments),
         "help" => print_usage(),
         _ => {
             logger().error(&format!("Unknown command: {}", command));
@@ -108,6 +111,8 @@ fn print_usage() {
     println!("  PrintRepoRecords       Print records from a repository");
     println!("  WalkMst                Walk and print the MST structure of a repository");
     println!("  StartFirehoseConsumer  Listen to a PDS firehose and print events");
+    println!("  InstallDb              Create PDS database schema");
+    println!("  InstallConfig          Configure PDS server settings");
     println!("  Help                   Show this help message");
     println!();
     println!("Arguments:");
@@ -122,6 +127,10 @@ fn print_usage() {
     println!("  /showDagCborTypes     Show DAG-CBOR type debug info (true/false)");
     println!("  /logLevel <level>     Log level: trace, info, warning, error");
     println!("  /logToDataDir <bool>  Write logs to data directory");
+    println!("  /deleteExistingDb     Delete existing database before install (true/false)");
+    println!("  /listenScheme <str>   Server scheme (http/https)");
+    println!("  /listenHost <str>     Server hostname");
+    println!("  /listenPort <int>     Server port number");
     println!();
     println!("Examples:");
     println!("  rstproto /command ResolveActorInfo /actor alice.bsky.social");
@@ -133,6 +142,92 @@ fn print_usage() {
     println!("  rstproto /command WalkMst /actor alice.bsky.social /dataDir ./data");
     println!("  rstproto /command WalkMst /repoFile ./repo.car");
     println!("  rstproto /command StartFirehoseConsumer /actor alice.bsky.social /dataDir ./data");
+    println!("  rstproto /command InstallDb /dataDir ./data");
+    println!("  rstproto /command InstallConfig /dataDir ./data /listenScheme https /listenHost example.com /listenPort 443");
+}
+
+fn cmd_install_db(args: &HashMap<String, String>) {
+    let log = logger();
+
+    let data_dir = match get_arg(args, "datadir") {
+        Some(d) => d,
+        None => {
+            log.error("missing /dataDir argument");
+            log.error("Usage: rstproto /command InstallDb /dataDir <path> [/deleteExistingDb true]");
+            return;
+        }
+    };
+
+    let delete_existing_db = get_arg(args, "deleteexistingdb")
+        .map(|v| v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    let lfs = match LocalFileSystem::initialize(data_dir) {
+        Ok(lfs) => lfs,
+        Err(e) => {
+            log.error(&format!("Failed to initialize file system: {}", e));
+            return;
+        }
+    };
+
+    if let Err(e) = Installer::install_db(&lfs, &log, delete_existing_db) {
+        log.error(&format!("Failed to install database: {}", e));
+    }
+}
+
+fn cmd_install_config(args: &HashMap<String, String>) {
+    let log = logger();
+
+    let data_dir = match get_arg(args, "datadir") {
+        Some(d) => d,
+        None => {
+            log.error("missing /dataDir argument");
+            log.error("Usage: rstproto /command InstallConfig /dataDir <path> /listenScheme <http|https> /listenHost <host> /listenPort <port>");
+            return;
+        }
+    };
+
+    let listen_scheme = match get_arg(args, "listenscheme") {
+        Some(s) => s,
+        None => {
+            log.error("missing /listenScheme argument");
+            return;
+        }
+    };
+
+    let listen_host = match get_arg(args, "listenhost") {
+        Some(h) => h,
+        None => {
+            log.error("missing /listenHost argument");
+            return;
+        }
+    };
+
+    let listen_port: i32 = match get_arg(args, "listenport") {
+        Some(p) => match p.parse() {
+            Ok(port) => port,
+            Err(_) => {
+                log.error("Invalid /listenPort value - must be an integer");
+                return;
+            }
+        },
+        None => {
+            log.error("missing /listenPort argument");
+            return;
+        }
+    };
+
+    let lfs = match LocalFileSystem::initialize(data_dir) {
+        Ok(lfs) => lfs,
+        Err(e) => {
+            log.error(&format!("Failed to initialize file system: {}", e));
+            return;
+        }
+    };
+
+    if let Err(e) = Installer::install_config(&lfs, &log, listen_scheme, listen_host, listen_port) {
+        log.error(&format!("Failed to install config: {}", e));
+    }
 }
 
 async fn cmd_resolve_actor(args: &HashMap<String, String>) {
