@@ -1,0 +1,88 @@
+//! Admin module for PDS.
+//!
+//! Provides the administrative interface for managing the PDS,
+//! including login, configuration viewing, and session management.
+
+mod home;
+mod login;
+
+use std::sync::Arc;
+
+use axum::{
+    Router,
+    routing::get,
+};
+
+use super::server::PdsState;
+
+pub use home::admin_home;
+pub use login::{admin_login_get, admin_login_post, admin_logout};
+
+/// Build admin routes.
+pub fn routes() -> Router<Arc<PdsState>> {
+    Router::new()
+        .route("/", get(admin_home))
+        .route("/login", get(admin_login_get).post(admin_login_post))
+        .route("/login/", get(admin_login_get).post(admin_login_post))
+        .route("/logout", axum::routing::post(admin_logout))
+}
+
+/// CSS styles for the admin interface.
+/// 
+/// These match the dnproto admin dashboard styling.
+pub fn get_navbar_css() -> &'static str {
+    r#"
+        .navbar { display: flex; align-items: center; gap: 8px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #2f3336; }
+        .nav-btn { background-color: #4caf50; color: white; border: none; padding: 6px 12px; border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: 500; text-decoration: none; }
+        .nav-btn:hover { background-color: #388e3c; }
+        .nav-btn.active { background-color: #388e3c; }
+        .nav-btn-destructive { background-color: #f44336; color: white; border: none; padding: 6px 12px; border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: 500; text-decoration: none; }
+        .nav-btn-destructive:hover { background-color: #d32f2f; }
+        .nav-btn-destructive.active { background-color: #d32f2f; }
+        .nav-spacer { flex-grow: 1; }
+        .logout-btn { background-color: #1d9bf0; color: white; border: none; padding: 6px 12px; border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: 500; font-family: inherit; }
+        .logout-btn:hover { background-color: #1a8cd8; }
+    "#
+}
+
+/// Generate the navbar HTML.
+pub fn get_navbar_html(active_page: &str) -> String {
+    fn active_class(page: &str, active: &str) -> &'static str {
+        if page == active { " active" } else { "" }
+    }
+    
+    format!(r#"
+        <div class="navbar">
+            <a href="/admin/" class="nav-btn{home}">Home</a>
+            <div class="nav-spacer"></div>
+            <form method="post" action="/admin/logout" style="margin: 0;">
+                <button type="submit" class="logout-btn">Log out</button>
+            </form>
+        </div>"#,
+        home = active_class("home", active_page),
+    )
+}
+
+/// Base styles for admin pages.
+pub fn get_base_styles() -> &'static str {
+    r#"
+        body { background-color: #16181c; color: #e7e9ea; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 40px 20px; }
+        .container { max-width: 800px; margin: 0 0 0 40px; }
+        h1 { color: #8899a6; margin-bottom: 24px; }
+        h2 { color: #8899a6; margin-top: 32px; margin-bottom: 16px; font-size: 18px; }
+        p { margin-bottom: 16px; line-height: 1.5; }
+        a { color: #1d9bf0; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        table { width: 100%; border-collapse: collapse; background-color: #2f3336; border-radius: 8px; overflow: hidden; margin-top: 16px; }
+        th { background-color: #1d1f23; color: #8899a6; text-align: left; padding: 12px 16px; font-size: 14px; font-weight: 500; }
+        td { padding: 10px 16px; border-bottom: 1px solid #444; font-size: 14px; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover { background-color: #3a3d41; }
+        .dimmed { color: #657786; }
+        .key-name { font-weight: bold; color: #1d9bf0; }
+        .section-header td { background-color: #1d1f23; color: #8899a6; font-weight: 500; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+    "#
+}
+
+/// Session timeout in minutes for admin sessions.
+pub const ADMIN_SESSION_TIMEOUT_MINUTES: i32 = 60;

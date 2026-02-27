@@ -277,16 +277,31 @@ impl Installer {
         result
     }
 
-    /// Hash a password using SHA-256 (simple implementation).
-    /// In production, use a proper password hashing library like argon2.
+    /// Hash a password using PBKDF2-SHA256 (matches dnproto's PasswordHasher).
+    /// Returns base64-encoded salt+hash.
     fn hash_password(password: &str) -> String {
-        use sha2::{Digest, Sha256};
+        use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+        use pbkdf2::pbkdf2_hmac;
+        use rand::RngCore;
+        use sha2::Sha256;
 
-        let mut hasher = Sha256::new();
-        hasher.update(password.as_bytes());
-        let result = hasher.finalize();
+        const SALT_SIZE: usize = 16;
+        const HASH_SIZE: usize = 32;
+        const ITERATIONS: u32 = 100_000;
 
-        // Return hex-encoded hash
-        result.iter().map(|b| format!("{:02x}", b)).collect()
+        // Generate random salt
+        let mut salt = [0u8; SALT_SIZE];
+        rand::thread_rng().fill_bytes(&mut salt);
+
+        // Compute PBKDF2 hash
+        let mut hash = [0u8; HASH_SIZE];
+        pbkdf2_hmac::<Sha256>(password.as_bytes(), &salt, ITERATIONS, &mut hash);
+
+        // Combine salt + hash and encode as base64
+        let mut combined = Vec::with_capacity(SALT_SIZE + HASH_SIZE);
+        combined.extend_from_slice(&salt);
+        combined.extend_from_slice(&hash);
+
+        BASE64.encode(&combined)
     }
 }

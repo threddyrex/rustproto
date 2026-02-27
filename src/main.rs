@@ -60,6 +60,7 @@ async fn main() {
         "startfirehoseconsumer" => cmd_start_firehose_consumer(&arguments).await,
         "installdb" => cmd_install_db(&arguments),
         "installconfig" => cmd_install_config(&arguments),
+        "runpds" => cmd_run_pds(&arguments).await,
         "help" => print_usage(),
         _ => {
             logger().error(&format!("Unknown command: {}", command));
@@ -113,6 +114,7 @@ fn print_usage() {
     println!("  StartFirehoseConsumer  Listen to a PDS firehose and print events");
     println!("  InstallDb              Create PDS database schema");
     println!("  InstallConfig          Configure PDS server settings");
+    println!("  RunPds                 Run the PDS HTTP server");
     println!("  Help                   Show this help message");
     println!();
     println!("Arguments:");
@@ -144,6 +146,7 @@ fn print_usage() {
     println!("  rustproto /command StartFirehoseConsumer /actor alice.bsky.social /dataDir ./data");
     println!("  rustproto /command InstallDb /dataDir ./data");
     println!("  rustproto /command InstallConfig /dataDir ./data /listenScheme https /listenHost example.com /listenPort 443");
+    println!("  rustproto /command RunPds /dataDir ./data");
 }
 
 fn cmd_install_db(args: &HashMap<String, String>) {
@@ -227,6 +230,39 @@ fn cmd_install_config(args: &HashMap<String, String>) {
 
     if let Err(e) = Installer::install_config(&lfs, &log, listen_scheme, listen_host, listen_port) {
         log.error(&format!("Failed to install config: {}", e));
+    }
+}
+
+async fn cmd_run_pds(args: &HashMap<String, String>) {
+    let log = logger();
+
+    let data_dir = match get_arg(args, "datadir") {
+        Some(d) => d,
+        None => {
+            log.error("missing /dataDir argument");
+            log.error("Usage: rustproto /command RunPds /dataDir <path>");
+            return;
+        }
+    };
+
+    let lfs = match LocalFileSystem::initialize(data_dir) {
+        Ok(lfs) => lfs,
+        Err(e) => {
+            log.error(&format!("Failed to initialize file system: {}", e));
+            return;
+        }
+    };
+
+    let server = match rustproto::pds::PdsServer::initialize(lfs, log) {
+        Ok(s) => s,
+        Err(e) => {
+            log.error(&format!("Failed to initialize PDS server: {}", e));
+            return;
+        }
+    };
+
+    if let Err(e) = server.run().await {
+        log.error(&format!("PDS server error: {}", e));
     }
 }
 

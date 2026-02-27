@@ -240,6 +240,21 @@ impl PdsDb {
         Ok(items)
     }
 
+    /// Get all configuration properties as key-value pairs.
+    pub fn get_all_config_properties(&self) -> Result<Vec<(String, String)>, PdsDbError> {
+        let conn = self.get_connection_read_only()?;
+        let mut stmt = conn.prepare("SELECT Key, Value FROM ConfigProperty ORDER BY Key")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+
+        let mut properties = Vec::new();
+        for row in rows {
+            properties.push(row?);
+        }
+        Ok(properties)
+    }
+
     // =========================================================================
     // BLOB
     // =========================================================================
@@ -1643,6 +1658,40 @@ impl PdsDb {
             "SELECT SessionId, CreatedDate, IpAddress, UserAgent, AuthType
              FROM AdminSession WHERE SessionId = ?1 AND IpAddress = ?2 AND CreatedDate > ?3",
             rusqlite::params![session_id, ip_address, cutoff_date],
+            |row| {
+                Ok(AdminSession {
+                    session_id: row.get(0)?,
+                    created_date: row.get(1)?,
+                    ip_address: row.get(2)?,
+                    user_agent: row.get(3)?,
+                    auth_type: row.get(4)?,
+                })
+            },
+        );
+
+        match result {
+            Ok(session) => Ok(Some(session)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(PdsDbError::SqliteError(e)),
+        }
+    }
+
+    /// Get a valid admin session without IP address check.
+    /// 
+    /// Useful for development/testing where IP may not be consistent.
+    pub fn get_valid_admin_session_any_ip(
+        &self,
+        session_id: &str,
+        timeout_minutes: i32,
+    ) -> Result<Option<AdminSession>, PdsDbError> {
+        let conn = self.get_connection_read_only()?;
+        let cutoff_date = format_datetime_for_db(
+            Utc::now() - chrono::Duration::minutes(timeout_minutes as i64),
+        );
+        let result = conn.query_row(
+            "SELECT SessionId, CreatedDate, IpAddress, UserAgent, AuthType
+             FROM AdminSession WHERE SessionId = ?1 AND CreatedDate > ?2",
+            rusqlite::params![session_id, cutoff_date],
             |row| {
                 Ok(AdminSession {
                     session_id: row.get(0)?,
