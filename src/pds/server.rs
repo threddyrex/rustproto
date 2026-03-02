@@ -145,6 +145,8 @@ impl PdsServer {
             .route("/admin/deletestatistic", axum::routing::post(admin::admin_delete_statistic))
             .route("/admin/deleteallstatistics", axum::routing::post(admin::admin_delete_all_statistics))
             .route("/admin/deleteoldstatistics", axum::routing::post(admin::admin_delete_old_statistics))
+            .route("/admin/config", axum::routing::get(admin::admin_config_get).post(admin::admin_config_post))
+            .route("/admin/config/", axum::routing::get(admin::admin_config_get).post(admin::admin_config_post))
             .layer(middleware::from_fn_with_state(
                 self.state.clone(),
                 logging_middleware,

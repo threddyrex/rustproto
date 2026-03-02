@@ -3,6 +3,7 @@
 //! Provides the administrative interface for managing the PDS,
 //! including login, configuration viewing, and session management.
 
+mod config;
 mod home;
 mod login;
 mod sessions;
@@ -17,6 +18,7 @@ use axum::{
 
 use super::server::PdsState;
 
+pub use config::{admin_config_get, admin_config_post};
 pub use home::admin_home;
 pub use login::{admin_login_get, admin_login_post, admin_logout, get_caller_info};
 pub use sessions::{
@@ -45,6 +47,8 @@ pub fn routes() -> Router<Arc<PdsState>> {
         .route("/deletestatistic", axum::routing::post(admin_delete_statistic))
         .route("/deleteallstatistics", axum::routing::post(admin_delete_all_statistics))
         .route("/deleteoldstatistics", axum::routing::post(admin_delete_old_statistics))
+        .route("/config", get(admin_config_get).post(admin_config_post))
+        .route("/config/", get(admin_config_get).post(admin_config_post))
 }
 
 /// CSS styles for the admin interface.
@@ -77,6 +81,7 @@ pub fn get_navbar_html(active_page: &str) -> String {
             <a href="/admin/sessions" class="nav-btn{sessions}">Sessions</a>
             <a href="/admin/stats" class="nav-btn{stats}">Stats</a>
             <div class="nav-spacer"></div>
+            <a href="/admin/config" class="nav-btn-destructive{config}">Config</a>
             <form method="post" action="/admin/logout" style="margin: 0;">
                 <button type="submit" class="logout-btn">Log out</button>
             </form>
@@ -84,6 +89,7 @@ pub fn get_navbar_html(active_page: &str) -> String {
         home = active_class("home", active_page),
         sessions = active_class("sessions", active_page),
         stats = active_class("stats", active_page),
+        config = active_class("config", active_page),
     )
 }
 
