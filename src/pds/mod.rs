@@ -5,6 +5,7 @@
 
 pub mod admin;
 pub mod auth;
+pub mod background_jobs;
 pub mod blob_db;
 pub mod db;
 pub mod firehose_event_generator;
@@ -19,6 +20,7 @@ pub use db::{
     OauthRequest, OauthSession, Passkey, PasskeyChallenge, PdsDb, PdsDbError, SqliteDb, Statistic,
     StatisticKey,
 };
+pub use background_jobs::BackgroundJobs;
 pub use firehose_event_generator::FirehoseEventGenerator;
 pub use installer::Installer;
 pub use server::{PdsServer, PdsServerError, PdsState};

@@ -46,6 +46,7 @@ const SUBDIRS: &[&str] = &[
 const PDS_SUBDIRS: &[&str] = &["blobs"];
 
 /// Provides access to the local file system for storing repos and backups.
+#[derive(Clone)]
 pub struct LocalFileSystem {
     data_dir: PathBuf,
 }

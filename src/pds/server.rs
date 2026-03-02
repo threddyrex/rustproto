@@ -17,6 +17,7 @@ use tower_cookies::CookieManagerLayer;
 use tower_http::cors::{Any, CorsLayer};
 
 use super::admin;
+use super::background_jobs::BackgroundJobs;
 use super::db::{PdsDb, StatisticKey};
 use super::oauth;
 use super::xrpc;
@@ -96,6 +97,15 @@ impl PdsServer {
             self.listen_scheme, self.listen_host, self.listen_port
         ));
         self.state.log.info("");
+
+        // Start background jobs
+        let bg_db = PdsDb::connect(&self.state.lfs)?;
+        let mut background_jobs = BackgroundJobs::new(
+            self.state.lfs.clone(),
+            self.state.log,
+            std::sync::Arc::new(bg_db),
+        );
+        background_jobs.start();
 
         // Build the router
         let app = self.build_router();
