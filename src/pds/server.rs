@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use axum::{
     Router,
-    extract::{Request, State},
+    extract::{ConnectInfo, Request, State},
     middleware::{self, Next},
     response::Response,
 };
@@ -17,7 +17,7 @@ use tower_cookies::CookieManagerLayer;
 use tower_http::cors::{Any, CorsLayer};
 
 use super::admin;
-use super::db::PdsDb;
+use super::db::{PdsDb, StatisticKey};
 use crate::fs::LocalFileSystem;
 use crate::log::Logger;
 
@@ -140,6 +140,11 @@ impl PdsServer {
             .route("/admin/deletelegacysession", axum::routing::post(admin::admin_delete_legacy_session))
             .route("/admin/deleteoauthsession", axum::routing::post(admin::admin_delete_oauth_session))
             .route("/admin/deleteadminsession", axum::routing::post(admin::admin_delete_admin_session))
+            .route("/admin/stats", axum::routing::get(admin::admin_stats))
+            .route("/admin/stats/", axum::routing::get(admin::admin_stats))
+            .route("/admin/deletestatistic", axum::routing::post(admin::admin_delete_statistic))
+            .route("/admin/deleteallstatistics", axum::routing::post(admin::admin_delete_all_statistics))
+            .route("/admin/deleteoldstatistics", axum::routing::post(admin::admin_delete_old_statistics))
             .layer(middleware::from_fn_with_state(
                 self.state.clone(),
                 logging_middleware,
@@ -153,12 +158,31 @@ impl PdsServer {
 /// Logging middleware that logs all HTTP requests and responses.
 async fn logging_middleware(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     request: Request,
     next: Next,
 ) -> Response {
     let method = request.method().clone();
     let uri = request.uri().clone();
+    let path = uri.path().to_string();
     let start = std::time::Instant::now();
+
+    // Extract caller info for statistics
+    let (ip_address, user_agent) = get_caller_info(&request, &addr);
+
+    // Log the connection
+    state.log.info(&format!(
+        "[CONNECT] {} {} {}",
+        ip_address, path, user_agent
+    ));
+
+    // Increment connection statistics (don't fail on error)
+    let stat_key = StatisticKey {
+        name: "Connect".to_string(),
+        ip_address: ip_address.clone(),
+        user_agent: user_agent.clone(),
+    };
+    let _ = state.db.increment_statistic(&stat_key);
 
     // Run the next handler
     let response = next.run(request).await;
@@ -168,10 +192,42 @@ async fn logging_middleware(
 
     state.log.info(&format!(
         "{} {} -> {} ({:.2?})",
-        method, uri, status.as_u16(), elapsed
+        method, path, status.as_u16(), elapsed
     ));
 
     response
+}
+
+/// Extract caller info (IP address and user agent) from request headers.
+///
+/// IP address is extracted from X-Forwarded-For header if present,
+/// otherwise falls back to the socket address.
+fn get_caller_info(request: &Request, socket_addr: &SocketAddr) -> (String, String) {
+    // Get User-Agent
+    let user_agent = request
+        .headers()
+        .get("User-Agent")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    // Get IP address from X-Forwarded-For, or fall back to socket address
+    let mut ip_address = request
+        .headers()
+        .get("X-Forwarded-For")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| {
+            // X-Forwarded-For can contain multiple IPs, take the first one
+            s.split(',').next().unwrap_or(s).trim().to_string()
+        })
+        .unwrap_or_else(|| socket_addr.ip().to_string());
+
+    // Group uptimerobot requests together (they come from many IPs)
+    if user_agent.contains("www.uptimerobot.com") {
+        ip_address = "global".to_string();
+    }
+
+    (ip_address, user_agent)
 }
 
 /// Errors that can occur during PDS server operations.

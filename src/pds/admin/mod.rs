@@ -6,6 +6,7 @@
 mod home;
 mod login;
 mod sessions;
+mod stats;
 
 use std::sync::Arc;
 
@@ -22,6 +23,10 @@ pub use sessions::{
     admin_sessions, admin_delete_legacy_session, admin_delete_oauth_session,
     admin_delete_admin_session,
 };
+pub use stats::{
+    admin_stats, admin_delete_statistic, admin_delete_all_statistics,
+    admin_delete_old_statistics,
+};
 
 /// Build admin routes.
 pub fn routes() -> Router<Arc<PdsState>> {
@@ -35,6 +40,11 @@ pub fn routes() -> Router<Arc<PdsState>> {
         .route("/deletelegacysession", axum::routing::post(admin_delete_legacy_session))
         .route("/deleteoauthsession", axum::routing::post(admin_delete_oauth_session))
         .route("/deleteadminsession", axum::routing::post(admin_delete_admin_session))
+        .route("/stats", get(admin_stats))
+        .route("/stats/", get(admin_stats))
+        .route("/deletestatistic", axum::routing::post(admin_delete_statistic))
+        .route("/deleteallstatistics", axum::routing::post(admin_delete_all_statistics))
+        .route("/deleteoldstatistics", axum::routing::post(admin_delete_old_statistics))
 }
 
 /// CSS styles for the admin interface.
@@ -65,6 +75,7 @@ pub fn get_navbar_html(active_page: &str) -> String {
         <div class="navbar">
             <a href="/admin/" class="nav-btn{home}">Home</a>
             <a href="/admin/sessions" class="nav-btn{sessions}">Sessions</a>
+            <a href="/admin/stats" class="nav-btn{stats}">Stats</a>
             <div class="nav-spacer"></div>
             <form method="post" action="/admin/logout" style="margin: 0;">
                 <button type="submit" class="logout-btn">Log out</button>
@@ -72,6 +83,7 @@ pub fn get_navbar_html(active_page: &str) -> String {
         </div>"#,
         home = active_class("home", active_page),
         sessions = active_class("sessions", active_page),
+        stats = active_class("stats", active_page),
     )
 }
 
