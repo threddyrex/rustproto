@@ -63,11 +63,11 @@ Core auth before anything else works:
 
 | Status | Endpoint | Method | Notes |
 |--------|----------|--------|-------|
-| ⬜ | `/xrpc/com.atproto.sync.getRepo` | GET | Export full repo (async) |
-| ⬜ | `/xrpc/com.atproto.sync.getRecord` | GET | Get single record as CAR (async) |
-| ⬜ | `/xrpc/com.atproto.sync.listRepos` | GET | List all repos |
-| ⬜ | `/xrpc/com.atproto.sync.getRepoStatus` | GET | Repo status |
-| ⬜ | `/xrpc/com.atproto.sync.subscribeRepos` | GET | **WebSocket** firehose |
+| ✅ | `/xrpc/com.atproto.sync.getRepo` | GET | Export full repo (async) |
+| ✅ | `/xrpc/com.atproto.sync.getRecord` | GET | Get single record as CAR (async) |
+| ✅ | `/xrpc/com.atproto.sync.listRepos` | GET | List all repos |
+| ✅ | `/xrpc/com.atproto.sync.getRepoStatus` | GET | Repo status |
+| ✅ | `/xrpc/com.atproto.sync.subscribeRepos` | GET | **WebSocket** firehose |
 
 ## 7. App.Bsky (User Preferences)
 
@@ -76,6 +76,7 @@ Core auth before anything else works:
 | ⬜ | `/xrpc/app.bsky.actor.getPreferences` | GET | Get user prefs |
 | ⬜ | `/xrpc/app.bsky.actor.putPreferences` | POST | Set user prefs (async) |
 | ⬜ | **Fallback** `/xrpc/app.bsky.*` | * | Proxy to AppView |
+| ⬜ | **Fallback** `/xrpc/chat.bsky.*` | * | Proxy to AppView |
 
 ## 8. OAuth
 
