@@ -55,9 +55,9 @@ Core auth before anything else works:
 
 | Status | Endpoint | Method | Notes |
 |--------|----------|--------|-------|
-| ⬜ | `/xrpc/com.atproto.repo.uploadBlob` | POST | Upload blob (async) |
-| ⬜ | `/xrpc/com.atproto.sync.listBlobs` | GET | List blobs (async) |
-| ⬜ | `/xrpc/com.atproto.sync.getBlob` | GET | Download blob (async) |
+| ✅ | `/xrpc/com.atproto.repo.uploadBlob` | POST | Upload blob (async) |
+| ✅ | `/xrpc/com.atproto.sync.listBlobs` | GET | List blobs (async) |
+| ✅ | `/xrpc/com.atproto.sync.getBlob` | GET | Download blob (async) |
 
 ## 6. Sync (Federation)
 

@@ -158,6 +158,10 @@ impl PdsServer {
             .route("/xrpc/com.atproto.repo.putRecord", axum::routing::post(xrpc::put_record))
             .route("/xrpc/com.atproto.repo.deleteRecord", axum::routing::post(xrpc::delete_record))
             .route("/xrpc/com.atproto.repo.applyWrites", axum::routing::post(xrpc::apply_writes))
+            // Blob endpoints
+            .route("/xrpc/com.atproto.repo.uploadBlob", axum::routing::post(xrpc::upload_blob))
+            .route("/xrpc/com.atproto.sync.listBlobs", axum::routing::get(xrpc::list_blobs))
+            .route("/xrpc/com.atproto.sync.getBlob", axum::routing::get(xrpc::get_blob))
             // Admin endpoints
             .route("/admin", axum::routing::get(admin::admin_home))
             .route("/admin/", axum::routing::get(admin::admin_home))

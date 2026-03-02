@@ -5,6 +5,7 @@
 
 pub mod admin;
 pub mod auth;
+pub mod blob_db;
 pub mod db;
 pub mod firehose_event_generator;
 pub mod installer;
