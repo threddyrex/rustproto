@@ -82,15 +82,15 @@ Core auth before anything else works:
 
 | Status | Endpoint | Method | Notes |
 |--------|----------|--------|-------|
-| ⬜ | `/.well-known/oauth-protected-resource` | GET | OAuth metadata |
-| ⬜ | `/.well-known/oauth-authorization-server` | GET | OAuth AS metadata |
-| ⬜ | `/oauth/jwks` | GET | Public keys |
-| ⬜ | `/oauth/par` | POST | Pushed authorization request |
-| ⬜ | `/oauth/authorize` | GET | Authorization page |
-| ⬜ | `/oauth/authorize` | POST | Authorization form submit |
-| ⬜ | `/oauth/token` | POST | Token exchange |
-| ⬜ | `/oauth/passkeyauthenticationoptions` | POST | Passkey auth options |
-| ⬜ | `/oauth/authenticatepasskey` | POST | Passkey authentication |
+| ✅ | `/.well-known/oauth-protected-resource` | GET | OAuth metadata |
+| ✅ | `/.well-known/oauth-authorization-server` | GET | OAuth AS metadata |
+| ✅ | `/oauth/jwks` | GET | Public keys |
+| ✅ | `/oauth/par` | POST | Pushed authorization request |
+| ✅ | `/oauth/authorize` | GET | Authorization page |
+| ✅ | `/oauth/authorize` | POST | Authorization form submit |
+| ✅ | `/oauth/token` | POST | Token exchange |
+| ✅ | `/oauth/passkeyauthenticationoptions` | POST | Passkey auth options |
+| ✅ | `/oauth/authenticatepasskey` | POST | Passkey authentication |
 
 ---
 

@@ -26,6 +26,10 @@ rand = "0.8"
 p256 = { version = "0.13", features = ["ecdsa"] }
 bs58 = "0.5"
 jsonwebtoken = "9.3"
+url = "2.5"
+urlencoding = "2.1"
+rsa = { version = "0.9", features = ["sha2"] }
+ciborium = "0.2"
 
 [dev-dependencies]
 tempfile = "3.10"

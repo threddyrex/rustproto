@@ -9,6 +9,7 @@ pub mod blob_db;
 pub mod db;
 pub mod firehose_event_generator;
 pub mod installer;
+pub mod oauth;
 pub mod server;
 pub mod user_repo;
 pub mod xrpc;

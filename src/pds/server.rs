@@ -18,6 +18,7 @@ use tower_http::cors::{Any, CorsLayer};
 
 use super::admin;
 use super::db::{PdsDb, StatisticKey};
+use super::oauth;
 use super::xrpc;
 use crate::fs::LocalFileSystem;
 use crate::log::Logger;
@@ -173,6 +174,15 @@ impl PdsServer {
             .route("/xrpc/app.bsky.actor.putPreferences", axum::routing::post(xrpc::put_preferences))
             // Catch-all for app.bsky.* and chat.bsky.* routes - proxy to AppView
             .fallback(xrpc::app_bsky_fallback)
+            // OAuth endpoints
+            .route("/.well-known/oauth-protected-resource", axum::routing::get(oauth::oauth_protected_resource))
+            .route("/.well-known/oauth-authorization-server", axum::routing::get(oauth::oauth_authorization_server))
+            .route("/oauth/jwks", axum::routing::get(oauth::oauth_jwks))
+            .route("/oauth/par", axum::routing::post(oauth::oauth_par))
+            .route("/oauth/authorize", axum::routing::get(oauth::oauth_authorize_get).post(oauth::oauth_authorize_post))
+            .route("/oauth/token", axum::routing::post(oauth::oauth_token))
+            .route("/oauth/passkeyauthenticationoptions", axum::routing::post(oauth::passkey_authentication_options))
+            .route("/oauth/authenticatepasskey", axum::routing::post(oauth::authenticate_passkey))
             // Admin endpoints
             .route("/admin", axum::routing::get(admin::admin_home))
             .route("/admin/", axum::routing::get(admin::admin_home))
