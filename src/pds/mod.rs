@@ -5,6 +5,7 @@
 
 pub mod admin;
 pub mod db;
+pub mod firehose_event_generator;
 pub mod installer;
 pub mod server;
 
@@ -13,5 +14,6 @@ pub use db::{
     OauthRequest, OauthSession, Passkey, PasskeyChallenge, PdsDb, PdsDbError, SqliteDb, Statistic,
     StatisticKey,
 };
+pub use firehose_event_generator::FirehoseEventGenerator;
 pub use installer::Installer;
 pub use server::{PdsServer, PdsServerError, PdsState};

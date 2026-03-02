@@ -22,6 +22,7 @@ use tower_cookies::{Cookie, Cookies};
 use super::{get_base_styles, get_navbar_css, get_navbar_html, ADMIN_SESSION_TIMEOUT_MINUTES};
 use crate::log::{Logger, LogLevel};
 use crate::pds::db::PdsDb;
+use crate::pds::firehose_event_generator::FirehoseEventGenerator;
 use crate::pds::installer::Installer;
 use crate::pds::server::PdsState;
 
@@ -133,6 +134,40 @@ pub async fn admin_actions_post(
             let key_pair = generate_p256_key_pair();
             let _ = state.db.set_config_property("UserPublicKeyMultibase", &key_pair.public_key_multibase);
             let _ = state.db.set_config_property("UserPrivateKeyMultibase", &key_pair.private_key_multibase);
+        }
+        "activateaccount" => {
+            // Activate the account
+            let _ = state.db.set_config_property_bool("UserIsActive", true);
+
+            // Generate firehose events
+            let generator = FirehoseEventGenerator::new(&state.db);
+            if let Err(e) = generator.generate_activation_events(true) {
+                let cookie = Cookie::build(("install_repo_error", format!("Account activated but firehose event failed: {}", e)))
+                    .http_only(true)
+                    .secure(true)
+                    .same_site(tower_cookies::cookie::SameSite::Strict)
+                    .max_age(tower_cookies::cookie::time::Duration::minutes(1))
+                    .path("/")
+                    .build();
+                cookies.add(cookie);
+            }
+        }
+        "deactivateaccount" => {
+            // Deactivate the account
+            let _ = state.db.set_config_property_bool("UserIsActive", false);
+
+            // Generate firehose events
+            let generator = FirehoseEventGenerator::new(&state.db);
+            if let Err(e) = generator.generate_deactivation_events() {
+                let cookie = Cookie::build(("install_repo_error", format!("Account deactivated but firehose event failed: {}", e)))
+                    .http_only(true)
+                    .secure(true)
+                    .same_site(tower_cookies::cookie::SameSite::Strict)
+                    .max_age(tower_cookies::cookie::time::Duration::minutes(1))
+                    .path("/")
+                    .build();
+                cookies.add(cookie);
+            }
         }
         "installuserrepo" => {
             // First validate the confirmation text
@@ -253,6 +288,18 @@ fn render_actions_page(
         r#"<span style="color: #4caf50;">true</span>"#
     } else {
         r#"<span style="color: #f44336;">false</span>"#
+    };
+
+    // Get UserIsActive status
+    let user_is_active_status = match db.config_property_exists("UserIsActive") {
+        Ok(true) => {
+            match db.get_config_property_bool("UserIsActive") {
+                Ok(true) => r#"<span style="color: #4caf50;">true</span>"#.to_string(),
+                Ok(false) => r#"<span style="color: #f44336;">false</span>"#.to_string(),
+                Err(_) => r#"<span class="dimmed">not set</span>"#.to_string(),
+            }
+        }
+        _ => r#"<span class="dimmed">not set</span>"#.to_string(),
     };
 
     let admin_password_display = if let Some(password) = generated_admin_password {
@@ -382,6 +429,22 @@ fn render_actions_page(
     <button type="submit" class="action-btn-destructive">Install User Repo</button>
 </form>
 
+<h2>Activate Account</h2>
+<div class="info-card">
+    <div class="label">Activate account. This sets the config property UserIsActive, and generates firehose events for #identity and #account.</div>
+    <div class="value">UserIsActive current value: {user_is_active_status}</div>
+</div>
+<div style="margin-top: 16px; display: flex; gap: 12px;">
+    <form method="post" action="/admin/actions" style="margin: 0;" onsubmit="return confirm('Are you sure you want to activate the account?');">
+        <input type="hidden" name="action" value="activateaccount" />
+        <button type="submit" class="action-btn-destructive">Activate Account</button>
+    </form>
+    <form method="post" action="/admin/actions" style="margin: 0;" onsubmit="return confirm('Are you sure you want to deactivate the account?');">
+        <input type="hidden" name="action" value="deactivateaccount" />
+        <button type="submit" class="action-btn-destructive">Deactivate Account</button>
+    </form>
+</div>
+
 </div>
 </body>
 </html>"#,
@@ -397,6 +460,7 @@ fn render_actions_page(
         install_repo_error_display = install_repo_error_display,
         install_repo_success_display = install_repo_success_display,
         repo_commit_status = repo_commit_status,
+        user_is_active_status = user_is_active_status,
     );
 
     Html(html)
