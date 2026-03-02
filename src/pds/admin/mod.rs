@@ -103,8 +103,8 @@ pub fn get_navbar_html(active_page: &str) -> String {
             <a href="/admin/sessions" class="nav-btn{sessions}">Sessions</a>
             <a href="/admin/stats" class="nav-btn{stats}">Stats</a>
             <div class="nav-spacer"></div>
-            <a href="/admin/actions" class="nav-btn-destructive{actions}">Actions</a>
             <a href="/admin/config" class="nav-btn-destructive{config}">Config</a>
+            <a href="/admin/actions" class="nav-btn-destructive{actions}">Actions</a>
             <form method="post" action="/admin/logout" style="margin: 0;">
                 <button type="submit" class="logout-btn">Log out</button>
             </form>
@@ -112,8 +112,8 @@ pub fn get_navbar_html(active_page: &str) -> String {
         home = active_class("home", active_page),
         sessions = active_class("sessions", active_page),
         stats = active_class("stats", active_page),
-        actions = active_class("actions", active_page),
         config = active_class("config", active_page),
+        actions = active_class("actions", active_page),
     )
 }
 

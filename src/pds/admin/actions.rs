@@ -11,7 +11,9 @@ use axum::{
     Form,
 };
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use p256::ecdsa::SigningKey;
 use pbkdf2::pbkdf2_hmac;
+use rand::rngs::OsRng;
 use rand::Rng;
 use serde::Deserialize;
 use sha2::Sha256;
@@ -115,6 +117,12 @@ pub async fn admin_actions_post(
                 .build();
             cookies.add(cookie);
         }
+        "generatekeypair" => {
+            // Generate a new P-256 key pair
+            let key_pair = generate_p256_key_pair();
+            let _ = state.db.set_config_property("UserPublicKeyMultibase", &key_pair.public_key_multibase);
+            let _ = state.db.set_config_property("UserPrivateKeyMultibase", &key_pair.private_key_multibase);
+        }
         _ => {}
     }
 
@@ -134,6 +142,7 @@ fn render_actions_page(db: &PdsDb, generated_admin_password: Option<&str>, gener
 
     let admin_password_status = get_password_status(db, "AdminHashedPassword");
     let user_password_status = get_password_status(db, "UserHashedPassword");
+    let user_public_key_value = get_key_value_status(db, "UserPublicKeyMultibase");
 
     let admin_password_display = if let Some(password) = generated_admin_password {
         format!(r#"
@@ -208,6 +217,16 @@ fn render_actions_page(db: &PdsDb, generated_admin_password: Option<&str>, gener
     <button type="submit" class="action-btn-destructive">Generate User Password</button>
 </form>
 
+<h2>User Key Pair</h2>
+<div class="info-card">
+    <div class="label">UserPublicKeyMultibase</div>
+    <div class="value">{user_public_key_value}</div>
+</div>
+<form method="post" action="/admin/actions" style="margin-top: 16px;" onsubmit="return confirm('Are you sure you want to generate a new key pair? This will overwrite the existing keys.');">
+    <input type="hidden" name="action" value="generatekeypair" />
+    <button type="submit" class="action-btn-destructive">Generate Key Pair</button>
+</form>
+
 </div>
 </body>
 </html>"#,
@@ -219,6 +238,7 @@ fn render_actions_page(db: &PdsDb, generated_admin_password: Option<&str>, gener
         admin_password_status = admin_password_status,
         user_password_display = user_password_display,
         user_password_status = user_password_status,
+        user_public_key_value = user_public_key_value,
     );
 
     Html(html)
@@ -232,6 +252,14 @@ fn render_actions_page(db: &PdsDb, generated_admin_password: Option<&str>, gener
 fn get_password_status(db: &PdsDb, key: &str) -> String {
     match db.config_property_exists(key) {
         Ok(true) => r#"<span style="color: #4caf50;">configured</span>"#.to_string(),
+        _ => r#"<span class="dimmed">not configured</span>"#.to_string(),
+    }
+}
+
+/// Get key value for HTML display - shows actual value or "not configured".
+fn get_key_value_status(db: &PdsDb, key: &str) -> String {
+    match db.get_config_property(key) {
+        Ok(value) if !value.is_empty() => html_encode(&value),
         _ => r#"<span class="dimmed">not configured</span>"#.to_string(),
     }
 }
@@ -336,4 +364,52 @@ fn hash_password(password: &str) -> String {
     combined.extend_from_slice(&hash);
 
     BASE64.encode(&combined)
+}
+
+// ============================================================================
+// KEY PAIR GENERATION
+// ============================================================================
+
+/// P-256 multicodec prefixes for ATProto/Bluesky.
+const P256_PRIVATE_KEY_PREFIX: [u8; 2] = [0x86, 0x26];
+const P256_PUBLIC_KEY_PREFIX: [u8; 2] = [0x80, 0x24];
+
+/// Result of key pair generation.
+struct KeyPair {
+    public_key_multibase: String,
+    private_key_multibase: String,
+}
+
+/// Generate a new P-256 key pair.
+/// Returns public and private keys in multibase format (base58btc with 'z' prefix).
+fn generate_p256_key_pair() -> KeyPair {
+    // Generate a new P-256 signing key
+    let signing_key = SigningKey::random(&mut OsRng);
+    
+    // Get private key bytes (32 bytes)
+    let private_key_bytes = signing_key.to_bytes();
+    
+    // Get compressed public key (33 bytes: 0x02/0x03 prefix + 32-byte X coordinate)
+    let verifying_key = signing_key.verifying_key();
+    let public_key_point = verifying_key.to_encoded_point(true); // compressed
+    let public_key_bytes = public_key_point.as_bytes();
+    
+    // Add multicodec prefix for private key
+    let mut private_key_with_prefix = Vec::with_capacity(2 + private_key_bytes.len());
+    private_key_with_prefix.extend_from_slice(&P256_PRIVATE_KEY_PREFIX);
+    private_key_with_prefix.extend_from_slice(&private_key_bytes);
+    
+    // Add multicodec prefix for public key
+    let mut public_key_with_prefix = Vec::with_capacity(2 + public_key_bytes.len());
+    public_key_with_prefix.extend_from_slice(&P256_PUBLIC_KEY_PREFIX);
+    public_key_with_prefix.extend_from_slice(public_key_bytes);
+    
+    // Encode in multibase format (base58btc with 'z' prefix)
+    let private_key_multibase = format!("z{}", bs58::encode(&private_key_with_prefix).into_string());
+    let public_key_multibase = format!("z{}", bs58::encode(&public_key_with_prefix).into_string());
+    
+    KeyPair {
+        public_key_multibase,
+        private_key_multibase,
+    }
 }
