@@ -5,6 +5,7 @@
 
 mod home;
 mod login;
+mod sessions;
 
 use std::sync::Arc;
 
@@ -16,7 +17,11 @@ use axum::{
 use super::server::PdsState;
 
 pub use home::admin_home;
-pub use login::{admin_login_get, admin_login_post, admin_logout};
+pub use login::{admin_login_get, admin_login_post, admin_logout, get_caller_info};
+pub use sessions::{
+    admin_sessions, admin_delete_legacy_session, admin_delete_oauth_session,
+    admin_delete_admin_session,
+};
 
 /// Build admin routes.
 pub fn routes() -> Router<Arc<PdsState>> {
@@ -25,6 +30,11 @@ pub fn routes() -> Router<Arc<PdsState>> {
         .route("/login", get(admin_login_get).post(admin_login_post))
         .route("/login/", get(admin_login_get).post(admin_login_post))
         .route("/logout", axum::routing::post(admin_logout))
+        .route("/sessions", get(admin_sessions))
+        .route("/sessions/", get(admin_sessions))
+        .route("/deletelegacysession", axum::routing::post(admin_delete_legacy_session))
+        .route("/deleteoauthsession", axum::routing::post(admin_delete_oauth_session))
+        .route("/deleteadminsession", axum::routing::post(admin_delete_admin_session))
 }
 
 /// CSS styles for the admin interface.
@@ -54,12 +64,14 @@ pub fn get_navbar_html(active_page: &str) -> String {
     format!(r#"
         <div class="navbar">
             <a href="/admin/" class="nav-btn{home}">Home</a>
+            <a href="/admin/sessions" class="nav-btn{sessions}">Sessions</a>
             <div class="nav-spacer"></div>
             <form method="post" action="/admin/logout" style="margin: 0;">
                 <button type="submit" class="logout-btn">Log out</button>
             </form>
         </div>"#,
         home = active_class("home", active_page),
+        sessions = active_class("sessions", active_page),
     )
 }
 

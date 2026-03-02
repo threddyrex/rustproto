@@ -2,10 +2,12 @@
 //!
 //! Handles user authentication for the admin interface.
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{
-    extract::State,
+    extract::{ConnectInfo, State},
+    http::HeaderMap,
     response::{Html, IntoResponse, Redirect, Response},
     Form,
 };
@@ -51,7 +53,9 @@ pub async fn admin_login_get(
 /// Handle POST /admin/login - Process login.
 pub async fn admin_login_post(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     cookies: Cookies,
+    headers: HeaderMap,
     Form(form): Form<LoginForm>,
 ) -> impl IntoResponse {
     // Check if admin dashboard is enabled
@@ -61,6 +65,9 @@ pub async fn admin_login_post(
 
     let username = form.username.unwrap_or_default();
     let password = form.password.unwrap_or_default();
+
+    // Extract caller info from headers with socket address as fallback
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
 
     // Validate credentials
     let actor_correct = username == "admin";
@@ -84,8 +91,8 @@ pub async fn admin_login_post(
         
         let session = AdminSession {
             session_id: session_id.clone(),
-            ip_address: "unknown".to_string(), // TODO: Extract from request
-            user_agent: "unknown".to_string(), // TODO: Extract from request
+            ip_address,
+            user_agent,
             created_date,
             auth_type: "Legacy".to_string(),
         };
@@ -144,6 +151,30 @@ pub async fn admin_logout(
 fn is_admin_enabled(db: &PdsDb) -> bool {
     db.get_config_property_bool("FeatureEnabled_AdminDashboard")
         .unwrap_or(false)
+}
+
+/// Extract caller IP address and User-Agent from request headers.
+///
+/// Tries X-Forwarded-For header first (for reverse proxy setups like Caddy),
+/// then falls back to direct connection socket address. Returns "unknown" if
+/// neither is available.
+pub fn get_caller_info(headers: &HeaderMap, socket_addr: Option<SocketAddr>) -> (String, String) {
+    // Try X-Forwarded-For header first (set by reverse proxies like Caddy)
+    let ip_address = headers
+        .get("X-Forwarded-For")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+        .or_else(|| socket_addr.map(|addr| addr.ip().to_string()))
+        .unwrap_or_else(|| "unknown".to_string());
+
+    // Get User-Agent header
+    let user_agent = headers
+        .get("User-Agent")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    (ip_address, user_agent)
 }
 
 /// Verify a password against a stored PBKDF2 hash.

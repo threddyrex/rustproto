@@ -3,6 +3,7 @@
 //! This module provides the HTTP/HTTPS server implementation for the PDS,
 //! using Axum as the web framework.
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{
@@ -107,8 +108,11 @@ impl PdsServer {
             .log
             .info(&format!("Listening on {}", bind_addr));
 
-        // Run the server
-        axum::serve(listener, app)
+        // Run the server with ConnectInfo to capture client socket addresses
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
             .await
             .map_err(|e| PdsServerError::IoError(format!("Server error: {}", e)))?;
 
@@ -131,6 +135,11 @@ impl PdsServer {
             .route("/admin/login", axum::routing::get(admin::admin_login_get).post(admin::admin_login_post))
             .route("/admin/login/", axum::routing::get(admin::admin_login_get).post(admin::admin_login_post))
             .route("/admin/logout", axum::routing::post(admin::admin_logout))
+            .route("/admin/sessions", axum::routing::get(admin::admin_sessions))
+            .route("/admin/sessions/", axum::routing::get(admin::admin_sessions))
+            .route("/admin/deletelegacysession", axum::routing::post(admin::admin_delete_legacy_session))
+            .route("/admin/deleteoauthsession", axum::routing::post(admin::admin_delete_oauth_session))
+            .route("/admin/deleteadminsession", axum::routing::post(admin::admin_delete_admin_session))
             .layer(middleware::from_fn_with_state(
                 self.state.clone(),
                 logging_middleware,
