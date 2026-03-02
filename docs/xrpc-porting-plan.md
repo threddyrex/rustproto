@@ -24,7 +24,7 @@ Essential for basic server operation:
 
 | Status | Endpoint | Method | Notes |
 |--------|----------|--------|-------|
-| ⬜ | `/xrpc/com.atproto.identity.resolveHandle` | GET | Handle resolution |
+| ✅ | `/xrpc/com.atproto.identity.resolveHandle` | GET | Handle resolution |
 
 ## 3. Authentication (Sessions)
 Core auth before anything else works:

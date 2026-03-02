@@ -141,6 +141,7 @@ impl PdsServer {
             .route("/hello", axum::routing::get(xrpc::hello))
             .route("/xrpc/_health", axum::routing::get(xrpc::health))
             .route("/xrpc/com.atproto.server.describeServer", axum::routing::get(xrpc::describe_server))
+            .route("/xrpc/com.atproto.identity.resolveHandle", axum::routing::get(xrpc::resolve_handle))
             // Admin endpoints
             .route("/admin", axum::routing::get(admin::admin_home))
             .route("/admin/", axum::routing::get(admin::admin_home))
