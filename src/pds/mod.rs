@@ -4,6 +4,7 @@
 //! including database operations, installation, and configuration.
 
 pub mod admin;
+pub mod auth;
 pub mod db;
 pub mod firehose_event_generator;
 pub mod installer;

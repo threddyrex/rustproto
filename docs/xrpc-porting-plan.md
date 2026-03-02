@@ -31,13 +31,13 @@ Core auth before anything else works:
 
 | Status | Endpoint | Method | Notes |
 |--------|----------|--------|-------|
-| ⬜ | `/xrpc/com.atproto.server.createSession` | POST | Login |
-| ⬜ | `/xrpc/com.atproto.server.getSession` | GET | Get current session |
-| ⬜ | `/xrpc/com.atproto.server.refreshSession` | POST | Refresh tokens |
-| ⬜ | `/xrpc/com.atproto.server.getServiceAuth` | GET | Service authentication |
-| ⬜ | `/xrpc/com.atproto.server.checkAccountStatus` | GET | Account status |
-| ⬜ | `/xrpc/com.atproto.server.activateAccount` | POST | Activate account |
-| ⬜ | `/xrpc/com.atproto.server.deactivateAccount` | POST | Deactivate account |
+| ✅ | `/xrpc/com.atproto.server.createSession` | POST | Login |
+| ✅ | `/xrpc/com.atproto.server.getSession` | GET | Get current session |
+| ✅ | `/xrpc/com.atproto.server.refreshSession` | POST | Refresh tokens |
+| ✅ | `/xrpc/com.atproto.server.getServiceAuth` | GET | Service authentication |
+| ✅ | `/xrpc/com.atproto.server.checkAccountStatus` | GET | Account status |
+| ✅ | `/xrpc/com.atproto.server.activateAccount` | POST | Activate account |
+| ✅ | `/xrpc/com.atproto.server.deactivateAccount` | POST | Deactivate account |
 
 ## 4. Repo Operations (Core CRUD)
 

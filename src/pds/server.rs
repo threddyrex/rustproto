@@ -142,6 +142,14 @@ impl PdsServer {
             .route("/xrpc/_health", axum::routing::get(xrpc::health))
             .route("/xrpc/com.atproto.server.describeServer", axum::routing::get(xrpc::describe_server))
             .route("/xrpc/com.atproto.identity.resolveHandle", axum::routing::get(xrpc::resolve_handle))
+            // Authentication endpoints
+            .route("/xrpc/com.atproto.server.createSession", axum::routing::post(xrpc::create_session))
+            .route("/xrpc/com.atproto.server.getSession", axum::routing::get(xrpc::get_session))
+            .route("/xrpc/com.atproto.server.refreshSession", axum::routing::post(xrpc::refresh_session))
+            .route("/xrpc/com.atproto.server.getServiceAuth", axum::routing::get(xrpc::get_service_auth))
+            .route("/xrpc/com.atproto.server.checkAccountStatus", axum::routing::get(xrpc::check_account_status))
+            .route("/xrpc/com.atproto.server.activateAccount", axum::routing::post(xrpc::activate_account))
+            .route("/xrpc/com.atproto.server.deactivateAccount", axum::routing::post(xrpc::deactivate_account))
             // Admin endpoints
             .route("/admin", axum::routing::get(admin::admin_home))
             .route("/admin/", axum::routing::get(admin::admin_home))

@@ -25,6 +25,7 @@ hmac = "0.12"
 rand = "0.8"
 p256 = { version = "0.13", features = ["ecdsa"] }
 bs58 = "0.5"
+jsonwebtoken = "9.3"
 
 [dev-dependencies]
 tempfile = "3.10"
