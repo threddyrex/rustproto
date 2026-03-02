@@ -20,7 +20,9 @@ use sha2::Sha256;
 use tower_cookies::{Cookie, Cookies};
 
 use super::{get_base_styles, get_navbar_css, get_navbar_html, ADMIN_SESSION_TIMEOUT_MINUTES};
+use crate::log::{Logger, LogLevel};
 use crate::pds::db::PdsDb;
+use crate::pds::installer::Installer;
 use crate::pds::server::PdsState;
 
 /// Password hasher constants (must match dnproto).
@@ -32,6 +34,7 @@ const ITERATIONS: u32 = 100_000; // OWASP recommendation
 #[derive(Deserialize)]
 pub struct ActionForm {
     action: Option<String>,
+    confirm_text: Option<String>,
 }
 
 /// Handle GET /admin/actions - Show actions page.
@@ -57,8 +60,16 @@ pub async fn admin_actions_get(
     // Check for generated password cookies
     let generated_admin_password = get_and_remove_cookie(&cookies, "generated_admin_password");
     let generated_user_password = get_and_remove_cookie(&cookies, "generated_user_password");
+    let install_repo_error = get_and_remove_cookie(&cookies, "install_repo_error");
+    let install_repo_success = get_and_remove_cookie(&cookies, "install_repo_success");
 
-    render_actions_page(&state.db, generated_admin_password.as_deref(), generated_user_password.as_deref()).into_response()
+    render_actions_page(
+        &state.db,
+        generated_admin_password.as_deref(),
+        generated_user_password.as_deref(),
+        install_repo_error.as_deref(),
+        install_repo_success.as_deref(),
+    ).into_response()
 }
 
 /// Handle POST /admin/actions - Process an action.
@@ -123,6 +134,92 @@ pub async fn admin_actions_post(
             let _ = state.db.set_config_property("UserPublicKeyMultibase", &key_pair.public_key_multibase);
             let _ = state.db.set_config_property("UserPrivateKeyMultibase", &key_pair.private_key_multibase);
         }
+        "installuserrepo" => {
+            // First validate the confirmation text
+            let confirm_text = form.confirm_text.as_deref().unwrap_or("");
+            if !confirm_text.eq_ignore_ascii_case("this will delete my repo") {
+                let cookie = Cookie::build(("install_repo_error", "You must type 'this will delete my repo' to confirm this action.".to_string()))
+                    .http_only(true)
+                    .secure(true)
+                    .same_site(tower_cookies::cookie::SameSite::Strict)
+                    .max_age(tower_cookies::cookie::time::Duration::minutes(1))
+                    .path("/")
+                    .build();
+                cookies.add(cookie);
+            } else {
+                // Check if keys are configured
+                let has_private_key = state.db.config_property_exists("UserPrivateKeyMultibase").unwrap_or(false);
+                let has_public_key = state.db.config_property_exists("UserPublicKeyMultibase").unwrap_or(false);
+
+                if !has_private_key || !has_public_key {
+                    let cookie = Cookie::build(("install_repo_error", "User key pair not configured. Please generate a key pair first.".to_string()))
+                        .http_only(true)
+                        .secure(true)
+                        .same_site(tower_cookies::cookie::SameSite::Strict)
+                        .max_age(tower_cookies::cookie::time::Duration::minutes(1))
+                        .path("/")
+                        .build();
+                    cookies.add(cookie);
+                } else {
+                    // Get the keys from config
+                    let private_key = match state.db.get_config_property("UserPrivateKeyMultibase") {
+                        Ok(k) => k,
+                        Err(_) => {
+                            let cookie = Cookie::build(("install_repo_error", "Failed to read private key.".to_string()))
+                                .http_only(true)
+                                .secure(true)
+                                .same_site(tower_cookies::cookie::SameSite::Strict)
+                                .max_age(tower_cookies::cookie::time::Duration::minutes(1))
+                                .path("/")
+                                .build();
+                            cookies.add(cookie);
+                            return Redirect::to("/admin/actions").into_response();
+                        }
+                    };
+                    let public_key = match state.db.get_config_property("UserPublicKeyMultibase") {
+                        Ok(k) => k,
+                        Err(_) => {
+                            let cookie = Cookie::build(("install_repo_error", "Failed to read public key.".to_string()))
+                                .http_only(true)
+                                .secure(true)
+                                .same_site(tower_cookies::cookie::SameSite::Strict)
+                                .max_age(tower_cookies::cookie::time::Duration::minutes(1))
+                                .path("/")
+                                .build();
+                            cookies.add(cookie);
+                            return Redirect::to("/admin/actions").into_response();
+                        }
+                    };
+
+                    // Create a simple logger for installer
+                    let log = Logger::new(LogLevel::Info);
+
+                    // Call install_repo
+                    match Installer::install_repo(&state.lfs, &log, &private_key, &public_key) {
+                        Ok(()) => {
+                            let cookie = Cookie::build(("install_repo_success", "User repo installed successfully.".to_string()))
+                                .http_only(true)
+                                .secure(true)
+                                .same_site(tower_cookies::cookie::SameSite::Strict)
+                                .max_age(tower_cookies::cookie::time::Duration::minutes(1))
+                                .path("/")
+                                .build();
+                            cookies.add(cookie);
+                        }
+                        Err(e) => {
+                            let cookie = Cookie::build(("install_repo_error", format!("Failed to install repo: {}", e)))
+                                .http_only(true)
+                                .secure(true)
+                                .same_site(tower_cookies::cookie::SameSite::Strict)
+                                .max_age(tower_cookies::cookie::time::Duration::minutes(1))
+                                .path("/")
+                                .build();
+                            cookies.add(cookie);
+                        }
+                    }
+                }
+            }
+        }
         _ => {}
     }
 
@@ -135,7 +232,13 @@ pub async fn admin_actions_post(
 // ============================================================================
 
 /// Render the actions page HTML.
-fn render_actions_page(db: &PdsDb, generated_admin_password: Option<&str>, generated_user_password: Option<&str>) -> Html<String> {
+fn render_actions_page(
+    db: &PdsDb,
+    generated_admin_password: Option<&str>,
+    generated_user_password: Option<&str>,
+    install_repo_error: Option<&str>,
+    install_repo_success: Option<&str>,
+) -> Html<String> {
     let hostname = db
         .get_config_property("PdsHostname")
         .unwrap_or_else(|_| "(PdsHostname not set)".to_string());
@@ -143,6 +246,14 @@ fn render_actions_page(db: &PdsDb, generated_admin_password: Option<&str>, gener
     let admin_password_status = get_password_status(db, "AdminHashedPassword");
     let user_password_status = get_password_status(db, "UserHashedPassword");
     let user_public_key_value = get_key_value_status(db, "UserPublicKeyMultibase");
+
+    // Get repo commit exists status (note: the function returns true if repo is EMPTY)
+    let repo_commit_exists = db.repo_commit_exists().unwrap_or(true);
+    let repo_commit_status = if !repo_commit_exists {
+        r#"<span style="color: #4caf50;">true</span>"#
+    } else {
+        r#"<span style="color: #f44336;">false</span>"#
+    };
 
     let admin_password_display = if let Some(password) = generated_admin_password {
         format!(r#"
@@ -168,6 +279,28 @@ fn render_actions_page(db: &PdsDb, generated_admin_password: Option<&str>, gener
         String::new()
     };
 
+    let install_repo_error_display = if let Some(error) = install_repo_error {
+        format!(r#"
+        <div class="error-display">
+            <div class="label">Error</div>
+            <div class="value">{}</div>
+        </div>
+        "#, html_encode(error))
+    } else {
+        String::new()
+    };
+
+    let install_repo_success_display = if let Some(success) = install_repo_success {
+        format!(r#"
+        <div class="success-display">
+            <div class="label">Success</div>
+            <div class="value">{}</div>
+        </div>
+        "#, html_encode(success))
+    } else {
+        String::new()
+    };
+
     let html = format!(
         r#"<!DOCTYPE html>
 <html>
@@ -188,6 +321,12 @@ fn render_actions_page(db: &PdsDb, generated_admin_password: Option<&str>, gener
     .password-display .label {{ color: #1d9bf0; font-weight: 500; margin-bottom: 8px; }}
     .password-display .value {{ font-family: monospace; font-size: 14px; color: #e7e9ea; word-break: break-all; user-select: all; }}
     .password-warning {{ color: #f0a81d; font-size: 13px; margin-top: 8px; }}
+    .error-display {{ background-color: #2a1a1a; border: 2px solid #f44336; border-radius: 8px; padding: 16px; margin-bottom: 16px; }}
+    .error-display .label {{ color: #f44336; font-weight: 500; margin-bottom: 8px; }}
+    .error-display .value {{ font-size: 14px; color: #e7e9ea; }}
+    .success-display {{ background-color: #1a2a1a; border: 2px solid #4caf50; border-radius: 8px; padding: 16px; margin-bottom: 16px; }}
+    .success-display .label {{ color: #4caf50; font-weight: 500; margin-bottom: 8px; }}
+    .success-display .value {{ font-size: 14px; color: #e7e9ea; }}
 </style>
 </head>
 <body>
@@ -227,6 +366,22 @@ fn render_actions_page(db: &PdsDb, generated_admin_password: Option<&str>, gener
     <button type="submit" class="action-btn-destructive">Generate Key Pair</button>
 </form>
 
+<h2>Install User Repo</h2>
+{install_repo_error_display}
+{install_repo_success_display}
+<div class="info-card">
+    <div class="label">Install a fresh user repository using the configured key pair</div>
+    <div class="value">Repo commit exists: {repo_commit_status}</div>
+</div>
+<form method="post" action="/admin/actions" style="margin-top: 16px;" onsubmit="return confirm('Are you sure you want to install the user repo? This will delete any existing repo data.');">
+    <input type="hidden" name="action" value="installuserrepo" />
+    <div style="margin-bottom: 12px;">
+        <label for="confirm_text" style="color: #f0a81d; font-size: 14px;">Type &quot;this will delete my repo&quot; to confirm:</label>
+        <input type="text" id="confirm_text" name="confirm_text" autocomplete="off" style="display: block; margin-top: 8px; padding: 8px 12px; border-radius: 4px; border: 1px solid #2f3336; background-color: #16181c; color: #e7e9ea; font-size: 14px; width: 200px;" />
+    </div>
+    <button type="submit" class="action-btn-destructive">Install User Repo</button>
+</form>
+
 </div>
 </body>
 </html>"#,
@@ -239,6 +394,9 @@ fn render_actions_page(db: &PdsDb, generated_admin_password: Option<&str>, gener
         user_password_display = user_password_display,
         user_password_status = user_password_status,
         user_public_key_value = user_public_key_value,
+        install_repo_error_display = install_repo_error_display,
+        install_repo_success_display = install_repo_success_display,
+        repo_commit_status = repo_commit_status,
     );
 
     Html(html)
