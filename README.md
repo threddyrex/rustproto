@@ -1,4 +1,6 @@
 
 # rustproto
 
-rust port of dnproto
+Rust port of [dnproto](https://github.com/threddyrex/dnproto).
+
+Experimental.
