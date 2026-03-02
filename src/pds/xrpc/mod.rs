@@ -4,6 +4,7 @@
 //! Each endpoint is implemented in its own submodule.
 
 mod activate_account;
+mod app_bsky_proxy;
 mod apply_writes;
 pub mod auth_helpers;
 mod check_account_status;
@@ -14,6 +15,7 @@ mod delete_record;
 mod describe_repo;
 mod describe_server;
 mod get_blob;
+mod get_preferences;
 mod get_record;
 mod get_service_auth;
 mod get_session;
@@ -21,6 +23,7 @@ mod health;
 mod hello;
 mod list_blobs;
 mod list_records;
+mod put_preferences;
 mod put_record;
 mod refresh_session;
 mod resolve_handle;
@@ -32,6 +35,7 @@ mod sync_list_repos;
 mod upload_blob;
 
 pub use activate_account::activate_account;
+pub use app_bsky_proxy::app_bsky_fallback;
 pub use apply_writes::apply_writes;
 pub use check_account_status::check_account_status;
 pub use create_record::create_record;
@@ -41,6 +45,7 @@ pub use delete_record::delete_record;
 pub use describe_repo::describe_repo;
 pub use describe_server::describe_server;
 pub use get_blob::get_blob;
+pub use get_preferences::get_preferences;
 pub use get_record::get_record;
 pub use get_service_auth::get_service_auth;
 pub use get_session::get_session;
@@ -48,6 +53,7 @@ pub use health::health;
 pub use hello::hello;
 pub use list_blobs::list_blobs;
 pub use list_records::list_records;
+pub use put_preferences::put_preferences;
 pub use put_record::put_record;
 pub use refresh_session::refresh_session;
 pub use resolve_handle::resolve_handle;

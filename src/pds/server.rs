@@ -168,6 +168,11 @@ impl PdsServer {
             .route("/xrpc/com.atproto.sync.listRepos", axum::routing::get(xrpc::sync_list_repos))
             .route("/xrpc/com.atproto.sync.getRepoStatus", axum::routing::get(xrpc::sync_get_repo_status))
             .route("/xrpc/com.atproto.sync.subscribeRepos", axum::routing::get(xrpc::subscribe_repos))
+            // App.bsky endpoints (preferences are handled locally, others proxy to AppView)
+            .route("/xrpc/app.bsky.actor.getPreferences", axum::routing::get(xrpc::get_preferences))
+            .route("/xrpc/app.bsky.actor.putPreferences", axum::routing::post(xrpc::put_preferences))
+            // Catch-all for app.bsky.* and chat.bsky.* routes - proxy to AppView
+            .fallback(xrpc::app_bsky_fallback)
             // Admin endpoints
             .route("/admin", axum::routing::get(admin::admin_home))
             .route("/admin/", axum::routing::get(admin::admin_home))

@@ -73,10 +73,10 @@ Core auth before anything else works:
 
 | Status | Endpoint | Method | Notes |
 |--------|----------|--------|-------|
-| ⬜ | `/xrpc/app.bsky.actor.getPreferences` | GET | Get user prefs |
-| ⬜ | `/xrpc/app.bsky.actor.putPreferences` | POST | Set user prefs (async) |
-| ⬜ | **Fallback** `/xrpc/app.bsky.*` | * | Proxy to AppView |
-| ⬜ | **Fallback** `/xrpc/chat.bsky.*` | * | Proxy to AppView |
+| ✅ | `/xrpc/app.bsky.actor.getPreferences` | GET | Get user prefs |
+| ✅ | `/xrpc/app.bsky.actor.putPreferences` | POST | Set user prefs (async) |
+| ✅ | **Fallback** `/xrpc/app.bsky.*` | * | Proxy to AppView |
+| ✅ | **Fallback** `/xrpc/chat.bsky.*` | * | Proxy to AppView |
 
 ## 8. OAuth
 
