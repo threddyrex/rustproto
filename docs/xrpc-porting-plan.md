@@ -16,9 +16,9 @@ Essential for basic server operation:
 
 | Status | Endpoint | Method | Notes |
 |--------|----------|--------|-------|
-| ⬜ | `/xrpc/_health` | GET | Health check |
-| ⬜ | `/hello` | GET | Simple test endpoint |
-| ⬜ | `/xrpc/com.atproto.server.describeServer` | GET | Server metadata |
+| ✅ | `/xrpc/_health` | GET | Health check |
+| ✅ | `/hello` | GET | Simple test endpoint |
+| ✅ | `/xrpc/com.atproto.server.describeServer` | GET | Server metadata |
 
 ## 2. Identity
 

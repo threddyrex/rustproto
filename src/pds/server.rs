@@ -18,6 +18,7 @@ use tower_http::cors::{Any, CorsLayer};
 
 use super::admin;
 use super::db::{PdsDb, StatisticKey};
+use super::xrpc;
 use crate::fs::LocalFileSystem;
 use crate::log::Logger;
 
@@ -128,12 +129,19 @@ impl PdsServer {
             .allow_headers(Any);
 
         // =================================================================
+        // XRPC ROUTES - AT Protocol XRPC endpoints.
+        // =================================================================
+        // =================================================================
         // ADMIN ROUTES - This is the AUTHORITATIVE location for all admin routes.
         // When adding a new admin page, add the route here (not in admin/mod.rs).
         // See admin/mod.rs for the checklist of steps to add a new admin page.
         // =================================================================
         Router::new()
-            .route("/hello", axum::routing::get(|| async { "rustproto PDS is running" }))
+            // XRPC endpoints
+            .route("/hello", axum::routing::get(xrpc::hello))
+            .route("/xrpc/_health", axum::routing::get(xrpc::health))
+            .route("/xrpc/com.atproto.server.describeServer", axum::routing::get(xrpc::describe_server))
+            // Admin endpoints
             .route("/admin", axum::routing::get(admin::admin_home))
             .route("/admin/", axum::routing::get(admin::admin_home))
             .route("/admin/login", axum::routing::get(admin::admin_login_get).post(admin::admin_login_post))

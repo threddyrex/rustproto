@@ -8,6 +8,7 @@ pub mod db;
 pub mod firehose_event_generator;
 pub mod installer;
 pub mod server;
+pub mod xrpc;
 
 pub use db::{
     AdminSession, Blob, DbRepoCommit, DbRepoHeader, DbRepoRecord, FirehoseEvent, LegacySession,
