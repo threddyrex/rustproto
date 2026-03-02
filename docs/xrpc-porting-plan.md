@@ -43,13 +43,13 @@ Core auth before anything else works:
 
 | Status | Endpoint | Method | Notes |
 |--------|----------|--------|-------|
-| ⬜ | `/xrpc/com.atproto.repo.describeRepo` | GET | Repo metadata |
-| ⬜ | `/xrpc/com.atproto.repo.getRecord` | GET | Read single record |
-| ⬜ | `/xrpc/com.atproto.repo.listRecords` | GET | List records |
-| ⬜ | `/xrpc/com.atproto.repo.createRecord` | POST | Create record |
-| ⬜ | `/xrpc/com.atproto.repo.putRecord` | POST | Update record |
-| ⬜ | `/xrpc/com.atproto.repo.deleteRecord` | POST | Delete record |
-| ⬜ | `/xrpc/com.atproto.repo.applyWrites` | POST | Batch operations |
+| ✅ | `/xrpc/com.atproto.repo.describeRepo` | GET | Repo metadata |
+| ✅ | `/xrpc/com.atproto.repo.getRecord` | GET | Read single record |
+| ✅ | `/xrpc/com.atproto.repo.listRecords` | GET | List records |
+| ✅ | `/xrpc/com.atproto.repo.createRecord` | POST | Create record |
+| ✅ | `/xrpc/com.atproto.repo.putRecord` | POST | Update record |
+| ✅ | `/xrpc/com.atproto.repo.deleteRecord` | POST | Delete record |
+| ✅ | `/xrpc/com.atproto.repo.applyWrites` | POST | Batch operations |
 
 ## 5. Blobs
 

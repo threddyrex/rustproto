@@ -150,6 +150,14 @@ impl PdsServer {
             .route("/xrpc/com.atproto.server.checkAccountStatus", axum::routing::get(xrpc::check_account_status))
             .route("/xrpc/com.atproto.server.activateAccount", axum::routing::post(xrpc::activate_account))
             .route("/xrpc/com.atproto.server.deactivateAccount", axum::routing::post(xrpc::deactivate_account))
+            // Repo operation endpoints
+            .route("/xrpc/com.atproto.repo.describeRepo", axum::routing::get(xrpc::describe_repo))
+            .route("/xrpc/com.atproto.repo.getRecord", axum::routing::get(xrpc::get_record))
+            .route("/xrpc/com.atproto.repo.listRecords", axum::routing::get(xrpc::list_records))
+            .route("/xrpc/com.atproto.repo.createRecord", axum::routing::post(xrpc::create_record))
+            .route("/xrpc/com.atproto.repo.putRecord", axum::routing::post(xrpc::put_record))
+            .route("/xrpc/com.atproto.repo.deleteRecord", axum::routing::post(xrpc::delete_record))
+            .route("/xrpc/com.atproto.repo.applyWrites", axum::routing::post(xrpc::apply_writes))
             // Admin endpoints
             .route("/admin", axum::routing::get(admin::admin_home))
             .route("/admin/", axum::routing::get(admin::admin_home))

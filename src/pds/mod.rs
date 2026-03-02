@@ -9,6 +9,7 @@ pub mod db;
 pub mod firehose_event_generator;
 pub mod installer;
 pub mod server;
+pub mod user_repo;
 pub mod xrpc;
 
 pub use db::{
@@ -19,3 +20,4 @@ pub use db::{
 pub use firehose_event_generator::FirehoseEventGenerator;
 pub use installer::Installer;
 pub use server::{PdsServer, PdsServerError, PdsState};
+pub use user_repo::{ApplyWritesOperation, ApplyWritesResult, UserRepo, UserRepoError};
