@@ -3,6 +3,7 @@
 //! Provides the administrative interface for managing the PDS,
 //! including login, configuration viewing, and session management.
 
+mod actions;
 mod config;
 mod home;
 mod login;
@@ -29,8 +30,27 @@ pub use stats::{
     admin_stats, admin_delete_statistic, admin_delete_all_statistics,
     admin_delete_old_statistics,
 };
+pub use actions::{admin_actions_get, admin_actions_post};
+
+// =============================================================================
+// IMPORTANT: Routes are NOT registered here!
+// =============================================================================
+// The routes() function below is NOT USED. All admin routes are registered
+// directly in src/pds/server.rs in the build_router() method.
+//
+// When adding a new admin page:
+// 1. Create the handler in a new module file (e.g., actions.rs)
+// 2. Add `mod actions;` at the top of this file
+// 3. Add `pub use actions::{...};` to export the handlers
+// 4. Register the routes in src/pds/server.rs (NOT here)
+// 5. Update get_navbar_html() below to add navbar link if needed
+// =============================================================================
 
 /// Build admin routes.
+/// 
+/// NOTE: This function is currently NOT USED. Routes are registered in server.rs.
+/// This exists for potential future refactoring to use nested routers.
+#[allow(dead_code)]
 pub fn routes() -> Router<Arc<PdsState>> {
     Router::new()
         .route("/", get(admin_home))
@@ -49,6 +69,8 @@ pub fn routes() -> Router<Arc<PdsState>> {
         .route("/deleteoldstatistics", axum::routing::post(admin_delete_old_statistics))
         .route("/config", get(admin_config_get).post(admin_config_post))
         .route("/config/", get(admin_config_get).post(admin_config_post))
+        .route("/actions", get(admin_actions_get).post(admin_actions_post))
+        .route("/actions/", get(admin_actions_get).post(admin_actions_post))
 }
 
 /// CSS styles for the admin interface.
@@ -81,6 +103,7 @@ pub fn get_navbar_html(active_page: &str) -> String {
             <a href="/admin/sessions" class="nav-btn{sessions}">Sessions</a>
             <a href="/admin/stats" class="nav-btn{stats}">Stats</a>
             <div class="nav-spacer"></div>
+            <a href="/admin/actions" class="nav-btn-destructive{actions}">Actions</a>
             <a href="/admin/config" class="nav-btn-destructive{config}">Config</a>
             <form method="post" action="/admin/logout" style="margin: 0;">
                 <button type="submit" class="logout-btn">Log out</button>
@@ -89,6 +112,7 @@ pub fn get_navbar_html(active_page: &str) -> String {
         home = active_class("home", active_page),
         sessions = active_class("sessions", active_page),
         stats = active_class("stats", active_page),
+        actions = active_class("actions", active_page),
         config = active_class("config", active_page),
     )
 }

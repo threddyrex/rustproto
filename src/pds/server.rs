@@ -127,7 +127,11 @@ impl PdsServer {
             .allow_methods(Any)
             .allow_headers(Any);
 
-        // Admin routes - define at top level to avoid nest trailing slash issues
+        // =================================================================
+        // ADMIN ROUTES - This is the AUTHORITATIVE location for all admin routes.
+        // When adding a new admin page, add the route here (not in admin/mod.rs).
+        // See admin/mod.rs for the checklist of steps to add a new admin page.
+        // =================================================================
         Router::new()
             .route("/hello", axum::routing::get(|| async { "rustproto PDS is running" }))
             .route("/admin", axum::routing::get(admin::admin_home))
@@ -147,6 +151,8 @@ impl PdsServer {
             .route("/admin/deleteoldstatistics", axum::routing::post(admin::admin_delete_old_statistics))
             .route("/admin/config", axum::routing::get(admin::admin_config_get).post(admin::admin_config_post))
             .route("/admin/config/", axum::routing::get(admin::admin_config_get).post(admin::admin_config_post))
+            .route("/admin/actions", axum::routing::get(admin::admin_actions_get).post(admin::admin_actions_post))
+            .route("/admin/actions/", axum::routing::get(admin::admin_actions_get).post(admin::admin_actions_post))
             .layer(middleware::from_fn_with_state(
                 self.state.clone(),
                 logging_middleware,
