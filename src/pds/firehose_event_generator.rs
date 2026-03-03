@@ -6,8 +6,6 @@
 use std::collections::HashMap;
 use std::io::Write;
 
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-
 use crate::pds::db::{DbRepoCommit, DbRepoHeader, FirehoseEvent, PdsDb};
 use crate::repo::{
     CidV1, DagCborMajorType, DagCborObject, DagCborType, DagCborValue, RepoHeader, VarInt,
@@ -237,9 +235,8 @@ fn build_sync_blocks(repo_header: &DbRepoHeader, repo_commit: &DbRepoCommit) -> 
     let commit_cid = CidV1::from_base32(&repo_commit.cid)
         .map_err(|e| format!("Invalid commit CID: {}", e))?;
 
-    // Decode signature from base64
-    let signature_bytes = BASE64.decode(&repo_commit.signature)
-        .map_err(|e| format!("Invalid signature base64: {}", e))?;
+    // Signature is already raw bytes from the database
+    let signature_bytes = repo_commit.signature.clone();
 
     // Create commit object (version, data, rev, prev, sig)
     let mut commit_map: HashMap<String, DagCborObject> = HashMap::new();
