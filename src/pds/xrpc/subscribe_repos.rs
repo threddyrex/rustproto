@@ -2,6 +2,7 @@
 //!
 //! WebSocket firehose for streaming repository events to subscribers.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI32, Ordering};
 
@@ -13,6 +14,7 @@ use axum::{
 };
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
 use tokio::time::{Duration, interval};
 
 use crate::pds::db::StatisticKey;
@@ -35,6 +37,23 @@ pub struct SubscribeReposError {
 
 /// Global subscriber count for logging.
 static SUBSCRIBER_COUNT: AtomicI32 = AtomicI32::new(0);
+
+/// Tracks sequence numbers that cause rapid disconnects.
+/// Key: sequence_number, Value: (disconnect_count, last_disconnect_time)
+static TOXIC_EVENT_TRACKER: std::sync::OnceLock<Mutex<HashMap<i64, (u32, std::time::Instant)>>> = std::sync::OnceLock::new();
+
+/// Number of rapid disconnects before an event is auto-retired.
+const TOXIC_DISCONNECT_THRESHOLD: u32 = 3;
+
+/// Time window for counting rapid disconnects (seconds).
+const TOXIC_TIME_WINDOW_SECS: u64 = 60;
+
+/// Maximum time after receiving an event to consider the disconnect "rapid".
+const RAPID_DISCONNECT_SECS: u64 = 5;
+
+fn get_toxic_tracker() -> &'static Mutex<HashMap<i64, (u32, std::time::Instant)>> {
+    TOXIC_EVENT_TRACKER.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
 /// GET /xrpc/com.atproto.sync.subscribeRepos - WebSocket firehose.
 ///
@@ -96,6 +115,10 @@ async fn handle_websocket(socket: WebSocket, state: Arc<PdsState>, mut cursor: i
     // Track connection start time
     let start_time = std::time::Instant::now();
 
+    // Track last sent event for toxic detection
+    let mut last_sent_seq: Option<i64> = None;
+    let mut last_send_time: Option<std::time::Instant> = None;
+
     loop {
         tokio::select! {
             // Poll for new events
@@ -125,6 +148,10 @@ async fn handle_websocket(socket: WebSocket, state: Arc<PdsState>, mut cursor: i
                     );
                     combined.extend_from_slice(&event.header_dag_cbor_bytes);
                     combined.extend_from_slice(&event.body_dag_cbor_bytes);
+
+                    // Track this event for toxic detection
+                    last_sent_seq = Some(event.sequence_number);
+                    last_send_time = Some(std::time::Instant::now());
 
                     // Send as binary message
                     if let Err(e) = sender.send(Message::Binary(combined.into())).await {
@@ -164,9 +191,71 @@ async fn handle_websocket(socket: WebSocket, state: Arc<PdsState>, mut cursor: i
         }
     }
 
+    // Check if this was a rapid disconnect after receiving an event
+    if let (Some(seq), Some(send_time)) = (last_sent_seq, last_send_time) {
+        let elapsed = send_time.elapsed().as_secs();
+        if elapsed < RAPID_DISCONNECT_SECS {
+            state.log.warning(&format!(
+                "[FIREHOSE] [RAPID_DISCONNECT] seq={} elapsed={}s - potential toxic event",
+                seq, elapsed
+            ));
+            
+            // Track this as a potentially toxic event
+            check_and_retire_toxic_event(&state, seq).await;
+        }
+    }
+
     // Decrement subscriber count
     SUBSCRIBER_COUNT.fetch_sub(1, Ordering::SeqCst);
     state.log.trace("[FIREHOSE] WebSocket client disconnected");
+}
+
+/// Check if an event has become toxic (too many rapid disconnects) and retire it.
+async fn check_and_retire_toxic_event(state: &Arc<PdsState>, sequence_number: i64) {
+    let tracker = get_toxic_tracker();
+    let mut map = tracker.lock().await;
+    
+    let now = std::time::Instant::now();
+    
+    // Clean up old entries outside the time window
+    map.retain(|_, (_, last_time)| {
+        now.duration_since(*last_time).as_secs() < TOXIC_TIME_WINDOW_SECS
+    });
+    
+    // Increment counter for this sequence number
+    let entry = map.entry(sequence_number).or_insert((0, now));
+    entry.0 += 1;
+    entry.1 = now;
+    
+    let count = entry.0;
+    
+    if count >= TOXIC_DISCONNECT_THRESHOLD {
+        state.log.error(&format!(
+            "[FIREHOSE] [TOXIC_EVENT_RETIRED] seq={} disconnect_count={} - auto-hiding event",
+            sequence_number, count
+        ));
+        
+        // Hide the toxic event so it won't be sent again
+        if let Err(e) = state.db.hide_firehose_event(sequence_number) {
+            state.log.error(&format!(
+                "[FIREHOSE] Failed to hide toxic event {}: {}",
+                sequence_number, e
+            ));
+        } else {
+            state.log.info(&format!(
+                "[FIREHOSE] Successfully retired toxic event seq={}",
+                sequence_number
+            ));
+        }
+        
+        // Remove from tracker since it's now hidden
+        map.remove(&sequence_number);
+    } else {
+        state.log.warning(&format!(
+            "[FIREHOSE] [TOXIC_TRACKING] seq={} disconnect_count={}/{}",
+            sequence_number, count, TOXIC_DISCONNECT_THRESHOLD
+        ));
+    }
 }
 
 /// Handler for when WebSocket upgrade fails (non-WebSocket request).
