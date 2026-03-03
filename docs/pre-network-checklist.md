@@ -40,8 +40,8 @@ Test CRUD operations with a valid session:
 
 - [x] Create a test post (`app.bsky.feed.post`)
 - [x] Read it back via `getRecord`
-- [ ] Delete it via `deleteRecord`
-- [ ] Verify the firehose emits corresponding events
+- [x] Delete it via `deleteRecord`
+- [x] Verify the firehose emits corresponding events
 
 ### 6. Blob Upload
 
