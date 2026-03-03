@@ -40,7 +40,8 @@ async fn main() {
     if log_to_data_dir {
         if let Some(data_dir) = get_arg(&arguments, "datadir") {
             let command = get_arg(&arguments, "command").unwrap_or("unknown");
-            if let Ok(file_dest) = FileDestination::from_data_dir(data_dir, command) {
+            let log_filename = get_arg(&arguments, "logfilename");
+            if let Ok(file_dest) = FileDestination::from_data_dir(data_dir, command, log_filename) {
                 log.add_destination(Arc::new(file_dest));
             }
         }

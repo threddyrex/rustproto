@@ -43,15 +43,22 @@ impl FileDestination {
     ///
     /// * `data_dir` - Path to the data directory
     /// * `command_name` - Name of the command (used in filename)
+    /// * `log_filename` - Optional custom filename (if None, generates timestamp-based name)
     pub fn from_data_dir<P: AsRef<Path>>(
         data_dir: P,
         command_name: &str,
+        log_filename: Option<&str>,
     ) -> std::io::Result<Self> {
         let log_dir = data_dir.as_ref().join("logs");
         fs::create_dir_all(&log_dir)?;
 
-        let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
-        let filename = format!("{}_{}.log", timestamp, command_name);
+        let filename = match log_filename {
+            Some(name) => name.to_string(),
+            None => {
+                let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+                format!("{}_{}.log", timestamp, command_name)
+            }
+        };
         let file_path = log_dir.join(filename);
 
         Self::new(file_path)
