@@ -39,14 +39,14 @@ Critical for AppView proxying.
 Test CRUD operations with a valid session:
 
 - [x] Create a test post (`app.bsky.feed.post`)
-- [ ] Read it back via `getRecord`
+- [x] Read it back via `getRecord`
 - [ ] Delete it via `deleteRecord`
 - [ ] Verify the firehose emits corresponding events
 
 ### 6. Blob Upload
 
-- [ ] Upload a test image via `uploadBlob`
-- [ ] Verify `getBlob` returns it correctly
+- [x] Upload a test image via `uploadBlob`
+- [x] Verify `getBlob` returns it correctly
 - [ ] Bluesky app needs this for profile pictures/media
 
 ### 7. DID Document
