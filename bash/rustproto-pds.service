@@ -1,0 +1,15 @@
+[Unit]
+Description=Rust PDS (Personal Data Server)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/src/rustproto/bash
+ExecStart=/root/src/rustproto/bash/run_pds.sh
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
