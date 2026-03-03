@@ -14,6 +14,7 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use super::db::{DbRepoCommit, DbRepoHeader, PdsDb, PdsDbError, SqliteDb};
+use super::user_repo::{ApplyWritesOperation, UserRepo, parse_json_to_dag_cbor, write_type};
 use crate::fs::LocalFileSystem;
 use crate::log::Logger;
 use crate::mst::{Mst, MstNode};
@@ -329,6 +330,30 @@ impl Installer {
         db.insert_update_repo_commit(&db_repo_commit)?;
         db.insert_update_repo_header(&repo_header)?;
         db.insert_preferences(&prefs_json)?;
+
+        // Add a Bluesky profile record
+        log.info("Creating initial Bluesky profile record in the repo.");
+        let user_handle = db.get_config_property("UserHandle")
+            .unwrap_or_else(|_| "User".to_string());
+        let profile_json = serde_json::json!({
+            "displayName": user_handle,
+            "description": "This is my Bluesky profile."
+        });
+        let profile_record = parse_json_to_dag_cbor(&profile_json)
+            .map_err(|e| InstallerError::ConfigError(format!("Failed to create profile record: {}", e)))?;
+
+        let user_repo = UserRepo::new(&db)
+            .map_err(|e| InstallerError::ConfigError(format!("Failed to connect user repo: {}", e)))?;
+
+        let operation = ApplyWritesOperation {
+            op_type: write_type::CREATE.to_string(),
+            collection: "app.bsky.actor.profile".to_string(),
+            rkey: "self".to_string(),
+            record: Some(profile_record),
+        };
+
+        user_repo.apply_writes(vec![operation], "127.0.0.1", "installer")
+            .map_err(|e| InstallerError::ConfigError(format!("Failed to create profile record: {}", e)))?;
 
         log.info("Repository installation complete.");
         Ok(())
