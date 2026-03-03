@@ -579,7 +579,7 @@ pub async fn app_bsky_fallback(
 
     // For non-app.bsky routes, return 501 Not Implemented
     let stat_key = StatisticKey {
-        name: format!("xrpc/unimplemented:{}", path),
+        name: "xrpc/unimplemented".to_string(),
         ip_address: "global".to_string(),
         user_agent: "unknown".to_string(),
     };
