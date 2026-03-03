@@ -69,8 +69,11 @@ pub async fn get_preferences(
     };
 
     if prefs_count == 0 {
-        // Return 204 No Content if no preferences are stored
-        return StatusCode::NO_CONTENT.into_response();
+        // Return empty preferences array if no preferences are stored
+        return Json(serde_json::json!({
+            "preferences": []
+        }))
+        .into_response();
     }
 
     // Get preferences JSON
@@ -93,21 +96,26 @@ pub async fn get_preferences(
     };
 
     // Parse and return the preferences JSON
+    // If the stored JSON is empty or invalid, return an empty preferences array
+    if prefs_json.is_empty() {
+        return Json(serde_json::json!({
+            "preferences": []
+        }))
+        .into_response();
+    }
+
     match serde_json::from_str::<JsonValue>(&prefs_json) {
         Ok(prefs) => Json(prefs).into_response(),
         Err(e) => {
-            state.log.error(&format!(
-                "[PREFS] Failed to parse preferences JSON: {}",
+            state.log.warning(&format!(
+                "[PREFS] Failed to parse preferences JSON, returning empty: {}",
                 e
             ));
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({
-                    "error": "InternalServerError",
-                    "message": "Failed to parse preferences"
-                })),
-            )
-                .into_response()
+            // Return empty preferences instead of failing
+            Json(serde_json::json!({
+                "preferences": []
+            }))
+            .into_response()
         }
     }
 }
