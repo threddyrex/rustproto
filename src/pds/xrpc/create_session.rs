@@ -133,9 +133,23 @@ pub async fn create_session(
     let our_user_did = state.db.get_config_property("UserDid").unwrap_or_default();
     let actor_exists = actor_did.as_ref().map(|d| d == &our_user_did).unwrap_or(false);
 
+    if !actor_exists {
+        state.log.warning(&format!(
+            "[AUTH] [LEGACY] Actor mismatch. resolved={:?} expected={} ip={} userAgent={}",
+            actor_did, our_user_did, ip_address, user_agent
+        ));
+    }
+
     // Verify password
     let stored_hash = state.db.get_config_property("UserHashedPassword").ok();
     let password_matches = verify_password(stored_hash.as_deref(), &body.password);
+
+    if !password_matches {
+        state.log.warning(&format!(
+            "[AUTH] [LEGACY] Password mismatch. hash_exists={} ip={} userAgent={}",
+            stored_hash.is_some(), ip_address, user_agent
+        ));
+    }
 
     // Generate tokens only if both actor exists and password matches
     if actor_exists && password_matches {
@@ -180,13 +194,7 @@ pub async fn create_session(
         }
     }
 
-    // Failed login attempt
-    state.log.warning(&format!(
-        "[AUTH] [LEGACY] Failed login attempt. ip={} userAgent={}",
-        ip_address, user_agent
-    ));
-
-    // Return empty response (matches dnproto behavior - returns 200 with empty tokens)
+    // Return empty response for failed login (matches dnproto behavior - returns 200 with empty tokens)
     (
         StatusCode::OK,
         Json(CreateSessionResponse {
