@@ -203,7 +203,7 @@ impl<'a> UserRepo<'a> {
                         "update"
                     };
                     firehose_ops.push(serde_json::json!({
-                        "cid": record_cid.base32,
+                        "cid": { "$link": record_cid.base32 },
                         "path": full_key,
                         "action": action
                     }));
@@ -235,7 +235,7 @@ impl<'a> UserRepo<'a> {
                     firehose_ops.push(serde_json::json!({
                         "cid": serde_json::Value::Null,
                         "path": full_key,
-                        "prev": original_cid,
+                        "prev": { "$link": original_cid },
                         "action": "delete"
                     }));
                 }
@@ -732,6 +732,16 @@ impl<'a> UserRepo<'a> {
                 DagCborObject::new_array(items)
             }
             serde_json::Value::Object(obj) => {
+                // Check if this is a $link (CID reference)
+                if let Some(link) = obj.get("$link") {
+                    if let Some(link_str) = link.as_str() {
+                        if let Ok(cid) = CidV1::from_base32(link_str) {
+                            return DagCborObject::new_cid(cid);
+                        }
+                    }
+                }
+                
+                // Regular object
                 let mut map: HashMap<String, DagCborObject> = HashMap::new();
                 for (k, v) in obj {
                     map.insert(k.clone(), self.json_to_dag_cbor(v));
