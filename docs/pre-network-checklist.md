@@ -4,22 +4,22 @@ Things to verify before requesting a crawl from Bluesky and connecting to the ne
 
 ## Prerequisites
 
-- [ ] Actor can be resolved
-- [ ] Repo can be retrieved
-- [ ] Repo can be printed/inspected
+- [x] Actor can be resolved
+- [x] Repo can be retrieved
+- [x] Repo can be printed/inspected
 
 ## Checklist
 
 ### 1. Firehose/WebSocket (`subscribeRepos`)
 The relay will connect to your firehose after a crawl request.
 
-- [ ] Connect to firehose locally using `goat firehose --host wss://your-pds.example.com`
+- [x] Connect to firehose locally using `goat firehose --host wss://your-pds.example.com`
 - [ ] Verify events are emitted when records are created/updated/deleted
 
 ### 2. Authentication Flow
 Test the full session cycle:
 
-- [ ] `createSession` - login with handle + app password
+- [x] `createSession` - login with handle + app password
 - [ ] `getSession` - verify session token works
 - [ ] `refreshSession` - confirm token refresh works
 
@@ -38,7 +38,7 @@ Critical for AppView proxying.
 ### 5. Record Operations Under Auth
 Test CRUD operations with a valid session:
 
-- [ ] Create a test post (`app.bsky.feed.post`)
+- [x] Create a test post (`app.bsky.feed.post`)
 - [ ] Read it back via `getRecord`
 - [ ] Delete it via `deleteRecord`
 - [ ] Verify the firehose emits corresponding events
@@ -52,14 +52,14 @@ Test CRUD operations with a valid session:
 ### 7. DID Document
 Confirm your `did.json` (for `did:web`) or PLC entry points to the correct PDS endpoint.
 
-- [ ] Run `goat resolve your-handle.example.com`
-- [ ] Verify `serviceEndpoint` matches your PDS URL
+- [x] Run `goat resolve your-handle.example.com`
+- [x] Verify `serviceEndpoint` matches your PDS URL
 
 ### 8. TLS/HTTPS
 Bluesky only connects to HTTPS endpoints.
 
-- [ ] Verify Caddy config is working
-- [ ] Verify TLS certs are valid
+- [x] Verify Caddy config is working
+- [x] Verify TLS certs are valid
 
 ## Final Steps
 

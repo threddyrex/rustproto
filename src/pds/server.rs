@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use axum::{
     Router,
-    extract::{ConnectInfo, Request, State},
+    extract::{ConnectInfo, DefaultBodyLimit, Request, State},
     middleware::{self, Next},
     response::Response,
 };
@@ -170,7 +170,11 @@ impl PdsServer {
             .route("/xrpc/com.atproto.repo.deleteRecord", axum::routing::post(xrpc::delete_record))
             .route("/xrpc/com.atproto.repo.applyWrites", axum::routing::post(xrpc::apply_writes))
             // Blob endpoints
-            .route("/xrpc/com.atproto.repo.uploadBlob", axum::routing::post(xrpc::upload_blob))
+            .merge(
+                Router::new()
+                    .route("/xrpc/com.atproto.repo.uploadBlob", axum::routing::post(xrpc::upload_blob))
+                    .layer(DefaultBodyLimit::max(50 * 1024 * 1024)) // 50MB max for blob uploads
+            )
             .route("/xrpc/com.atproto.sync.listBlobs", axum::routing::get(xrpc::list_blobs))
             .route("/xrpc/com.atproto.sync.getBlob", axum::routing::get(xrpc::get_blob))
             // Sync endpoints
