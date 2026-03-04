@@ -67,6 +67,7 @@ struct PasskeyError {
 /// No authentication required - this is called before login.
 pub async fn admin_passkey_authentication_options(
     State(state): State<Arc<PdsState>>,
+    headers: HeaderMap,
 ) -> impl IntoResponse {
     // Check if admin dashboard is enabled
     if !is_admin_enabled(&state.db) {
@@ -74,10 +75,11 @@ pub async fn admin_passkey_authentication_options(
     }
 
     // Increment statistics
+    let (ip_address, user_agent) = get_caller_info(&headers, None);
     let stat_key = StatisticKey {
         name: "admin/passkeyauthenticationoptions".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 
@@ -216,10 +218,11 @@ pub async fn admin_authenticate_passkey(
     }
 
     // Increment statistics
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
     let stat_key = StatisticKey {
         name: "admin/authenticatepasskey".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 

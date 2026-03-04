@@ -10,20 +10,21 @@ use axum::{
     Json,
     body::Bytes,
     extract::State,
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
 };
 
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
 
-use super::helpers::{get_form_value, is_oauth_enabled};
+use super::helpers::{get_caller_info, get_form_value, is_oauth_enabled};
 
 /// POST /oauth/revoke
 ///
 /// Revokes an OAuth token (typically a refresh token).
 pub async fn oauth_revoke(
     State(state): State<Arc<PdsState>>,
+    headers: HeaderMap,
     body: Bytes,
 ) -> impl IntoResponse {
     // Check if OAuth is enabled
@@ -32,10 +33,11 @@ pub async fn oauth_revoke(
     }
 
     // Increment statistics
+    let (ip_address, user_agent) = get_caller_info(&headers);
     let stat_key = StatisticKey {
         name: "oauth/revoke".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 

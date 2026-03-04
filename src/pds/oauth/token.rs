@@ -20,10 +20,9 @@ use uuid::Uuid;
 
 use crate::pds::db::{OauthSession, StatisticKey};
 use crate::pds::server::PdsState;
-use crate::pds::xrpc::auth_helpers::get_caller_info;
 
 use super::dpop::validate_dpop;
-use super::helpers::{get_form_value, get_hostname, is_oauth_enabled};
+use super::helpers::{get_caller_info, get_form_value, get_hostname, is_oauth_enabled};
 
 /// Token success response.
 #[derive(Serialize)]
@@ -56,10 +55,11 @@ pub async fn oauth_token(
     }
 
     // Increment statistics
+    let (ip_address, user_agent) = get_caller_info(&headers);
     let stat_key = StatisticKey {
         name: "oauth/token".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 
@@ -213,7 +213,7 @@ async fn handle_authorization_code(
     let auth_type = oauth_request.auth_type.clone().unwrap_or_else(|| "Unknown".to_string());
 
     // Get caller info for session
-    let (ip_address, _) = get_caller_info(headers, None);
+    let (ip_address, _) = get_caller_info(headers);
 
     // Create new OAuth session
     let session_id = format!("sessionid-{}", Uuid::new_v4());

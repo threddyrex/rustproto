@@ -10,7 +10,7 @@ use axum::{
     Json,
     body::Bytes,
     extract::State,
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use crate::pds::db::{PasskeyChallenge, StatisticKey};
 use crate::pds::server::PdsState;
 
-use super::helpers::{get_hostname, is_oauth_enabled, is_passkeys_enabled};
+use super::helpers::{get_caller_info, get_hostname, is_oauth_enabled, is_passkeys_enabled};
 
 /// Request body for passkey authentication options.
 #[derive(Deserialize)]
@@ -68,6 +68,7 @@ struct PasskeyError {
 /// Returns WebAuthn authentication options for OAuth passkey login.
 pub async fn passkey_authentication_options(
     State(state): State<Arc<PdsState>>,
+    headers: HeaderMap,
     body: Bytes,
 ) -> impl IntoResponse {
     // Check if OAuth is enabled
@@ -76,10 +77,11 @@ pub async fn passkey_authentication_options(
     }
 
     // Increment statistics
+    let (ip_address, user_agent) = get_caller_info(&headers);
     let stat_key = StatisticKey {
         name: "oauth/passkeyauthenticationoptions".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 

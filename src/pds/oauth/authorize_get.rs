@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse},
     Json,
 };
@@ -17,7 +17,7 @@ use serde::Deserialize;
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
 
-use super::helpers::{get_form_value, html_encode, is_oauth_enabled, is_passkeys_enabled};
+use super::helpers::{get_caller_info, get_form_value, html_encode, is_oauth_enabled, is_passkeys_enabled};
 
 /// Query parameters for authorization request.
 #[derive(Deserialize)]
@@ -33,6 +33,7 @@ pub struct AuthorizeParams {
 /// Displays the OAuth authorization form.
 pub async fn oauth_authorize_get(
     State(state): State<Arc<PdsState>>,
+    headers: HeaderMap,
     Query(params): Query<AuthorizeParams>,
 ) -> impl IntoResponse {
     // Check if OAuth is enabled
@@ -41,10 +42,11 @@ pub async fn oauth_authorize_get(
     }
 
     // Increment statistics
+    let (ip_address, user_agent) = get_caller_info(&headers);
     let stat_key = StatisticKey {
         name: "oauth/authorize GET".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 

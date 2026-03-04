@@ -9,7 +9,7 @@ use std::sync::Arc;
 use axum::{
     body::Bytes,
     extract::State,
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse, Redirect},
     Json,
 };
@@ -22,7 +22,7 @@ use crate::ws::BlueskyClient;
 
 use super::authorize_get::generate_auth_form;
 use super::helpers::{
-    get_allowed_redirect_uris, get_form_value, get_hostname, is_oauth_enabled, is_passkeys_enabled,
+    get_allowed_redirect_uris, get_caller_info, get_form_value, get_hostname, is_oauth_enabled, is_passkeys_enabled,
 };
 
 /// POST /oauth/authorize
@@ -30,6 +30,7 @@ use super::helpers::{
 /// Handles the OAuth authorization form submission.
 pub async fn oauth_authorize_post(
     State(state): State<Arc<PdsState>>,
+    headers: HeaderMap,
     body: Bytes,
 ) -> impl IntoResponse {
     // Check if OAuth is enabled
@@ -38,10 +39,11 @@ pub async fn oauth_authorize_post(
     }
 
     // Increment statistics
+    let (ip_address, user_agent) = get_caller_info(&headers);
     let stat_key = StatisticKey {
         name: "oauth/authorize POST".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 

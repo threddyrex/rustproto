@@ -21,7 +21,7 @@ use crate::pds::db::{OauthRequest, StatisticKey};
 use crate::pds::server::PdsState;
 
 use super::dpop::validate_dpop;
-use super::helpers::{get_allowed_redirect_uris, get_form_value, get_hostname, is_oauth_enabled};
+use super::helpers::{get_allowed_redirect_uris, get_caller_info, get_form_value, get_hostname, is_oauth_enabled};
 
 /// PAR success response.
 #[derive(Serialize)]
@@ -52,10 +52,11 @@ pub async fn oauth_par(
     }
 
     // Increment statistics
+    let (ip_address, user_agent) = get_caller_info(&headers);
     let stat_key = StatisticKey {
         name: "oauth/par".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 

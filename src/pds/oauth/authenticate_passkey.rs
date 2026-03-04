@@ -10,7 +10,7 @@ use axum::{
     Json,
     body::Bytes,
     extract::State,
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -22,7 +22,7 @@ use uuid::Uuid;
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
 
-use super::helpers::{get_allowed_redirect_uris, get_form_value, get_hostname, is_oauth_enabled, is_passkeys_enabled};
+use super::helpers::{get_allowed_redirect_uris, get_caller_info, get_form_value, get_hostname, is_oauth_enabled, is_passkeys_enabled};
 
 /// WebAuthn assertion response.
 #[derive(Deserialize)]
@@ -72,6 +72,7 @@ struct PasskeyAuthError {
 /// Authenticates a user via passkey for OAuth and returns a redirect URL.
 pub async fn authenticate_passkey(
     State(state): State<Arc<PdsState>>,
+    headers: HeaderMap,
     body: Bytes,
 ) -> impl IntoResponse {
     // Check if OAuth is enabled
@@ -80,10 +81,11 @@ pub async fn authenticate_passkey(
     }
 
     // Increment statistics
+    let (ip_address, user_agent) = get_caller_info(&headers);
     let stat_key = StatisticKey {
         name: "oauth/authenticatepasskey".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 
