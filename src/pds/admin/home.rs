@@ -2,23 +2,30 @@
 //!
 //! Displays the main admin dashboard with configuration properties.
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{
-    extract::State,
+    extract::{ConnectInfo, State},
+    http::HeaderMap,
     response::{Html, IntoResponse, Redirect, Response},
 };
 use tower_cookies::Cookies;
 
-use super::{get_base_styles, get_navbar_css, get_navbar_html, ADMIN_SESSION_TIMEOUT_MINUTES};
+use super::{get_base_styles, get_caller_info, get_navbar_css, get_navbar_html, is_admin_enabled, is_authenticated};
 use crate::pds::db::{PdsDb, StatisticKey};
 use crate::pds::server::PdsState;
 
 /// Handle GET /admin/ - Show admin home page.
 pub async fn admin_home(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     cookies: Cookies,
 ) -> impl IntoResponse {
+    // Extract caller info first for IP-based session validation
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Check if admin dashboard is enabled
     if !is_admin_enabled(&state.db) {
         return Response::builder()
@@ -29,16 +36,16 @@ pub async fn admin_home(
             .into_response();
     }
 
-    // Check authentication
-    if !is_authenticated(&state.db, &cookies) {
+    // Check authentication with IP verification
+    if !is_authenticated(&state.db, &cookies, &ip_address) {
         return Redirect::to("/admin/login").into_response();
     }
 
     // Increment statistics
     let stat_key = StatisticKey {
         name: "admin/home".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 
@@ -87,34 +94,6 @@ Below is the configuration for this PDS. You can edit the config on the Config p
     );
 
     Html(html).into_response()
-}
-
-/// Check if the admin dashboard is enabled.
-fn is_admin_enabled(db: &PdsDb) -> bool {
-    db.get_config_property_bool("FeatureEnabled_AdminDashboard")
-        .unwrap_or(false)
-}
-
-/// Check if the user is authenticated.
-fn is_authenticated(db: &PdsDb, cookies: &Cookies) -> bool {
-    let Some(cookie) = cookies.get("adminSessionId") else {
-        return false;
-    };
-
-    let session_id = cookie.value();
-
-    // Get session from database (we pass "unknown" as IP for now - a more complete
-    // implementation would extract the real IP from headers)
-    db.get_valid_admin_session(session_id, "unknown", ADMIN_SESSION_TIMEOUT_MINUTES)
-        .ok()
-        .flatten()
-        .is_some()
-        ||
-    // Also check without IP restriction for development
-    db.get_valid_admin_session_any_ip(session_id, ADMIN_SESSION_TIMEOUT_MINUTES)
-        .ok()
-        .flatten()
-        .is_some()
 }
 
 /// Build the configuration table matching dnproto's Admin_Home layout.

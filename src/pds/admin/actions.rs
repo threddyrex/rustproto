@@ -3,10 +3,12 @@
 //! Provides administrative actions like password generation, key pair generation,
 //! and user repo management.
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{
-    extract::State,
+    extract::{ConnectInfo, State},
+    http::HeaderMap,
     response::{Html, IntoResponse, Redirect, Response},
     Form,
 };
@@ -19,7 +21,7 @@ use serde::Deserialize;
 use sha2::Sha256;
 use tower_cookies::{Cookie, Cookies};
 
-use super::{get_base_styles, get_navbar_css, get_navbar_html, ADMIN_SESSION_TIMEOUT_MINUTES};
+use super::{get_base_styles, get_caller_info, get_navbar_css, get_navbar_html, is_admin_enabled, is_authenticated};
 use crate::log::{Logger, LogLevel};
 use crate::pds::db::{PdsDb, StatisticKey};
 use crate::pds::firehose_event_generator::FirehoseEventGenerator;
@@ -41,8 +43,13 @@ pub struct ActionForm {
 /// Handle GET /admin/actions - Show actions page.
 pub async fn admin_actions_get(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     cookies: Cookies,
 ) -> impl IntoResponse {
+    // Extract caller info first for IP-based session validation
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Check if admin dashboard is enabled
     if !is_admin_enabled(&state.db) {
         return Response::builder()
@@ -53,16 +60,16 @@ pub async fn admin_actions_get(
             .into_response();
     }
 
-    // Check authentication
-    if !is_authenticated(&state.db, &cookies) {
+    // Check authentication with IP verification
+    if !is_authenticated(&state.db, &cookies, &ip_address) {
         return Redirect::to("/admin/login").into_response();
     }
 
     // Increment statistics
     let stat_key = StatisticKey {
         name: "admin/actions".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 
@@ -84,9 +91,14 @@ pub async fn admin_actions_get(
 /// Handle POST /admin/actions - Process an action.
 pub async fn admin_actions_post(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     cookies: Cookies,
     Form(form): Form<ActionForm>,
 ) -> impl IntoResponse {
+    // Extract caller info first for IP-based session validation
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Check if admin dashboard is enabled
     if !is_admin_enabled(&state.db) {
         return Response::builder()
@@ -97,16 +109,16 @@ pub async fn admin_actions_post(
             .into_response();
     }
 
-    // Check authentication
-    if !is_authenticated(&state.db, &cookies) {
+    // Check authentication with IP verification
+    if !is_authenticated(&state.db, &cookies, &ip_address) {
         return Redirect::to("/admin/login").into_response();
     }
 
     // Increment statistics
     let stat_key = StatisticKey {
         name: "admin/actions".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 
@@ -500,31 +512,6 @@ fn get_key_value_status(db: &PdsDb, key: &str) -> String {
         Ok(value) if !value.is_empty() => html_encode(&value),
         _ => r#"<span class="dimmed">not configured</span>"#.to_string(),
     }
-}
-
-/// Check if the admin dashboard is enabled.
-fn is_admin_enabled(db: &PdsDb) -> bool {
-    db.get_config_property_bool("FeatureEnabled_AdminDashboard")
-        .unwrap_or(false)
-}
-
-/// Check if the user is authenticated.
-fn is_authenticated(db: &PdsDb, cookies: &Cookies) -> bool {
-    let Some(cookie) = cookies.get("adminSessionId") else {
-        return false;
-    };
-
-    let session_id = cookie.value();
-
-    db.get_valid_admin_session(session_id, "unknown", ADMIN_SESSION_TIMEOUT_MINUTES)
-        .ok()
-        .flatten()
-        .is_some()
-        || db
-            .get_valid_admin_session_any_ip(session_id, ADMIN_SESSION_TIMEOUT_MINUTES)
-            .ok()
-            .flatten()
-            .is_some()
 }
 
 /// Get and remove a cookie value.

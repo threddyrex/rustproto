@@ -36,6 +36,8 @@ pub struct LoginForm {
 /// Handle GET /admin/login - Show login page.
 pub async fn admin_login_get(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
 ) -> impl IntoResponse {
     // Check if admin dashboard is enabled
     if !is_admin_enabled(&state.db) {
@@ -48,10 +50,11 @@ pub async fn admin_login_get(
     }
 
     // Increment statistics
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
     let stat_key = StatisticKey {
         name: "admin/login".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 
@@ -72,10 +75,11 @@ pub async fn admin_login_post(
     }
 
     // Increment statistics
+    let (stat_ip, stat_ua) = get_caller_info(&headers, Some(addr));
     let stat_key = StatisticKey {
         name: "admin/login".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address: stat_ip,
+        user_agent: stat_ua,
     };
     let _ = state.db.increment_statistic(&stat_key);
 
@@ -141,13 +145,16 @@ pub async fn admin_login_post(
 /// Handle POST /admin/logout - Log out user.
 pub async fn admin_logout(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     cookies: Cookies,
 ) -> impl IntoResponse {
     // Increment statistics
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
     let stat_key = StatisticKey {
         name: "admin/logout".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 

@@ -2,10 +2,12 @@
 //!
 //! Displays and manages all session types (Legacy, OAuth, Admin).
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{
-    extract::State,
+    extract::{ConnectInfo, State},
+    http::HeaderMap,
     response::{Html, IntoResponse, Redirect, Response},
     Form,
 };
@@ -13,15 +15,20 @@ use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use tower_cookies::Cookies;
 
-use super::{get_base_styles, get_navbar_css, get_navbar_html, ADMIN_SESSION_TIMEOUT_MINUTES};
-use crate::pds::db::{AdminSession, LegacySession, OauthSession, PdsDb, StatisticKey};
+use super::{get_base_styles, get_caller_info, get_navbar_css, get_navbar_html, is_admin_enabled, is_authenticated};
+use crate::pds::db::{AdminSession, LegacySession, OauthSession, StatisticKey};
 use crate::pds::server::PdsState;
 
 /// Handle GET /admin/sessions - Show sessions page.
 pub async fn admin_sessions(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     cookies: Cookies,
 ) -> impl IntoResponse {
+    // Extract caller info first for IP-based session validation
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Check if admin dashboard is enabled
     if !is_admin_enabled(&state.db) {
         return Response::builder()
@@ -32,16 +39,16 @@ pub async fn admin_sessions(
             .into_response();
     }
 
-    // Check authentication
-    if !is_authenticated(&state.db, &cookies) {
+    // Check authentication with IP verification
+    if !is_authenticated(&state.db, &cookies, &ip_address) {
         return Redirect::to("/admin/login").into_response();
     }
 
     // Increment statistics
     let stat_key = StatisticKey {
         name: "admin/sessions".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 
@@ -225,24 +232,29 @@ pub struct DeleteLegacySessionForm {
 /// Handle POST /admin/deletelegacysession - Delete a legacy session.
 pub async fn admin_delete_legacy_session(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     cookies: Cookies,
     Form(form): Form<DeleteLegacySessionForm>,
 ) -> impl IntoResponse {
+    // Extract caller info first for IP-based session validation
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Check if admin dashboard is enabled
     if !is_admin_enabled(&state.db) {
         return Redirect::to("/admin/login").into_response();
     }
 
-    // Check authentication
-    if !is_authenticated(&state.db, &cookies) {
+    // Check authentication with IP verification
+    if !is_authenticated(&state.db, &cookies, &ip_address) {
         return Redirect::to("/admin/login").into_response();
     }
 
     // Increment statistics
     let stat_key = StatisticKey {
         name: "admin/deletelegacysession".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 
@@ -268,24 +280,29 @@ pub struct DeleteOauthSessionForm {
 /// Handle POST /admin/deleteoauthsession - Delete an OAuth session.
 pub async fn admin_delete_oauth_session(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     cookies: Cookies,
     Form(form): Form<DeleteOauthSessionForm>,
 ) -> impl IntoResponse {
+    // Extract caller info first for IP-based session validation
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Check if admin dashboard is enabled
     if !is_admin_enabled(&state.db) {
         return Redirect::to("/admin/login").into_response();
     }
 
-    // Check authentication
-    if !is_authenticated(&state.db, &cookies) {
+    // Check authentication with IP verification
+    if !is_authenticated(&state.db, &cookies, &ip_address) {
         return Redirect::to("/admin/login").into_response();
     }
 
     // Increment statistics
     let stat_key = StatisticKey {
         name: "admin/deleteoauthsession".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 
@@ -311,24 +328,29 @@ pub struct DeleteAdminSessionForm {
 /// Handle POST /admin/deleteadminsession - Delete an admin session.
 pub async fn admin_delete_admin_session(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     cookies: Cookies,
     Form(form): Form<DeleteAdminSessionForm>,
 ) -> impl IntoResponse {
+    // Extract caller info first for IP-based session validation
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Check if admin dashboard is enabled
     if !is_admin_enabled(&state.db) {
         return Redirect::to("/admin/login").into_response();
     }
 
-    // Check authentication
-    if !is_authenticated(&state.db, &cookies) {
+    // Check authentication with IP verification
+    if !is_authenticated(&state.db, &cookies, &ip_address) {
         return Redirect::to("/admin/login").into_response();
     }
 
     // Increment statistics
     let stat_key = StatisticKey {
         name: "admin/deleteadminsession".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 
@@ -347,31 +369,6 @@ pub async fn admin_delete_admin_session(
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
-
-/// Check if the admin dashboard is enabled.
-fn is_admin_enabled(db: &PdsDb) -> bool {
-    db.get_config_property_bool("FeatureEnabled_AdminDashboard")
-        .unwrap_or(false)
-}
-
-/// Check if the user is authenticated.
-fn is_authenticated(db: &PdsDb, cookies: &Cookies) -> bool {
-    let Some(cookie) = cookies.get("adminSessionId") else {
-        return false;
-    };
-
-    let session_id = cookie.value();
-
-    db.get_valid_admin_session(session_id, "unknown", ADMIN_SESSION_TIMEOUT_MINUTES)
-        .ok()
-        .flatten()
-        .is_some()
-        ||
-    db.get_valid_admin_session_any_ip(session_id, ADMIN_SESSION_TIMEOUT_MINUTES)
-        .ok()
-        .flatten()
-        .is_some()
-}
 
 /// Calculate the age in minutes from a created date string.
 fn calculate_age(created_date: &str) -> String {

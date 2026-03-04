@@ -18,7 +18,9 @@ use axum::{
     Router,
     routing::get,
 };
+use tower_cookies::Cookies;
 
+use super::db::PdsDb;
 use super::server::PdsState;
 
 pub use config::{admin_config_get, admin_config_post};
@@ -146,3 +148,27 @@ pub fn get_base_styles() -> &'static str {
 
 /// Session timeout in minutes for admin sessions.
 pub const ADMIN_SESSION_TIMEOUT_MINUTES: i32 = 60;
+
+/// Check if the admin dashboard is enabled.
+pub fn is_admin_enabled(db: &PdsDb) -> bool {
+    db.get_config_property_bool("FeatureEnabled_AdminDashboard")
+        .unwrap_or(false)
+}
+
+/// Check if the user is authenticated.
+///
+/// Validates the admin session cookie and checks that the session's IP address
+/// matches the current request's IP address for security.
+pub fn is_authenticated(db: &PdsDb, cookies: &Cookies, ip_address: &str) -> bool {
+    let Some(cookie) = cookies.get("adminSessionId") else {
+        return false;
+    };
+
+    let session_id = cookie.value();
+
+    // Check session validity with IP address verification
+    db.get_valid_admin_session(session_id, ip_address, ADMIN_SESSION_TIMEOUT_MINUTES)
+        .ok()
+        .flatten()
+        .is_some()
+}

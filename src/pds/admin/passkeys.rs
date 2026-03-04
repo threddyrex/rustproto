@@ -2,25 +2,32 @@
 //!
 //! Displays and manages WebAuthn passkeys.
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{
-    extract::State,
+    extract::{ConnectInfo, State},
+    http::HeaderMap,
     response::{Html, IntoResponse, Redirect, Response},
     Form,
 };
 use serde::Deserialize;
 use tower_cookies::Cookies;
 
-use super::{get_base_styles, get_navbar_css, get_navbar_html, ADMIN_SESSION_TIMEOUT_MINUTES};
-use crate::pds::db::{Passkey, PasskeyChallenge, PdsDb, StatisticKey};
+use super::{get_base_styles, get_caller_info, get_navbar_css, get_navbar_html, is_admin_enabled, is_authenticated};
+use crate::pds::db::{Passkey, PasskeyChallenge, StatisticKey};
 use crate::pds::server::PdsState;
 
 /// Handle GET /admin/passkeys - Show passkeys page.
 pub async fn admin_passkeys(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     cookies: Cookies,
 ) -> impl IntoResponse {
+    // Extract caller info first for IP-based session validation
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Check if admin dashboard is enabled
     if !is_admin_enabled(&state.db) {
         return Response::builder()
@@ -31,16 +38,16 @@ pub async fn admin_passkeys(
             .into_response();
     }
 
-    // Check authentication
-    if !is_authenticated(&state.db, &cookies) {
+    // Check authentication with IP verification
+    if !is_authenticated(&state.db, &cookies, &ip_address) {
         return Redirect::to("/admin/login").into_response();
     }
 
     // Increment statistics
     let stat_key = StatisticKey {
         name: "admin/passkeys".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 
@@ -148,24 +155,29 @@ pub struct DeletePasskeyForm {
 /// Handle POST /admin/deletepasskey - Delete a passkey.
 pub async fn admin_delete_passkey(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     cookies: Cookies,
     Form(form): Form<DeletePasskeyForm>,
 ) -> impl IntoResponse {
+    // Extract caller info first for IP-based session validation
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Check if admin dashboard is enabled
     if !is_admin_enabled(&state.db) {
         return Redirect::to("/admin/login").into_response();
     }
 
-    // Check authentication
-    if !is_authenticated(&state.db, &cookies) {
+    // Check authentication with IP verification
+    if !is_authenticated(&state.db, &cookies, &ip_address) {
         return Redirect::to("/admin/login").into_response();
     }
 
     // Increment statistics
     let stat_key = StatisticKey {
         name: "admin/deletepasskey".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 
@@ -190,24 +202,29 @@ pub struct DeletePasskeyChallengeForm {
 /// Handle POST /admin/deletepasskeychallenge - Delete a passkey challenge.
 pub async fn admin_delete_passkey_challenge(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     cookies: Cookies,
     Form(form): Form<DeletePasskeyChallengeForm>,
 ) -> impl IntoResponse {
+    // Extract caller info first for IP-based session validation
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Check if admin dashboard is enabled
     if !is_admin_enabled(&state.db) {
         return Redirect::to("/admin/login").into_response();
     }
 
-    // Check authentication
-    if !is_authenticated(&state.db, &cookies) {
+    // Check authentication with IP verification
+    if !is_authenticated(&state.db, &cookies, &ip_address) {
         return Redirect::to("/admin/login").into_response();
     }
 
     // Increment statistics
     let stat_key = StatisticKey {
         name: "admin/deletepasskeychallenge".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 
@@ -226,34 +243,6 @@ pub async fn admin_delete_passkey_challenge(
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
-
-/// Check if the admin dashboard is enabled.
-fn is_admin_enabled(db: &PdsDb) -> bool {
-    db.get_config_property_bool("FeatureEnabled_AdminDashboard")
-        .unwrap_or(false)
-}
-
-/// Check if the user is authenticated.
-fn is_authenticated(db: &PdsDb, cookies: &Cookies) -> bool {
-    let Some(cookie) = cookies.get("adminSessionId") else {
-        return false;
-    };
-
-    let session_id = cookie.value();
-
-    // Get session from database (we pass "unknown" as IP for now - a more complete
-    // implementation would extract the real IP from headers)
-    db.get_valid_admin_session(session_id, "unknown", ADMIN_SESSION_TIMEOUT_MINUTES)
-        .ok()
-        .flatten()
-        .is_some()
-        ||
-    // Also check without IP restriction for development
-    db.get_valid_admin_session_any_ip(session_id, ADMIN_SESSION_TIMEOUT_MINUTES)
-        .ok()
-        .flatten()
-        .is_some()
-}
 
 /// Build HTML rows for passkeys.
 fn build_passkeys_html(passkeys: &[Passkey]) -> String {

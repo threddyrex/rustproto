@@ -2,10 +2,12 @@
 //!
 //! Displays and manages statistics collected by the PDS.
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{
-    extract::State,
+    extract::{ConnectInfo, State},
+    http::HeaderMap,
     response::{Html, IntoResponse, Redirect, Response},
     Form,
 };
@@ -13,15 +15,20 @@ use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use tower_cookies::Cookies;
 
-use super::{get_base_styles, get_navbar_css, get_navbar_html, ADMIN_SESSION_TIMEOUT_MINUTES};
-use crate::pds::db::{PdsDb, Statistic, StatisticKey};
+use super::{get_base_styles, get_caller_info, get_navbar_css, get_navbar_html, is_admin_enabled, is_authenticated};
+use crate::pds::db::{Statistic, StatisticKey};
 use crate::pds::server::PdsState;
 
 /// Handle GET /admin/stats - Show statistics page.
 pub async fn admin_stats(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     cookies: Cookies,
 ) -> impl IntoResponse {
+    // Extract caller info first for IP-based session validation
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Check if admin dashboard is enabled
     if !is_admin_enabled(&state.db) {
         return Response::builder()
@@ -32,16 +39,16 @@ pub async fn admin_stats(
             .into_response();
     }
 
-    // Check authentication
-    if !is_authenticated(&state.db, &cookies) {
+    // Check authentication with IP verification
+    if !is_authenticated(&state.db, &cookies, &ip_address) {
         return Redirect::to("/admin/login").into_response();
     }
 
     // Increment statistics
     let stat_key = StatisticKey {
         name: "admin/stats".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 
@@ -246,24 +253,29 @@ pub struct DeleteStatisticForm {
 /// Handle POST /admin/deletestatistic - Delete a single statistic.
 pub async fn admin_delete_statistic(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     cookies: Cookies,
     Form(form): Form<DeleteStatisticForm>,
 ) -> impl IntoResponse {
+    // Extract caller info first for IP-based session validation
+    let (caller_ip, caller_ua) = get_caller_info(&headers, Some(addr));
+
     // Check if admin dashboard is enabled
     if !is_admin_enabled(&state.db) {
         return Redirect::to("/admin/login").into_response();
     }
 
-    // Check authentication
-    if !is_authenticated(&state.db, &cookies) {
+    // Check authentication with IP verification
+    if !is_authenticated(&state.db, &cookies, &caller_ip) {
         return Redirect::to("/admin/login").into_response();
     }
 
     // Increment statistics
     let stat_key = StatisticKey {
         name: "admin/deletestatistic".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address: caller_ip,
+        user_agent: caller_ua,
     };
     let _ = state.db.increment_statistic(&stat_key);
 
@@ -289,23 +301,28 @@ pub async fn admin_delete_statistic(
 /// Handle POST /admin/deleteallstatistics - Delete all statistics.
 pub async fn admin_delete_all_statistics(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     cookies: Cookies,
 ) -> impl IntoResponse {
+    // Extract caller info first for IP-based session validation
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Check if admin dashboard is enabled
     if !is_admin_enabled(&state.db) {
         return Redirect::to("/admin/login").into_response();
     }
 
-    // Check authentication
-    if !is_authenticated(&state.db, &cookies) {
+    // Check authentication with IP verification
+    if !is_authenticated(&state.db, &cookies, &ip_address) {
         return Redirect::to("/admin/login").into_response();
     }
 
     // Increment statistics (note: this stat will also be deleted)
     let stat_key = StatisticKey {
         name: "admin/deleteallstatistics".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 
@@ -322,23 +339,28 @@ pub async fn admin_delete_all_statistics(
 /// Handle POST /admin/deleteoldstatistics - Delete old statistics (>24 hours).
 pub async fn admin_delete_old_statistics(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     cookies: Cookies,
 ) -> impl IntoResponse {
+    // Extract caller info first for IP-based session validation
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Check if admin dashboard is enabled
     if !is_admin_enabled(&state.db) {
         return Redirect::to("/admin/login").into_response();
     }
 
-    // Check authentication
-    if !is_authenticated(&state.db, &cookies) {
+    // Check authentication with IP verification
+    if !is_authenticated(&state.db, &cookies, &ip_address) {
         return Redirect::to("/admin/login").into_response();
     }
 
     // Increment statistics
     let stat_key = StatisticKey {
         name: "admin/deleteoldstatistics".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 
@@ -355,31 +377,6 @@ pub async fn admin_delete_old_statistics(
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
-
-/// Check if the admin dashboard is enabled.
-fn is_admin_enabled(db: &PdsDb) -> bool {
-    db.get_config_property_bool("FeatureEnabled_AdminDashboard")
-        .unwrap_or(false)
-}
-
-/// Check if the user is authenticated.
-fn is_authenticated(db: &PdsDb, cookies: &Cookies) -> bool {
-    let Some(cookie) = cookies.get("adminSessionId") else {
-        return false;
-    };
-
-    let session_id = cookie.value();
-
-    db.get_valid_admin_session(session_id, "unknown", ADMIN_SESSION_TIMEOUT_MINUTES)
-        .ok()
-        .flatten()
-        .is_some()
-        || db
-            .get_valid_admin_session_any_ip(session_id, ADMIN_SESSION_TIMEOUT_MINUTES)
-            .ok()
-            .flatten()
-            .is_some()
-}
 
 /// Calculate the minutes ago from a last updated date string.
 fn calculate_minutes_ago(last_updated_date: &str) -> String {
