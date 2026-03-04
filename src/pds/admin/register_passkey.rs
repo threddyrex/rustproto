@@ -4,13 +4,14 @@
 //! POST /admin/passkeyregistrationoptions - Get WebAuthn registration options
 //! POST /admin/registerpasskey - Complete passkey registration
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{
     Json,
     body::Bytes,
-    extract::State,
-    http::StatusCode,
+    extract::{ConnectInfo, State},
+    http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse},
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -21,7 +22,7 @@ use tower_cookies::Cookies;
 use crate::pds::db::{Passkey, PasskeyChallenge, PdsDb, StatisticKey};
 use crate::pds::server::PdsState;
 
-use super::{is_admin_enabled, is_authenticated};
+use super::{get_caller_info, is_admin_enabled, is_authenticated};
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -60,8 +61,13 @@ fn html_encode(s: &str) -> String {
 /// Requires admin session authentication.
 pub async fn admin_register_passkey_get(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     cookies: Cookies,
 ) -> impl IntoResponse {
+    // Extract caller info for IP-based session validation
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Check if admin is enabled
     if !is_admin_enabled(&state.db) {
         return (StatusCode::FORBIDDEN, Html("Admin dashboard is not enabled".to_string())).into_response();
@@ -70,8 +76,8 @@ pub async fn admin_register_passkey_get(
     // Increment statistics
     let stat_key = StatisticKey {
         name: "admin/register-passkey GET".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address: ip_address.clone(),
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 
@@ -80,8 +86,8 @@ pub async fn admin_register_passkey_get(
         return (StatusCode::FORBIDDEN, Html("Passkeys are not enabled".to_string())).into_response();
     }
 
-    // Verify admin session (use "unknown" for IP since we don't have headers here)
-    if !is_authenticated(&state.db, &cookies, "unknown") {
+    // Verify admin session
+    if !is_authenticated(&state.db, &cookies, &ip_address) {
         return (
             StatusCode::UNAUTHORIZED,
             Html("Admin authentication required. <a href=\"/admin/login\">Login</a>".to_string()),
@@ -419,9 +425,14 @@ struct RegistrationError {
 /// Requires admin session authentication.
 pub async fn admin_passkey_registration_options(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     cookies: Cookies,
     body: Bytes,
 ) -> impl IntoResponse {
+    // Extract caller info for IP-based session validation
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Check if admin is enabled
     if !is_admin_enabled(&state.db) {
         return (StatusCode::FORBIDDEN, Json(serde_json::json!({}))).into_response();
@@ -430,8 +441,8 @@ pub async fn admin_passkey_registration_options(
     // Increment statistics
     let stat_key = StatisticKey {
         name: "admin/passkeyregistrationoptions".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address: ip_address.clone(),
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 
@@ -447,7 +458,7 @@ pub async fn admin_passkey_registration_options(
     }
 
     // Verify admin session
-    if !is_authenticated(&state.db, &cookies, "unknown") {
+    if !is_authenticated(&state.db, &cookies, &ip_address) {
         return (
             StatusCode::UNAUTHORIZED,
             Json(RegistrationError {
@@ -584,9 +595,14 @@ struct RegisterPasskeySuccess {
 /// Requires admin session authentication.
 pub async fn admin_register_passkey_post(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     cookies: Cookies,
     body: Bytes,
 ) -> impl IntoResponse {
+    // Extract caller info for IP-based session validation
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Check if admin is enabled
     if !is_admin_enabled(&state.db) {
         return (StatusCode::FORBIDDEN, Json(serde_json::json!({}))).into_response();
@@ -595,8 +611,8 @@ pub async fn admin_register_passkey_post(
     // Increment statistics
     let stat_key = StatisticKey {
         name: "admin/registerpasskey".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address: ip_address.clone(),
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 
@@ -612,7 +628,7 @@ pub async fn admin_register_passkey_post(
     }
 
     // Verify admin session
-    if !is_authenticated(&state.db, &cookies, "unknown") {
+    if !is_authenticated(&state.db, &cookies, &ip_address) {
         return (
             StatusCode::UNAUTHORIZED,
             Json(RegistrationError {
