@@ -13,7 +13,7 @@ use axum::{
     response::IntoResponse,
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use p256::ecdsa::{Signature as P256Signature, VerifyingKey as P256VerifyingKey, signature::Verifier};
+use p256::ecdsa::{Signature as P256Signature, VerifyingKey as P256VerifyingKey, signature::Verifier, DerSignature};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use sha2::{Sha256, Digest};
@@ -335,9 +335,8 @@ pub async fn admin_authenticate_passkey(
     // Validate origin
     let origin = client_data.get("origin").and_then(|v| v.as_str()).unwrap_or_default();
     let hostname = get_hostname(&state);
-    // Use external port (default 443 for standard HTTPS behind reverse proxy)
-    let external_port = state.db.get_config_property_int("ServerExternalPort").unwrap_or(443);
-    let expected_origin = get_expected_origin(&hostname, external_port);
+    let listen_port = state.db.get_config_property_int("ServerListenPort").unwrap_or(443);
+    let expected_origin = get_expected_origin(&hostname, listen_port);
 
     if origin != expected_origin {
         return (
@@ -497,11 +496,12 @@ fn get_hostname(state: &PdsState) -> String {
 }
 
 /// Get the expected WebAuthn origin.
+/// Only includes port for localhost (mirrors dnproto behavior for reverse proxy setups).
 fn get_expected_origin(hostname: &str, port: i32) -> String {
-    if port == 443 {
-        format!("https://{}", hostname)
-    } else {
+    if hostname == "localhost" {
         format!("https://{}:{}", hostname, port)
+    } else {
+        format!("https://{}", hostname)
     }
 }
 
@@ -565,13 +565,21 @@ fn verify_jwk_signature(
     let verifying_key = P256VerifyingKey::from_sec1_bytes(&point_bytes)
         .map_err(|e| format!("Invalid EC public key: {}", e))?;
 
-    // Parse signature (IEEE P1363 format)
-    let sig = P256Signature::from_slice(signature)
-        .map_err(|e| format!("Invalid signature format: {}", e))?;
+    // WebAuthn signatures are DER-encoded (ASN.1), try DER first then P1363
+    if let Ok(der_sig) = DerSignature::from_bytes(signature) {
+        verifying_key
+            .verify(signed_data, &der_sig)
+            .map_err(|e| format!("Signature verification failed: {}", e))?;
+    } else {
+        // Fall back to P1363 format (r || s, 64 bytes)
+        let sig = P256Signature::from_slice(signature)
+            .map_err(|e| format!("Invalid signature format: {}", e))?;
+        verifying_key
+            .verify(signed_data, &sig)
+            .map_err(|e| format!("Signature verification failed: {}", e))?;
+    }
 
-    verifying_key
-        .verify(signed_data, &sig)
-        .map_err(|e| format!("Signature verification failed: {}", e))
+    Ok(())
 }
 
 /// Pad byte array to expected size (prepends zeros).
