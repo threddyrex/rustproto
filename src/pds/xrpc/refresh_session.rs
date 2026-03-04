@@ -109,6 +109,10 @@ pub async fn refresh_session(
     let validation_result = validate_refresh_jwt(&original_refresh_jwt, &jwt_secret);
 
     if !validation_result.is_valid {
+        state.log.warning(&format!(
+            "[AUTH] [LEGACY] Refresh token invalid or expired. ip={} userAgent={}",
+            ip_address, user_agent
+        ));
         return (
             StatusCode::BAD_REQUEST,
             Json(RefreshSessionError {
@@ -135,6 +139,10 @@ pub async fn refresh_session(
     };
 
     if validation_result.sub.as_deref() != Some(&user_did) {
+        state.log.warning(&format!(
+            "[AUTH] [LEGACY] Refresh token DID mismatch. ip={} userAgent={}",
+            ip_address, user_agent
+        ));
         return (
             StatusCode::UNAUTHORIZED,
             Json(RefreshSessionError {
@@ -155,6 +163,10 @@ pub async fn refresh_session(
         .unwrap_or(false);
 
     if !refresh_exists {
+        state.log.warning(&format!(
+            "[AUTH] [LEGACY] Refresh token not found in database. ip={} userAgent={}",
+            ip_address, user_agent
+        ));
         return (
             StatusCode::UNAUTHORIZED,
             Json(RefreshSessionError {
@@ -190,8 +202,8 @@ pub async fn refresh_session(
                 created_date: Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
                 access_jwt: access_jwt.clone(),
                 refresh_jwt: refresh_jwt.clone(),
-                ip_address,
-                user_agent,
+                ip_address: ip_address.clone(),
+                user_agent: user_agent.clone(),
             };
 
             if let Err(e) = state.db.create_legacy_session(&session) {
@@ -200,6 +212,11 @@ pub async fn refresh_session(
                     e
                 ));
             }
+
+            state.log.info(&format!(
+                "[AUTH] [LEGACY] Token refreshed. ip={} userAgent={}",
+                ip_address, user_agent
+            ));
 
             (
                 StatusCode::OK,

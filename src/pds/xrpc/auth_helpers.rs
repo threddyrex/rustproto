@@ -13,6 +13,7 @@ use axum::{
 };
 use serde::Serialize;
 
+use crate::log::logger;
 use crate::pds::auth::validate_access_jwt;
 use crate::pds::server::PdsState;
 
@@ -67,10 +68,21 @@ pub fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
 ///
 /// An AuthResult indicating whether the user is authenticated.
 pub fn check_legacy_auth(state: &Arc<PdsState>, headers: &HeaderMap) -> AuthResult {
+    // Get IP from X-Forwarded-For header for logging
+    let ip = headers
+        .get("X-Forwarded-For")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.split(',').next().unwrap_or(s).trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
     // Extract the bearer token
     let access_jwt = match extract_bearer_token(headers) {
         Some(token) => token,
         None => {
+            logger().info(&format!(
+                "[AUTH] [LEGACY] ip={} authenticated=false error=no_token",
+                ip
+            ));
             return AuthResult {
                 is_authenticated: false,
                 user_did: None,
@@ -84,6 +96,10 @@ pub fn check_legacy_auth(state: &Arc<PdsState>, headers: &HeaderMap) -> AuthResu
     let jwt_secret = match state.db.get_config_property("JwtSecret") {
         Ok(secret) => secret,
         Err(_) => {
+            logger().info(&format!(
+                "[AUTH] [LEGACY] ip={} authenticated=false error=config_error",
+                ip
+            ));
             return AuthResult {
                 is_authenticated: false,
                 user_did: None,
@@ -96,6 +112,10 @@ pub fn check_legacy_auth(state: &Arc<PdsState>, headers: &HeaderMap) -> AuthResu
     let user_did = match state.db.get_config_property("UserDid") {
         Ok(did) => did,
         Err(_) => {
+            logger().info(&format!(
+                "[AUTH] [LEGACY] ip={} authenticated=false error=config_error",
+                ip
+            ));
             return AuthResult {
                 is_authenticated: false,
                 user_did: None,
@@ -112,6 +132,10 @@ pub fn check_legacy_auth(state: &Arc<PdsState>, headers: &HeaderMap) -> AuthResu
         // Check if the token was valid but expired
         let expired_check = validate_access_jwt(&access_jwt, &jwt_secret, &user_did, false);
         if expired_check.is_valid {
+            logger().info(&format!(
+                "[AUTH] [LEGACY] ip={} authenticated=false expired=true",
+                ip
+            ));
             return AuthResult {
                 is_authenticated: false,
                 user_did: expired_check.sub,
@@ -120,6 +144,10 @@ pub fn check_legacy_auth(state: &Arc<PdsState>, headers: &HeaderMap) -> AuthResu
             };
         }
 
+        logger().info(&format!(
+            "[AUTH] [LEGACY] ip={} authenticated=false expired=false",
+            ip
+        ));
         return AuthResult {
             is_authenticated: false,
             user_did: None,
@@ -135,6 +163,10 @@ pub fn check_legacy_auth(state: &Arc<PdsState>, headers: &HeaderMap) -> AuthResu
         .unwrap_or(false);
 
     if !session_exists {
+        logger().info(&format!(
+            "[AUTH] [LEGACY] ip={} authenticated=false expired=false existsInDb=false",
+            ip
+        ));
         return AuthResult {
             is_authenticated: false,
             user_did: validation_result.sub,
@@ -142,6 +174,11 @@ pub fn check_legacy_auth(state: &Arc<PdsState>, headers: &HeaderMap) -> AuthResu
             is_expired: false,
         };
     }
+
+    logger().info(&format!(
+        "[AUTH] [LEGACY] ip={} authenticated=true expired=false existsInDb=true",
+        ip
+    ));
 
     AuthResult {
         is_authenticated: true,

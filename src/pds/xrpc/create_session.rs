@@ -194,6 +194,12 @@ pub async fn create_session(
         }
     }
 
+    // Log failed login attempt
+    state.log.warning(&format!(
+        "[AUTH] [LEGACY] Failed login attempt. ip={} userAgent={}",
+        ip_address, user_agent
+    ));
+
     // Return empty response for failed login (matches dnproto behavior - returns 200 with empty tokens)
     (
         StatusCode::OK,
