@@ -21,7 +21,7 @@ use tower_cookies::Cookies;
 use crate::pds::db::{Passkey, PasskeyChallenge, StatisticKey};
 use crate::pds::server::PdsState;
 
-use super::helpers::{get_hostname, html_encode, is_oauth_enabled, is_passkeys_enabled};
+use super::helpers::{get_hostname, html_encode, is_passkeys_enabled};
 
 // =============================================================================
 // GET /oauth/register-passkey - REGISTRATION FORM
@@ -35,11 +35,6 @@ pub async fn register_passkey_get(
     State(state): State<Arc<PdsState>>,
     cookies: Cookies,
 ) -> impl IntoResponse {
-    // Check if OAuth is enabled
-    if !is_oauth_enabled(&state.db) {
-        return (StatusCode::FORBIDDEN, Html("OAuth is not enabled".to_string())).into_response();
-    }
-
     // Increment statistics
     let stat_key = StatisticKey {
         name: "oauth/register-passkey GET".to_string(),
@@ -409,11 +404,6 @@ pub async fn passkey_registration_options(
     cookies: Cookies,
     body: Bytes,
 ) -> impl IntoResponse {
-    // Check if OAuth is enabled
-    if !is_oauth_enabled(&state.db) {
-        return (StatusCode::FORBIDDEN, Json(serde_json::json!({}))).into_response();
-    }
-
     // Increment statistics
     let stat_key = StatisticKey {
         name: "oauth/passkeyregistrationoptions".to_string(),
@@ -573,11 +563,6 @@ pub async fn register_passkey_post(
     cookies: Cookies,
     body: Bytes,
 ) -> impl IntoResponse {
-    // Check if OAuth is enabled
-    if !is_oauth_enabled(&state.db) {
-        return (StatusCode::FORBIDDEN, Json(serde_json::json!({}))).into_response();
-    }
-
     // Increment statistics
     let stat_key = StatisticKey {
         name: "oauth/registerpasskey".to_string(),
