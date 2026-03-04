@@ -302,21 +302,8 @@ pub async fn authenticate_passkey(
     hasher.update(&client_data_bytes);
     signed_data.extend_from_slice(&hasher.finalize());
 
-    // Parse public key and verify signature
-    let public_key_bytes = match URL_SAFE_NO_PAD.decode(&passkey.public_key) {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(PasskeyAuthError {
-                    error: "Invalid public key".to_string(),
-                }),
-            )
-                .into_response();
-        }
-    };
-
-    if let Err(e) = verify_cose_signature(&public_key_bytes, &signed_data, &signature) {
+    // Parse public key (stored as JWK JSON) and verify signature
+    if let Err(e) = verify_jwk_signature(&passkey.public_key, &signed_data, &signature) {
         state.log.warning(&format!(
             "[AUTH] [OAUTH] [PASSKEY] Signature verification failed: {} for credential {}",
             e, request.id
@@ -430,42 +417,29 @@ fn validate_authenticator_data(data: &[u8], expected_rp_id: &str) -> Result<(), 
     Ok(())
 }
 
-/// Verify a COSE signature (ES256 / P-256).
-fn verify_cose_signature(
-    public_key_cose: &[u8],
+/// Verify a signature using a JWK public key (ES256 / P-256).
+fn verify_jwk_signature(
+    public_key_jwk: &str,
     signed_data: &[u8],
     signature: &[u8],
 ) -> Result<(), String> {
-    // Parse COSE key (simplified - assumes ES256)
-    // COSE key format is CBOR encoded
-    let cose_key: ciborium::Value = ciborium::from_reader(public_key_cose)
-        .map_err(|e| format!("Invalid COSE key: {}", e))?;
+    // Parse JWK JSON
+    let jwk: serde_json::Value = serde_json::from_str(public_key_jwk)
+        .map_err(|e| format!("Invalid JWK JSON: {}", e))?;
 
-    let cose_map = cose_key.as_map().ok_or("COSE key is not a map")?;
+    let kty = jwk.get("kty").and_then(|v| v.as_str()).ok_or("Missing kty in JWK")?;
 
-    // Extract x and y coordinates (labels -2 and -3)
-    let mut x_bytes: Option<Vec<u8>> = None;
-    let mut y_bytes: Option<Vec<u8>> = None;
-
-    for (key, value) in cose_map {
-        if let Some(k) = key.as_integer() {
-            let k_i64: i64 = k.try_into().unwrap_or(0);
-            match k_i64 {
-                -2 => {
-                    // x coordinate
-                    x_bytes = value.as_bytes().map(|b| b.to_vec());
-                }
-                -3 => {
-                    // y coordinate
-                    y_bytes = value.as_bytes().map(|b| b.to_vec());
-                }
-                _ => {}
-            }
-        }
+    if kty != "EC" {
+        return Err(format!("Unsupported key type: {}", kty));
     }
 
-    let x = x_bytes.ok_or("COSE key missing x coordinate")?;
-    let y = y_bytes.ok_or("COSE key missing y coordinate")?;
+    let x_b64 = jwk.get("x").and_then(|v| v.as_str()).ok_or("Missing x in JWK")?;
+    let y_b64 = jwk.get("y").and_then(|v| v.as_str()).ok_or("Missing y in JWK")?;
+
+    let x = URL_SAFE_NO_PAD.decode(x_b64)
+        .map_err(|e| format!("Invalid x coordinate encoding: {}", e))?;
+    let y = URL_SAFE_NO_PAD.decode(y_b64)
+        .map_err(|e| format!("Invalid y coordinate encoding: {}", e))?;
 
     // Create uncompressed point: 04 || x || y
     let mut point_bytes = vec![0x04];
