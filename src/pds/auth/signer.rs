@@ -1,9 +1,9 @@
 //! Cryptographic signing utilities for AT Protocol.
 //!
-//! This module provides ES256 (ECDSA with P-256) signing for service auth tokens.
+//! This module provides ES256 (ECDSA with P-256) signing and verification for service auth tokens.
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD as BASE64URL};
-use p256::ecdsa::{SigningKey, signature::hazmat::PrehashSigner};
+use p256::ecdsa::{SigningKey, VerifyingKey, signature::hazmat::PrehashSigner, signature::hazmat::PrehashVerifier};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
@@ -184,6 +184,88 @@ fn normalize_low_s(signature: &[u8]) -> Vec<u8> {
         result
     } else {
         signature.to_vec()
+    }
+}
+
+/// Verify a service auth token signature using ES256 (ECDSA with P-256).
+///
+/// # Arguments
+///
+/// * `token` - The JWT token to verify
+/// * `public_key_multibase` - The public key in multibase format (z prefix = base58btc)
+///
+/// # Returns
+///
+/// `Ok(true)` if signature is valid, `Ok(false)` if invalid, `Err` if verification failed.
+pub fn verify_service_auth_token(
+    token: &str,
+    public_key_multibase: &str,
+) -> Result<bool, SignerError> {
+    // Decode the multibase public key (z prefix = base58btc)
+    if !public_key_multibase.starts_with('z') {
+        return Err(SignerError::InvalidKey(
+            "Public key must be multibase (base58btc, z prefix)".to_string(),
+        ));
+    }
+
+    let public_key_with_prefix = bs58::decode(&public_key_multibase[1..])
+        .into_vec()
+        .map_err(|e| SignerError::InvalidKey(format!("Invalid base58: {}", e)))?;
+
+    // Check for P-256 public key prefix (0x80 0x24) - compressed
+    // or uncompressed prefix
+    if public_key_with_prefix.len() < 2 {
+        return Err(SignerError::InvalidKey("Public key too short".to_string()));
+    }
+
+    // Determine key format and extract bytes
+    let public_key_bytes = if public_key_with_prefix[0] == 0x80 && public_key_with_prefix[1] == 0x24 {
+        // Compressed P-256 public key with multicodec prefix
+        &public_key_with_prefix[2..]
+    } else {
+        // Try without prefix
+        &public_key_with_prefix[..]
+    };
+
+    // Create verifying key from bytes
+    let verifying_key = VerifyingKey::from_sec1_bytes(public_key_bytes)
+        .map_err(|e| SignerError::InvalidKey(format!("Invalid P-256 public key: {}", e)))?;
+
+    // Parse the JWT parts
+    let parts: Vec<&str> = token.split('.').collect();
+    if parts.len() != 3 {
+        return Err(SignerError::EncodingError("Invalid JWT format".to_string()));
+    }
+
+    // Decode the signature
+    let signature_bytes = BASE64URL
+        .decode(parts[2])
+        .map_err(|e| SignerError::EncodingError(format!("Invalid signature encoding: {}", e)))?;
+
+    // Signature should be 64 bytes (32 bytes r + 32 bytes s)
+    if signature_bytes.len() != 64 {
+        return Err(SignerError::EncodingError(format!(
+            "Invalid signature length: expected 64, got {}",
+            signature_bytes.len()
+        )));
+    }
+
+    // Create the signature from bytes
+    let signature = p256::ecdsa::Signature::from_slice(&signature_bytes)
+        .map_err(|e| SignerError::EncodingError(format!("Invalid signature format: {}", e)))?;
+
+    // Create signing input (header.payload)
+    let signing_input = format!("{}.{}", parts[0], parts[1]);
+
+    // Hash the input
+    let mut hasher = Sha256::new();
+    hasher.update(signing_input.as_bytes());
+    let hash: [u8; 32] = hasher.finalize().into();
+
+    // Verify the signature
+    match verifying_key.verify_prehash(&hash, &signature) {
+        Ok(()) => Ok(true),
+        Err(_) => Ok(false),
     }
 }
 

@@ -366,6 +366,362 @@ pub fn is_oauth_token_request(headers: &HeaderMap) -> bool {
     is_oauth_access_token(&access_token)
 }
 
+/// Check if the request is using a Service Auth token.
+///
+/// Service Auth tokens are distinguished from Legacy Auth tokens by:
+/// - Using ES256 algorithm (asymmetric ECDSA) instead of HS256 (symmetric HMAC)
+/// - Having an 'lxm' claim (lexicon method identifier)
+/// - Having an 'iss' claim that is a DID (the remote service's DID)
+///
+/// This does NOT validate the token, only checks if it has the structure of a Service Auth token.
+pub fn is_service_auth_request(headers: &HeaderMap) -> bool {
+    // Must have a Bearer token (not DPoP)
+    let token = match extract_bearer_token(headers) {
+        Some(t) => t,
+        None => return false,
+    };
+
+    // Parse the JWT header to check algorithm
+    let parts: Vec<&str> = token.split('.').collect();
+    if parts.len() != 3 {
+        return false;
+    }
+
+    // Decode the header
+    let header_bytes = match URL_SAFE_NO_PAD.decode(parts[0]) {
+        Ok(b) => b,
+        Err(_) => return false,
+    };
+
+    let header_str = match String::from_utf8(header_bytes) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+
+    let header: serde_json::Value = match serde_json::from_str(&header_str) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+
+    // Check if algorithm is ES256 (Service Auth uses asymmetric ECDSA)
+    // Legacy Auth uses HS256 (symmetric HMAC)
+    let alg = header.get("alg").and_then(|v| v.as_str());
+    if alg != Some("ES256") {
+        return false;
+    }
+
+    // Decode the payload to check for service auth claims
+    let payload_bytes = match URL_SAFE_NO_PAD.decode(parts[1]) {
+        Ok(b) => b,
+        Err(_) => return false,
+    };
+
+    let payload_str = match String::from_utf8(payload_bytes) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+
+    let payload: serde_json::Value = match serde_json::from_str(&payload_str) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+
+    // Check for 'lxm' claim which is specific to Service Auth tokens
+    if payload.get("lxm").is_none() {
+        return false;
+    }
+
+    // Check that 'iss' claim exists and looks like a DID
+    let iss = payload.get("iss").and_then(|v| v.as_str());
+    match iss {
+        Some(issuer) if issuer.starts_with("did:") => true,
+        _ => false,
+    }
+}
+
+/// Result of service auth token validation.
+#[allow(dead_code)]
+pub struct ServiceAuthResult {
+    /// Whether validation succeeded.
+    pub is_valid: bool,
+    /// Error message if validation failed.
+    pub error: Option<String>,
+    /// The issuer DID (remote service's DID).
+    pub issuer: Option<String>,
+    /// The audience DID (should be this PDS's DID).
+    pub audience: Option<String>,
+    /// The lexicon method claim.
+    pub lxm: Option<String>,
+}
+
+impl Default for ServiceAuthResult {
+    fn default() -> Self {
+        Self {
+            is_valid: false,
+            error: None,
+            issuer: None,
+            audience: None,
+            lxm: None,
+        }
+    }
+}
+
+/// Validate a service auth token from the Authorization header.
+///
+/// Service auth tokens are JWTs signed by a remote service's atproto signing key.
+/// The token's iss claim is the remote service's DID, and aud should be this PDS's DID.
+///
+/// # Arguments
+///
+/// * `state` - The PDS state containing database access
+/// * `headers` - The HTTP headers from the request
+/// * `expected_lxm` - Optional: the expected lxm claim (NSID of the endpoint being called)
+///
+/// # Returns
+///
+/// A ServiceAuthResult with validation result and claims.
+pub fn validate_service_auth_token(
+    state: &Arc<PdsState>,
+    headers: &HeaderMap,
+    expected_lxm: Option<&str>,
+) -> ServiceAuthResult {
+    use crate::ws::{ActorQueryOptions, BlueskyClient};
+    
+    let mut result = ServiceAuthResult::default();
+
+    // Get the bearer token
+    let token = match extract_bearer_token(headers) {
+        Some(t) => t,
+        None => {
+            result.error = Some("Missing Authorization header".to_string());
+            return result;
+        }
+    };
+
+    // Parse the JWT parts
+    let parts: Vec<&str> = token.split('.').collect();
+    if parts.len() != 3 {
+        result.error = Some("Invalid JWT format".to_string());
+        return result;
+    }
+
+    // Decode payload to extract claims
+    let payload_bytes = match URL_SAFE_NO_PAD.decode(parts[1]) {
+        Ok(b) => b,
+        Err(_) => {
+            result.error = Some("Failed to decode JWT payload".to_string());
+            return result;
+        }
+    };
+
+    let payload_str = match String::from_utf8(payload_bytes) {
+        Ok(s) => s,
+        Err(_) => {
+            result.error = Some("Invalid UTF-8 in JWT payload".to_string());
+            return result;
+        }
+    };
+
+    let payload: serde_json::Value = match serde_json::from_str(&payload_str) {
+        Ok(v) => v,
+        Err(_) => {
+            result.error = Some("Invalid JSON in JWT payload".to_string());
+            return result;
+        }
+    };
+
+    // Extract claims
+    let issuer = payload.get("iss").and_then(|v| v.as_str()).map(String::from);
+    let audience = payload.get("aud").and_then(|v| v.as_str()).map(String::from);
+    let lxm = payload.get("lxm").and_then(|v| v.as_str()).map(String::from);
+
+    result.issuer = issuer.clone();
+    result.audience = audience.clone();
+    result.lxm = lxm.clone();
+
+    // Validate issuer exists
+    let issuer = match issuer {
+        Some(iss) => iss,
+        None => {
+            result.error = Some("Token missing iss claim".to_string());
+            return result;
+        }
+    };
+
+    // Validate audience exists and matches this PDS's DID
+    let audience = match audience {
+        Some(aud) => aud,
+        None => {
+            result.error = Some("Token missing aud claim".to_string());
+            return result;
+        }
+    };
+
+    let pds_did = match state.db.get_config_property("PdsDid") {
+        Ok(did) => did,
+        Err(_) => {
+            result.error = Some("Failed to get PDS DID from config".to_string());
+            return result;
+        }
+    };
+
+    if audience != pds_did {
+        result.error = Some(format!(
+            "Token audience '{}' does not match PDS DID '{}'",
+            audience, pds_did
+        ));
+        return result;
+    }
+
+    // Validate lxm if expected
+    if let Some(expected) = expected_lxm {
+        if let Some(ref actual_lxm) = lxm {
+            if actual_lxm != expected {
+                result.error = Some(format!(
+                    "Token lxm '{}' does not match expected '{}'",
+                    actual_lxm, expected
+                ));
+                return result;
+            }
+        }
+    }
+
+    // Check token expiry
+    if let Some(exp) = payload.get("exp").and_then(|v| v.as_i64()) {
+        let now = chrono::Utc::now().timestamp();
+        if now > exp {
+            result.error = Some("Token has expired".to_string());
+            return result;
+        }
+    }
+
+    // Resolve the issuer's DID document to get their public key
+    // Use tokio's Handle to run async code in sync context
+    let actor_info = match tokio::runtime::Handle::try_current() {
+        Ok(handle) => {
+            let issuer_clone = issuer.clone();
+            handle.block_on(async {
+                let client = BlueskyClient::new();
+                let options = ActorQueryOptions {
+                    resolve_did_doc: true,
+                    ..Default::default()
+                };
+                client.resolve_actor_info(&issuer_clone, Some(options)).await.ok()
+            })
+        }
+        Err(_) => {
+            result.error = Some("Failed to get async runtime handle".to_string());
+            return result;
+        }
+    };
+
+    let did_doc = match actor_info.and_then(|info| info.did_doc) {
+        Some(doc) => doc,
+        None => {
+            result.error = Some(format!(
+                "Failed to resolve DID document for issuer '{}'",
+                issuer
+            ));
+            return result;
+        }
+    };
+
+    // Extract the #atproto verification method public key
+    let public_key_multibase = match extract_atproto_public_key(&did_doc) {
+        Some(key) => key,
+        None => {
+            result.error = Some(format!(
+                "Failed to extract atproto public key from DID document for '{}'",
+                issuer
+            ));
+            return result;
+        }
+    };
+
+    // Validate the token signature using the public key
+    match crate::pds::auth::verify_service_auth_token(&token, &public_key_multibase) {
+        Ok(true) => {
+            result.is_valid = true;
+        }
+        Ok(false) => {
+            result.error = Some("Token signature validation failed".to_string());
+        }
+        Err(e) => {
+            result.error = Some(format!("Token signature validation error: {}", e));
+        }
+    }
+
+    result
+}
+
+/// Extract the atproto public key from a DID document.
+///
+/// Looks for a verificationMethod with id ending in "#atproto".
+fn extract_atproto_public_key(did_doc: &str) -> Option<String> {
+    let doc: serde_json::Value = serde_json::from_str(did_doc).ok()?;
+    
+    let methods = doc.get("verificationMethod")?.as_array()?;
+    
+    for method in methods {
+        let id = method.get("id")?.as_str()?;
+        if id.ends_with("#atproto") {
+            return method.get("publicKeyMultibase").and_then(|v| v.as_str()).map(String::from);
+        }
+    }
+    
+    None
+}
+
+/// Check if the request is authenticated with a valid service auth token.
+///
+/// # Arguments
+///
+/// * `state` - The PDS state containing database access
+/// * `headers` - The HTTP headers from the request
+/// * `expected_lxm` - Optional: the expected lxm claim (NSID of the endpoint being called)
+///
+/// # Returns
+///
+/// An AuthResult indicating whether the user is authenticated.
+pub fn check_service_auth(
+    state: &Arc<PdsState>,
+    headers: &HeaderMap,
+    expected_lxm: Option<&str>,
+) -> AuthResult {
+    let ip = headers
+        .get("X-Forwarded-For")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.split(',').next().unwrap_or(s).trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let result = validate_service_auth_token(state, headers, expected_lxm);
+
+    if !result.is_valid {
+        logger().info(&format!(
+            "[AUTH] [SERVICE] ip={} authenticated=false error={:?} aud={:?} lxm={:?}",
+            ip, result.error, result.audience, result.lxm
+        ));
+        return AuthResult {
+            is_authenticated: false,
+            user_did: None,
+            error: result.error,
+            is_expired: false,
+        };
+    }
+
+    logger().info(&format!(
+        "[AUTH] [SERVICE] ip={} authenticated=true iss={:?} aud={:?} lxm={:?}",
+        ip, result.issuer, result.audience, result.lxm
+    ));
+
+    AuthResult {
+        is_authenticated: true,
+        user_did: None, // Service auth doesn't authenticate as a specific user
+        error: None,
+        is_expired: false,
+    }
+}
+
 /// Validate an OAuth access token from the request including DPoP proof validation.
 ///
 /// # Arguments
@@ -618,7 +974,7 @@ pub fn check_oauth_auth(
 /// Check if the user is authenticated using any of the allowed auth types.
 ///
 /// By default, allows both Legacy and OAuth authentication.
-/// The function checks in order: OAuth (if DPoP token present), then Legacy.
+/// The function checks in order: OAuth (if DPoP token present), Service Auth, then Legacy.
 ///
 /// # Arguments
 ///
@@ -637,6 +993,34 @@ pub fn check_user_auth(
     allowed_auth_types: Option<&[AuthType]>,
     http_method: &str,
     request_path: &str,
+) -> AuthResult {
+    check_user_auth_with_lxm(state, headers, allowed_auth_types, http_method, request_path, None)
+}
+
+/// Check if the user is authenticated using any of the allowed auth types, with lxm validation.
+///
+/// By default, allows both Legacy and OAuth authentication.
+/// The function checks in order: OAuth (if DPoP token present), Service Auth, then Legacy.
+///
+/// # Arguments
+///
+/// * `state` - The PDS state containing database access
+/// * `headers` - The HTTP headers from the request
+/// * `allowed_auth_types` - Which auth types are allowed (defaults to Legacy + OAuth)
+/// * `http_method` - The HTTP method of the request (needed for OAuth DPoP validation)
+/// * `request_path` - The path of the request (needed for OAuth DPoP validation)
+/// * `expected_lxm` - Optional: the expected lxm claim for service auth validation
+///
+/// # Returns
+///
+/// An AuthResult indicating whether the user is authenticated.
+pub fn check_user_auth_with_lxm(
+    state: &Arc<PdsState>,
+    headers: &HeaderMap,
+    allowed_auth_types: Option<&[AuthType]>,
+    http_method: &str,
+    request_path: &str,
+    expected_lxm: Option<&str>,
 ) -> AuthResult {
     let default_types = [AuthType::Legacy, AuthType::Oauth];
     let allowed = allowed_auth_types.unwrap_or(&default_types);
@@ -663,6 +1047,24 @@ pub fn check_user_auth(
         }
 
         return check_oauth_auth(state, headers, http_method, request_path);
+    }
+
+    // Check if this looks like a Service Auth request (ES256 JWT with lxm claim)
+    if is_service_auth_request(headers) {
+        if !allowed.contains(&AuthType::Service) {
+            logger().info(&format!(
+                "[AUTH] ip={} type=service authenticated=false error=service_auth_not_allowed",
+                ip
+            ));
+            return AuthResult {
+                is_authenticated: false,
+                user_did: None,
+                error: Some("Service authentication not allowed for this endpoint".to_string()),
+                is_expired: false,
+            };
+        }
+
+        return check_service_auth(state, headers, expected_lxm);
     }
 
     // Otherwise try legacy auth
