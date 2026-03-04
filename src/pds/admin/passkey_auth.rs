@@ -335,8 +335,9 @@ pub async fn admin_authenticate_passkey(
     // Validate origin
     let origin = client_data.get("origin").and_then(|v| v.as_str()).unwrap_or_default();
     let hostname = get_hostname(&state);
-    let listen_port = state.db.get_config_property_int("ServerListenPort").unwrap_or(443);
-    let expected_origin = get_expected_origin(&hostname, listen_port);
+    // Use external port (default 443 for standard HTTPS behind reverse proxy)
+    let external_port = state.db.get_config_property_int("ServerExternalPort").unwrap_or(443);
+    let expected_origin = get_expected_origin(&hostname, external_port);
 
     if origin != expected_origin {
         return (
