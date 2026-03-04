@@ -12,6 +12,7 @@
 //! - `/oauth/token` - Token endpoint
 //! - `/oauth/passkeyauthenticationoptions` - WebAuthn passkey authentication options
 //! - `/oauth/authenticatepasskey` - WebAuthn passkey authentication
+//! - `/oauth/revoke` - Token revocation endpoint
 
 mod authenticate_passkey;
 mod authorization_server;
@@ -23,6 +24,7 @@ mod jwks;
 mod par;
 mod passkey_auth_options;
 mod protected_resource;
+mod revoke;
 mod token;
 
 pub use authenticate_passkey::authenticate_passkey;
@@ -35,4 +37,5 @@ pub use jwks::oauth_jwks;
 pub use par::oauth_par;
 pub use passkey_auth_options::passkey_authentication_options;
 pub use protected_resource::oauth_protected_resource;
+pub use revoke::oauth_revoke;
 pub use token::oauth_token;

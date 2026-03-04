@@ -9,10 +9,9 @@ use crate::pds::server::PdsState;
 
 /// Check if OAuth is enabled in the PDS configuration.
 ///
-/// OAuth is enabled if the `OauthEnabled` config property is set to "true".
+/// OAuth is enabled if the `FeatureEnabled_Oauth` config property is set to true.
 pub fn is_oauth_enabled(db: &PdsDb) -> bool {
-    db.get_config_property("OauthEnabled")
-        .map(|v| v.eq_ignore_ascii_case("true"))
+    db.get_config_property_bool("FeatureEnabled_Oauth")
         .unwrap_or(false)
 }
 
