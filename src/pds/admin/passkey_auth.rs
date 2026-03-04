@@ -577,8 +577,10 @@ fn verify_jwk_signature(
         // Fall back to P1363 format (r || s, 64 bytes)
         let sig = P256Signature::from_slice(signature)
             .map_err(|e| format!("Invalid signature format: {}", e))?;
+        // Try to normalize the signature to low-S form if needed
+        let normalized_sig = sig.normalize_s().unwrap_or(sig);
         verifying_key
-            .verify(signed_data, &sig)
+            .verify(signed_data, &normalized_sig)
             .map_err(|e| format!("Signature verification failed: {}", e))?;
     }
 

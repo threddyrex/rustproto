@@ -350,9 +350,13 @@ fn verify_es256_signature(
     let sig = P256Signature::from_slice(signature)
         .map_err(|e| format!("Invalid signature format: {}", e))?;
 
+    // Try to normalize the signature to low-S form if needed
+    // Some clients send high-S signatures which some verifiers reject
+    let normalized_sig = sig.normalize_s().unwrap_or(sig);
+
     // Verify
     verifying_key
-        .verify(signed_data.as_bytes(), &sig)
+        .verify(signed_data.as_bytes(), &normalized_sig)
         .map_err(|e| format!("Signature verification failed: {}", e))
 }
 
@@ -379,9 +383,13 @@ fn verify_es256k_signature(
     let sig = K256Signature::from_slice(signature)
         .map_err(|e| format!("Invalid ES256K signature format: {}", e))?;
 
+    // Try to normalize the signature to low-S form if needed
+    // Some clients send high-S signatures which some verifiers reject
+    let normalized_sig = sig.normalize_s().unwrap_or(sig);
+
     // Verify
     verifying_key
-        .verify(signed_data.as_bytes(), &sig)
+        .verify(signed_data.as_bytes(), &normalized_sig)
         .map_err(|e| format!("ES256K signature verification failed: {}", e))
 }
 
