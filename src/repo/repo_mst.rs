@@ -112,7 +112,8 @@ impl RepoMst {
         // Create empty map for this node
         let mut node_map: HashMap<String, DagCborObject> = HashMap::new();
 
-        // Add left link if present
+        // Add left link - always include "l" key (null if no left tree)
+        // This matches dnproto's serialization for consistent CIDs
         if let Some(ref left) = node.left_tree {
             Self::convert_mst_node_to_dag_cbor(cache, left)?;
             let left_key = MstNodeKey::from_node(left);
@@ -121,6 +122,11 @@ impl RepoMst {
             node_map.insert(
                 "l".to_string(),
                 DagCborObject::new_cid(left_cid.clone()),
+            );
+        } else {
+            node_map.insert(
+                "l".to_string(),
+                DagCborObject::new_null(),
             );
         }
 
@@ -149,7 +155,8 @@ impl RepoMst {
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
             entry_map.insert("v".to_string(), DagCborObject::new_cid(value_cid));
 
-            // "t" - tree CID (optional)
+            // "t" - tree CID - always include (null if no right tree)
+            // This matches dnproto's serialization for consistent CIDs
             if let Some(ref right) = entry.right_tree {
                 Self::convert_mst_node_to_dag_cbor(cache, right)?;
                 let right_key = MstNodeKey::from_node(right);
@@ -158,6 +165,11 @@ impl RepoMst {
                 entry_map.insert(
                     "t".to_string(),
                     DagCborObject::new_cid(right_cid.clone()),
+                );
+            } else {
+                entry_map.insert(
+                    "t".to_string(),
+                    DagCborObject::new_null(),
                 );
             }
 
