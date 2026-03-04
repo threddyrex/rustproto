@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
+use crate::pds::xrpc::is_valid_outbound_host;
 use crate::repo::DagCborObject;
 use crate::ws::{ActorQueryOptions, BlueskyClient};
 
@@ -154,6 +155,19 @@ pub async fn get_record(
                     .into_response();
             }
         };
+
+        // Validate PDS hostname (SSRF protection)
+        if !is_valid_outbound_host(&pds) {
+            state.log.error(&format!("[SECURITY] Blocked invalid or internal PDS hostname: {}", pds));
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(GetRecordError {
+                    error: "InvalidRequest".to_string(),
+                    message: "Invalid PDS hostname".to_string(),
+                }),
+            )
+                .into_response();
+        }
 
         let actor_did = actor_info.did.unwrap_or_default();
 

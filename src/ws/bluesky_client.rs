@@ -3,6 +3,9 @@
 //! This module provides functionality to resolve handles to DIDs,
 //! fetch DID documents, and extract PDS endpoints.
 
+use std::time::Instant;
+
+use crate::log::logger;
 use crate::ws::{ActorInfo, ActorQueryOptions};
 use reqwest::Client;
 use serde_json::Value;
@@ -83,6 +86,7 @@ impl BlueskyClient {
         actor: &str,
         options: Option<ActorQueryOptions>,
     ) -> Result<ActorInfo, BlueskyClientError> {
+        let start_time = Instant::now();
         let options = options.unwrap_or_default();
         let mut info = ActorInfo::with_actor(actor);
 
@@ -123,7 +127,16 @@ impl BlueskyClient {
         // Early exit if no DID resolved
         let did = match &info.did {
             Some(d) if d.starts_with("did:") => d.clone(),
-            _ => return Ok(info),
+            _ => {
+                let elapsed_ms = start_time.elapsed().as_secs_f64() * 1000.0;
+                logger().info(&format!(
+                    "[ACTOR] [BSKY] actor={} all={} bsky={} dns={} http={} didDoc={} did=None [{:.2}ms]",
+                    actor, options.all, options.resolve_handle_via_bluesky,
+                    options.resolve_handle_via_dns, options.resolve_handle_via_http,
+                    options.resolve_did_doc, elapsed_ms
+                ));
+                return Ok(info);
+            }
         };
 
         // Step 2: Resolve DID to DID document
@@ -151,6 +164,20 @@ impl BlueskyClient {
                 info.public_key_multibase = Some(pubkey);
             }
         }
+
+        // Log the resolution result
+        let elapsed_ms = start_time.elapsed().as_secs_f64() * 1000.0;
+        let did_doc_length = info.did_doc.as_ref().map(|d| d.len()).unwrap_or(0);
+        logger().info(&format!(
+            "[ACTOR] [BSKY] actor={} all={} bsky={} dns={} http={} didDoc={} did={} didDocLength={} pds={} [{:.2}ms]",
+            actor, options.all, options.resolve_handle_via_bluesky,
+            options.resolve_handle_via_dns, options.resolve_handle_via_http,
+            options.resolve_did_doc,
+            info.did.as_deref().unwrap_or("None"),
+            did_doc_length,
+            info.pds.as_deref().unwrap_or("None"),
+            elapsed_ms
+        ));
 
         Ok(info)
     }

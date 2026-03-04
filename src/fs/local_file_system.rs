@@ -5,9 +5,10 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 use thiserror::Error;
 
+use crate::log::logger;
 use crate::ws::ActorInfo;
 
 /// Errors that can occur during file system operations.
@@ -264,7 +265,10 @@ impl LocalFileSystem {
         actor: &str,
         cache_expiry_minutes: Option<u64>,
     ) -> Result<ActorInfo, LocalFileSystemError> {
+        let start_time = Instant::now();
+
         if actor.is_empty() {
+            logger().error("[ACTOR] [LFS] actor is null or empty");
             return Err(LocalFileSystemError::InvalidArgument(
                 "actor is null or empty".to_string(),
             ));
@@ -272,8 +276,14 @@ impl LocalFileSystem {
 
         let cache_expiry = cache_expiry_minutes.unwrap_or(Self::DEFAULT_CACHE_EXPIRY_MINUTES);
         let actor_file = self.get_path_actor_file(actor)?;
+        let file_exists = actor_file.exists();
 
-        if !actor_file.exists() {
+        if !file_exists {
+            let elapsed_ms = start_time.elapsed().as_secs_f64() * 1000.0;
+            logger().info(&format!(
+                "[ACTOR] [LFS] actor={} fileExists=false [{:.2}ms]",
+                actor, elapsed_ms
+            ));
             return Err(LocalFileSystemError::ActorInfoNotFound(format!(
                 "Actor info file not found: {}",
                 actor_file.display()
@@ -287,8 +297,15 @@ impl LocalFileSystem {
             .duration_since(modified)
             .unwrap_or(Duration::MAX);
         let age_minutes = age.as_secs() / 60;
+        let age_minutes_f = age.as_secs_f64() / 60.0;
+        let file_old = age_minutes > cache_expiry;
 
-        if age_minutes > cache_expiry {
+        if file_old {
+            let elapsed_ms = start_time.elapsed().as_secs_f64() * 1000.0;
+            logger().info(&format!(
+                "[ACTOR] [LFS] actor={} fileExists=true fileAgeMinutes={:.1} cacheExpiryMinutes={} fileOld=true filePath={} [{:.2}ms]",
+                actor, age_minutes_f, cache_expiry, actor_file.display(), elapsed_ms
+            ));
             return Err(LocalFileSystemError::ActorInfoNotFound(format!(
                 "Actor info file expired (age: {} minutes, max: {} minutes)",
                 age_minutes, cache_expiry
@@ -301,10 +318,21 @@ impl LocalFileSystem {
 
         // Validate that the file has a DID
         if !info.has_did() {
+            let elapsed_ms = start_time.elapsed().as_secs_f64() * 1000.0;
+            logger().warning(&format!(
+                "[ACTOR] [LFS] actor={} fileExists=true fileAgeMinutes={:.1} cacheExpiryMinutes={} fileOld=false missingDid=true [{:.2}ms]",
+                actor, age_minutes_f, cache_expiry, elapsed_ms
+            ));
             return Err(LocalFileSystemError::ActorInfoNotFound(
                 "Actor info loaded from file is missing DID".to_string(),
             ));
         }
+
+        let elapsed_ms = start_time.elapsed().as_secs_f64() * 1000.0;
+        logger().info(&format!(
+            "[ACTOR] [LFS] actor={} fileExists=true fileAgeMinutes={:.1} cacheExpiryMinutes={} fileOld=false [{:.2}ms]",
+            actor, age_minutes_f, cache_expiry, elapsed_ms
+        ));
 
         Ok(info)
     }

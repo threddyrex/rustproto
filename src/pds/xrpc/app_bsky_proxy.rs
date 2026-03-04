@@ -66,7 +66,7 @@ impl AtprotoProxy {
 /// Validates that a URL is safe for outbound requests (SSRF protection).
 ///
 /// Blocks localhost, private IPs, cloud metadata endpoints, and non-HTTPS schemes.
-fn is_valid_outbound_url(url: &str) -> bool {
+pub fn is_valid_outbound_url(url: &str) -> bool {
     let parsed_url = match Url::parse(url) {
         Ok(u) => u,
         Err(_) => return false,
@@ -86,7 +86,7 @@ fn is_valid_outbound_url(url: &str) -> bool {
 }
 
 /// Validates that a hostname is safe for outbound requests.
-fn is_valid_outbound_host(hostname: &str) -> bool {
+pub fn is_valid_outbound_host(hostname: &str) -> bool {
     if hostname.is_empty() {
         return false;
     }

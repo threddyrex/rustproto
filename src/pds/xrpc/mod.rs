@@ -35,7 +35,7 @@ mod sync_list_repos;
 mod upload_blob;
 
 pub use activate_account::activate_account;
-pub use app_bsky_proxy::app_bsky_fallback;
+pub use app_bsky_proxy::{app_bsky_fallback, is_valid_outbound_host, is_valid_outbound_url};
 pub use apply_writes::apply_writes;
 pub use check_account_status::check_account_status;
 pub use create_record::create_record;
