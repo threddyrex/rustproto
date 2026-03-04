@@ -13,7 +13,7 @@ use serde::Deserialize;
 use tower_cookies::Cookies;
 
 use super::{get_base_styles, get_navbar_css, get_navbar_html, ADMIN_SESSION_TIMEOUT_MINUTES};
-use crate::pds::db::{Passkey, PasskeyChallenge, PdsDb};
+use crate::pds::db::{Passkey, PasskeyChallenge, PdsDb, StatisticKey};
 use crate::pds::server::PdsState;
 
 /// Handle GET /admin/passkeys - Show passkeys page.
@@ -35,6 +35,14 @@ pub async fn admin_passkeys(
     if !is_authenticated(&state.db, &cookies) {
         return Redirect::to("/admin/login").into_response();
     }
+
+    // Increment statistics
+    let stat_key = StatisticKey {
+        name: "admin/passkeys".to_string(),
+        ip_address: "global".to_string(),
+        user_agent: "unknown".to_string(),
+    };
+    let _ = state.db.increment_statistic(&stat_key);
 
     // Get hostname for title
     let hostname = state
@@ -153,6 +161,14 @@ pub async fn admin_delete_passkey(
         return Redirect::to("/admin/login").into_response();
     }
 
+    // Increment statistics
+    let stat_key = StatisticKey {
+        name: "admin/deletepasskey".to_string(),
+        ip_address: "global".to_string(),
+        user_agent: "unknown".to_string(),
+    };
+    let _ = state.db.increment_statistic(&stat_key);
+
     // Delete the passkey
     if let Some(name) = form.name {
         if !name.is_empty() {
@@ -186,6 +202,14 @@ pub async fn admin_delete_passkey_challenge(
     if !is_authenticated(&state.db, &cookies) {
         return Redirect::to("/admin/login").into_response();
     }
+
+    // Increment statistics
+    let stat_key = StatisticKey {
+        name: "admin/deletepasskeychallenge".to_string(),
+        ip_address: "global".to_string(),
+        user_agent: "unknown".to_string(),
+    };
+    let _ = state.db.increment_statistic(&stat_key);
 
     // Delete the challenge
     if let Some(challenge) = form.challenge {

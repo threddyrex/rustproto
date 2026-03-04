@@ -18,7 +18,7 @@ use sha2::Sha256;
 use tower_cookies::{Cookie, Cookies};
 use uuid::Uuid;
 
-use crate::pds::db::{AdminSession, PdsDb};
+use crate::pds::db::{AdminSession, PdsDb, StatisticKey};
 use crate::pds::server::PdsState;
 
 /// Password hasher constants (must match dnproto).
@@ -47,6 +47,14 @@ pub async fn admin_login_get(
             .into_response();
     }
 
+    // Increment statistics
+    let stat_key = StatisticKey {
+        name: "admin/login".to_string(),
+        ip_address: "global".to_string(),
+        user_agent: "unknown".to_string(),
+    };
+    let _ = state.db.increment_statistic(&stat_key);
+
     Html(get_login_html()).into_response()
 }
 
@@ -62,6 +70,14 @@ pub async fn admin_login_post(
     if !is_admin_enabled(&state.db) {
         return Redirect::to("/admin/login").into_response();
     }
+
+    // Increment statistics
+    let stat_key = StatisticKey {
+        name: "admin/login".to_string(),
+        ip_address: "global".to_string(),
+        user_agent: "unknown".to_string(),
+    };
+    let _ = state.db.increment_statistic(&stat_key);
 
     let username = form.username.unwrap_or_default();
     let password = form.password.unwrap_or_default();
@@ -127,6 +143,14 @@ pub async fn admin_logout(
     State(state): State<Arc<PdsState>>,
     cookies: Cookies,
 ) -> impl IntoResponse {
+    // Increment statistics
+    let stat_key = StatisticKey {
+        name: "admin/logout".to_string(),
+        ip_address: "global".to_string(),
+        user_agent: "unknown".to_string(),
+    };
+    let _ = state.db.increment_statistic(&stat_key);
+
     // Remove the session cookie
     if let Some(cookie) = cookies.get("adminSessionId") {
         let session_id = cookie.value().to_string();

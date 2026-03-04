@@ -11,7 +11,7 @@ use axum::{
 use tower_cookies::Cookies;
 
 use super::{get_base_styles, get_navbar_css, get_navbar_html, ADMIN_SESSION_TIMEOUT_MINUTES};
-use crate::pds::db::PdsDb;
+use crate::pds::db::{PdsDb, StatisticKey};
 use crate::pds::server::PdsState;
 
 /// Handle GET /admin/ - Show admin home page.
@@ -33,6 +33,14 @@ pub async fn admin_home(
     if !is_authenticated(&state.db, &cookies) {
         return Redirect::to("/admin/login").into_response();
     }
+
+    // Increment statistics
+    let stat_key = StatisticKey {
+        name: "admin/home".to_string(),
+        ip_address: "global".to_string(),
+        user_agent: "unknown".to_string(),
+    };
+    let _ = state.db.increment_statistic(&stat_key);
 
     // Get hostname for title
     let hostname = state

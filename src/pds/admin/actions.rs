@@ -21,7 +21,7 @@ use tower_cookies::{Cookie, Cookies};
 
 use super::{get_base_styles, get_navbar_css, get_navbar_html, ADMIN_SESSION_TIMEOUT_MINUTES};
 use crate::log::{Logger, LogLevel};
-use crate::pds::db::PdsDb;
+use crate::pds::db::{PdsDb, StatisticKey};
 use crate::pds::firehose_event_generator::FirehoseEventGenerator;
 use crate::pds::installer::Installer;
 use crate::pds::server::PdsState;
@@ -58,6 +58,14 @@ pub async fn admin_actions_get(
         return Redirect::to("/admin/login").into_response();
     }
 
+    // Increment statistics
+    let stat_key = StatisticKey {
+        name: "admin/actions".to_string(),
+        ip_address: "global".to_string(),
+        user_agent: "unknown".to_string(),
+    };
+    let _ = state.db.increment_statistic(&stat_key);
+
     // Check for generated password cookies
     let generated_admin_password = get_and_remove_cookie(&cookies, "generated_admin_password");
     let generated_user_password = get_and_remove_cookie(&cookies, "generated_user_password");
@@ -93,6 +101,14 @@ pub async fn admin_actions_post(
     if !is_authenticated(&state.db, &cookies) {
         return Redirect::to("/admin/login").into_response();
     }
+
+    // Increment statistics
+    let stat_key = StatisticKey {
+        name: "admin/actions".to_string(),
+        ip_address: "global".to_string(),
+        user_agent: "unknown".to_string(),
+    };
+    let _ = state.db.increment_statistic(&stat_key);
 
     let action = form.action.as_deref().unwrap_or("");
 

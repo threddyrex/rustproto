@@ -14,7 +14,7 @@ use serde::Deserialize;
 use tower_cookies::Cookies;
 
 use super::{get_base_styles, get_navbar_css, get_navbar_html, ADMIN_SESSION_TIMEOUT_MINUTES};
-use crate::pds::db::PdsDb;
+use crate::pds::db::{PdsDb, StatisticKey};
 use crate::pds::server::PdsState;
 
 /// Whitelist of allowed config keys that can be set via the admin interface.
@@ -68,6 +68,14 @@ pub async fn admin_config_get(
         return Redirect::to("/admin/login").into_response();
     }
 
+    // Increment statistics
+    let stat_key = StatisticKey {
+        name: "admin/config".to_string(),
+        ip_address: "global".to_string(),
+        user_agent: "unknown".to_string(),
+    };
+    let _ = state.db.increment_statistic(&stat_key);
+
     render_config_page(&state.db).into_response()
 }
 
@@ -91,6 +99,14 @@ pub async fn admin_config_post(
     if !is_authenticated(&state.db, &cookies) {
         return Redirect::to("/admin/login").into_response();
     }
+
+    // Increment statistics
+    let stat_key = StatisticKey {
+        name: "admin/config".to_string(),
+        ip_address: "global".to_string(),
+        user_agent: "unknown".to_string(),
+    };
+    let _ = state.db.increment_statistic(&stat_key);
 
     // Validate and set the config property
     let allowed_keys: HashSet<&str> = ALLOWED_CONFIG_KEYS.iter().copied().collect();

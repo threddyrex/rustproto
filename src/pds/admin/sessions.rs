@@ -14,7 +14,7 @@ use serde::Deserialize;
 use tower_cookies::Cookies;
 
 use super::{get_base_styles, get_navbar_css, get_navbar_html, ADMIN_SESSION_TIMEOUT_MINUTES};
-use crate::pds::db::{AdminSession, LegacySession, OauthSession, PdsDb};
+use crate::pds::db::{AdminSession, LegacySession, OauthSession, PdsDb, StatisticKey};
 use crate::pds::server::PdsState;
 
 /// Handle GET /admin/sessions - Show sessions page.
@@ -36,6 +36,14 @@ pub async fn admin_sessions(
     if !is_authenticated(&state.db, &cookies) {
         return Redirect::to("/admin/login").into_response();
     }
+
+    // Increment statistics
+    let stat_key = StatisticKey {
+        name: "admin/sessions".to_string(),
+        ip_address: "global".to_string(),
+        user_agent: "unknown".to_string(),
+    };
+    let _ = state.db.increment_statistic(&stat_key);
 
     // Get hostname for title
     let hostname = state
@@ -230,6 +238,14 @@ pub async fn admin_delete_legacy_session(
         return Redirect::to("/admin/login").into_response();
     }
 
+    // Increment statistics
+    let stat_key = StatisticKey {
+        name: "admin/deletelegacysession".to_string(),
+        ip_address: "global".to_string(),
+        user_agent: "unknown".to_string(),
+    };
+    let _ = state.db.increment_statistic(&stat_key);
+
     // Delete the session
     if let Some(refresh_jwt) = form.refresh_jwt {
         if !refresh_jwt.is_empty() {
@@ -265,6 +281,14 @@ pub async fn admin_delete_oauth_session(
         return Redirect::to("/admin/login").into_response();
     }
 
+    // Increment statistics
+    let stat_key = StatisticKey {
+        name: "admin/deleteoauthsession".to_string(),
+        ip_address: "global".to_string(),
+        user_agent: "unknown".to_string(),
+    };
+    let _ = state.db.increment_statistic(&stat_key);
+
     // Delete the session
     if let Some(session_id) = form.session_id {
         if !session_id.is_empty() {
@@ -299,6 +323,14 @@ pub async fn admin_delete_admin_session(
     if !is_authenticated(&state.db, &cookies) {
         return Redirect::to("/admin/login").into_response();
     }
+
+    // Increment statistics
+    let stat_key = StatisticKey {
+        name: "admin/deleteadminsession".to_string(),
+        ip_address: "global".to_string(),
+        user_agent: "unknown".to_string(),
+    };
+    let _ = state.db.increment_statistic(&stat_key);
 
     // Delete the session
     if let Some(session_id) = form.session_id {

@@ -37,6 +37,14 @@ pub async fn admin_stats(
         return Redirect::to("/admin/login").into_response();
     }
 
+    // Increment statistics
+    let stat_key = StatisticKey {
+        name: "admin/stats".to_string(),
+        ip_address: "global".to_string(),
+        user_agent: "unknown".to_string(),
+    };
+    let _ = state.db.increment_statistic(&stat_key);
+
     // Get hostname for title
     let hostname = state
         .db
@@ -251,6 +259,14 @@ pub async fn admin_delete_statistic(
         return Redirect::to("/admin/login").into_response();
     }
 
+    // Increment statistics
+    let stat_key = StatisticKey {
+        name: "admin/deletestatistic".to_string(),
+        ip_address: "global".to_string(),
+        user_agent: "unknown".to_string(),
+    };
+    let _ = state.db.increment_statistic(&stat_key);
+
     // Delete the statistic
     if let (Some(name), Some(ip_address), Some(user_agent)) =
         (form.name, form.ip_address, form.user_agent)
@@ -285,6 +301,14 @@ pub async fn admin_delete_all_statistics(
         return Redirect::to("/admin/login").into_response();
     }
 
+    // Increment statistics (note: this stat will also be deleted)
+    let stat_key = StatisticKey {
+        name: "admin/deleteallstatistics".to_string(),
+        ip_address: "global".to_string(),
+        user_agent: "unknown".to_string(),
+    };
+    let _ = state.db.increment_statistic(&stat_key);
+
     // Delete all statistics
     if let Err(e) = state.db.delete_all_statistics() {
         state
@@ -309,6 +333,14 @@ pub async fn admin_delete_old_statistics(
     if !is_authenticated(&state.db, &cookies) {
         return Redirect::to("/admin/login").into_response();
     }
+
+    // Increment statistics
+    let stat_key = StatisticKey {
+        name: "admin/deleteoldstatistics".to_string(),
+        ip_address: "global".to_string(),
+        user_agent: "unknown".to_string(),
+    };
+    let _ = state.db.increment_statistic(&stat_key);
 
     // Delete statistics older than 24 hours
     if let Err(e) = state.db.delete_old_statistics(24) {
