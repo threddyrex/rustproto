@@ -3,11 +3,6 @@
 
 Rust port of [dnproto](https://github.com/threddyrex/dnproto).
 
-This project started as a toolset for debugging and working with ATProto. Things like
-resolving handles, downloading repos, parsing repos, etc.
-
-More recently it's become a PDS implementation.
-
 My main account is hosted on a dnproto PDS:
 
 - https://bsky.app/profile/threddyrex.org
