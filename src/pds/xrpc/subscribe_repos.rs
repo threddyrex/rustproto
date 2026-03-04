@@ -253,6 +253,14 @@ async fn check_and_retire_toxic_event(state: &Arc<PdsState>, sequence_number: i6
                 "[FIREHOSE] Successfully retired toxic event seq={}",
                 sequence_number
             ));
+
+            // Increment statistic for toxic events hidden
+            let stat_key = StatisticKey {
+                name: "firehose/toxic_event_hidden".to_string(),
+                ip_address: "".to_string(),
+                user_agent: "".to_string(),
+            };
+            let _ = state.db.increment_statistic(&stat_key);
         }
         
         // Remove from tracker since it's now hidden
