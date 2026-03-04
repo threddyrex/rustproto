@@ -7,6 +7,7 @@ mod actions;
 mod config;
 mod home;
 mod login;
+mod passkey_auth;
 mod passkeys;
 mod sessions;
 mod stats;
@@ -32,6 +33,7 @@ pub use stats::{
     admin_delete_old_statistics,
 };
 pub use actions::{admin_actions_get, admin_actions_post};
+pub use passkey_auth::{admin_passkey_authentication_options, admin_authenticate_passkey};
 pub use passkeys::{admin_passkeys, admin_delete_passkey, admin_delete_passkey_challenge};
 
 // =============================================================================

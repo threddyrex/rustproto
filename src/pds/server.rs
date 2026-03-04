@@ -202,6 +202,8 @@ impl PdsServer {
             .route("/admin/", axum::routing::get(admin::admin_home))
             .route("/admin/login", axum::routing::get(admin::admin_login_get).post(admin::admin_login_post))
             .route("/admin/login/", axum::routing::get(admin::admin_login_get).post(admin::admin_login_post))
+            .route("/admin/passkeyauthenticationoptions", axum::routing::post(admin::admin_passkey_authentication_options))
+            .route("/admin/authenticatepasskey", axum::routing::post(admin::admin_authenticate_passkey))
             .route("/admin/logout", axum::routing::post(admin::admin_logout))
             .route("/admin/sessions", axum::routing::get(admin::admin_sessions))
             .route("/admin/sessions/", axum::routing::get(admin::admin_sessions))
