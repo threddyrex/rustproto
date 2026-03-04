@@ -109,7 +109,7 @@ pub fn get_navbar_html(active_page: &str) -> String {
         <div class="navbar">
             <a href="/admin/" class="nav-btn{home}">Home</a>
             <a href="/admin/sessions" class="nav-btn{sessions}">Sessions</a>
-            <a href="/admin/stats" class="nav-btn{stats}">Stats</a>
+            <a href="/admin/stats" class="nav-btn{stats}">Statistics</a>
             <div class="nav-spacer"></div>
             <a href="/admin/config" class="nav-btn-destructive{config}">Config</a>
             <a href="/admin/actions" class="nav-btn-destructive{actions}">Actions</a>
