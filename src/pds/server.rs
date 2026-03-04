@@ -18,7 +18,7 @@ use tower_http::cors::{Any, CorsLayer};
 
 use super::admin;
 use super::background_jobs::BackgroundJobs;
-use super::db::{PdsDb, StatisticKey};
+use super::db::{PdsDb};
 use super::oauth;
 use super::xrpc;
 use crate::fs::LocalFileSystem;
@@ -253,14 +253,6 @@ async fn logging_middleware(
         "[CONNECT] {} {} {}",
         ip_address, path, user_agent
     ));
-
-    // Increment connection statistics (don't fail on error)
-    let stat_key = StatisticKey {
-        name: "Connect".to_string(),
-        ip_address: ip_address.clone(),
-        user_agent: user_agent.clone(),
-    };
-    let _ = state.db.increment_statistic(&stat_key);
 
     // Run the next handler
     let response = next.run(request).await;
