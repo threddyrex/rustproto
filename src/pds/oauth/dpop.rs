@@ -5,6 +5,7 @@
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use p256::ecdsa::{Signature as P256Signature, VerifyingKey as P256VerifyingKey, signature::Verifier};
+use k256::ecdsa::{Signature as K256Signature, VerifyingKey as K256VerifyingKey};
 use sha2::{Sha256, Digest};
 
 /// Result of DPoP validation.
@@ -318,9 +319,10 @@ fn verify_ec_signature(
     // Get curve from JWK
     let crv = jwk.get("crv").and_then(|v| v.as_str());
 
-    // Only support ES256/P-256 for now (most common)
+    // Support ES256 (P-256) and ES256K (secp256k1)
     match crv.unwrap_or(alg) {
         "P-256" | "ES256" => verify_es256_signature(signed_data, signature, &x_bytes, &y_bytes),
+        "secp256k1" | "ES256K" => verify_es256k_signature(signed_data, signature, &x_bytes, &y_bytes),
         _ => Err(format!("Unsupported EC curve/algorithm: {:?}/{}", crv, alg)),
     }
 }
@@ -352,6 +354,35 @@ fn verify_es256_signature(
     verifying_key
         .verify(signed_data.as_bytes(), &sig)
         .map_err(|e| format!("Signature verification failed: {}", e))
+}
+
+/// Verify ES256K (secp256k1) signature.
+fn verify_es256k_signature(
+    signed_data: &str,
+    signature: &[u8],
+    x_bytes: &[u8],
+    y_bytes: &[u8],
+) -> Result<(), String> {
+    // Pad coordinates to 32 bytes if needed
+    let x_padded = pad_bytes(x_bytes, 32);
+    let y_padded = pad_bytes(y_bytes, 32);
+
+    // Create public key point (uncompressed format: 04 || x || y)
+    let mut point_bytes = vec![0x04];
+    point_bytes.extend_from_slice(&x_padded);
+    point_bytes.extend_from_slice(&y_padded);
+
+    let verifying_key = K256VerifyingKey::from_sec1_bytes(&point_bytes)
+        .map_err(|e| format!("Invalid secp256k1 public key: {}", e))?;
+
+    // Parse the signature (IEEE P1363 format: r || s)
+    let sig = K256Signature::from_slice(signature)
+        .map_err(|e| format!("Invalid ES256K signature format: {}", e))?;
+
+    // Verify
+    verifying_key
+        .verify(signed_data.as_bytes(), &sig)
+        .map_err(|e| format!("ES256K signature verification failed: {}", e))
 }
 
 /// Verify RSA signature (RS256, PS256, etc.).
@@ -448,6 +479,7 @@ mod tests {
     #[test]
     fn test_is_allowed_dpop_algorithm() {
         assert!(is_allowed_dpop_algorithm("ES256"));
+        assert!(is_allowed_dpop_algorithm("ES256K")); // secp256k1
         assert!(is_allowed_dpop_algorithm("RS256"));
         assert!(is_allowed_dpop_algorithm("PS256"));
         assert!(!is_allowed_dpop_algorithm("HS256")); // Symmetric not allowed
