@@ -18,10 +18,9 @@ pub fn is_oauth_enabled(db: &PdsDb) -> bool {
 
 /// Check if passkeys are enabled in the PDS configuration.
 ///
-/// Passkeys are enabled if the `PasskeysEnabled` config property is set to "true".
+/// Passkeys are enabled if the `FeatureEnabled_Passkeys` config property is set to true.
 pub fn is_passkeys_enabled(db: &PdsDb) -> bool {
-    db.get_config_property("PasskeysEnabled")
-        .map(|v| v.eq_ignore_ascii_case("true"))
+    db.get_config_property_bool("FeatureEnabled_Passkeys")
         .unwrap_or(false)
 }
 

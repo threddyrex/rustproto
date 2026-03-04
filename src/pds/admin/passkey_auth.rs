@@ -494,7 +494,7 @@ fn is_admin_enabled(db: &PdsDb) -> bool {
 
 /// Check if passkeys are enabled.
 fn is_passkeys_enabled(db: &PdsDb) -> bool {
-    db.get_config_property_bool("FeatureEnabled_Passkey")
+    db.get_config_property_bool("FeatureEnabled_Passkeys")
         .unwrap_or(false)
 }
 
