@@ -197,6 +197,9 @@ impl PdsServer {
             .route("/oauth/token", axum::routing::post(oauth::oauth_token))
             .route("/oauth/passkeyauthenticationoptions", axum::routing::post(oauth::passkey_authentication_options))
             .route("/oauth/authenticatepasskey", axum::routing::post(oauth::authenticate_passkey))
+            .route("/oauth/register-passkey", axum::routing::get(oauth::register_passkey_get))
+            .route("/oauth/passkeyregistrationoptions", axum::routing::post(oauth::passkey_registration_options))
+            .route("/oauth/registerpasskey", axum::routing::post(oauth::register_passkey_post))
             // Admin endpoints
             .route("/admin", axum::routing::get(admin::admin_home))
             .route("/admin/", axum::routing::get(admin::admin_home))
