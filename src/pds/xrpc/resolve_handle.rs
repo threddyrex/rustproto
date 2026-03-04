@@ -2,18 +2,20 @@
 //!
 //! Resolves a handle (e.g., "alice.bsky.social") to a DID.
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{
     Json,
-    extract::{Query, State},
-    http::StatusCode,
+    extract::{ConnectInfo, Query, State},
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
 use serde::{Deserialize, Serialize};
 
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
+use crate::pds::xrpc::auth_helpers::get_caller_info;
 use crate::ws::{ActorQueryOptions, BlueskyClient};
 
 /// Query parameters for resolveHandle.
@@ -52,13 +54,18 @@ pub struct ResolveHandleError {
 /// * `404 Not Found` if handle cannot be resolved
 pub async fn resolve_handle(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Query(params): Query<ResolveHandleParams>,
 ) -> Response {
+    // Get caller info for statistics
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Increment statistics
     let stat_key = StatisticKey {
         name: "xrpc/com.atproto.identity.resolveHandle".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 

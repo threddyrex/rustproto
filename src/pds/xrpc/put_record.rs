@@ -91,15 +91,16 @@ pub async fn put_record(
     headers: HeaderMap,
     Json(body): Json<PutRecordRequest>,
 ) -> Response {
+    // Get caller info for statistics
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Increment statistics
     let stat_key = StatisticKey {
         name: "xrpc/com.atproto.repo.putRecord".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address: ip_address.clone(),
+        user_agent: user_agent.clone(),
     };
     let _ = state.db.increment_statistic(&stat_key);
-
-    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
 
     // Check authentication (supports Legacy and OAuth)
     let auth_result = check_user_auth(

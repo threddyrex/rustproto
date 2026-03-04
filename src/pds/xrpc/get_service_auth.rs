@@ -3,11 +3,12 @@
 //! Returns a signed token on behalf of the requesting DID for the requested service.
 //! This is used for inter-service authentication in the AT Protocol.
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::{ConnectInfo, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
@@ -17,7 +18,7 @@ use crate::pds::auth::sign_service_auth_token;
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
 
-use super::auth_helpers::{auth_failure_response, check_user_auth};
+use super::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info};
 
 /// Query parameters for getServiceAuth.
 #[derive(Deserialize)]
@@ -66,14 +67,18 @@ pub struct GetServiceAuthError {
 /// * `401 Unauthorized` if not authenticated
 pub async fn get_service_auth(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Query(params): Query<GetServiceAuthParams>,
 ) -> Response {
+    // Get caller info for statistics
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Increment statistics
     let stat_key = StatisticKey {
         name: "xrpc/com.atproto.server.getServiceAuth".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 

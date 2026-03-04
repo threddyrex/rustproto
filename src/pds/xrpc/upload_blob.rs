@@ -78,15 +78,16 @@ pub async fn upload_blob(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
+    // Get caller info for statistics
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Increment statistics
     let stat_key = StatisticKey {
         name: "xrpc/com.atproto.repo.uploadBlob".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
-
-    let (_ip_address, _user_agent) = get_caller_info(&headers, Some(addr));
 
     // Check authentication (supports Legacy and OAuth)
     let auth_result = check_user_auth(

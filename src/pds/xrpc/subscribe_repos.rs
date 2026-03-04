@@ -3,12 +3,13 @@
 //! WebSocket firehose for streaming repository events to subscribers.
 
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI32, Ordering};
 
 use axum::{
-    extract::{Query, State, WebSocketUpgrade, ws::{Message, WebSocket}},
-    http::StatusCode,
+    extract::{ConnectInfo, Query, State, WebSocketUpgrade, ws::{Message, WebSocket}},
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
@@ -19,6 +20,7 @@ use tokio::time::{Duration, interval};
 
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
+use crate::pds::xrpc::auth_helpers::get_caller_info;
 
 /// Query parameters for subscribeRepos.
 #[derive(Deserialize)]
@@ -75,14 +77,19 @@ fn get_toxic_tracker() -> &'static Mutex<HashMap<i64, (u32, std::time::Instant)>
 /// * `400 Bad Request` if not a WebSocket request
 pub async fn subscribe_repos(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Query(query): Query<SubscribeReposQuery>,
     ws: WebSocketUpgrade,
 ) -> Response {
+    // Get caller info for statistics
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Increment statistics
     let stat_key = StatisticKey {
         name: "xrpc/com.atproto.sync.subscribeRepos".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 
@@ -262,12 +269,17 @@ async fn check_and_retire_toxic_event(state: &Arc<PdsState>, sequence_number: i6
 #[allow(dead_code)]
 pub async fn subscribe_repos_non_ws(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
 ) -> Response {
+    // Get caller info for statistics
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Increment statistics
     let stat_key = StatisticKey {
         name: "xrpc/com.atproto.sync.subscribeRepos".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 

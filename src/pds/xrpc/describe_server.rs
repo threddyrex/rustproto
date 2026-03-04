@@ -3,13 +3,20 @@
 //! Returns metadata about the PDS server, including supported user domains,
 //! DID, and configuration flags.
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
-use axum::{Json, extract::State, response::IntoResponse};
+use axum::{
+    Json,
+    extract::{ConnectInfo, State},
+    http::HeaderMap,
+    response::IntoResponse,
+};
 use serde::Serialize;
 
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
+use crate::pds::xrpc::auth_helpers::get_caller_info;
 
 /// Server description response structure.
 #[derive(Serialize)]
@@ -53,12 +60,19 @@ struct ContactResponse {
 /// - Available user domains for handle creation
 /// - The server's DID
 /// - Whether invite codes or phone verification are required
-pub async fn describe_server(State(state): State<Arc<PdsState>>) -> impl IntoResponse {
+pub async fn describe_server(
+    State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    // Get caller info for statistics
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Increment statistics
     let stat_key = StatisticKey {
         name: "xrpc/com.atproto.server.describeServer".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 

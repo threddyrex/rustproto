@@ -3,10 +3,11 @@
 //! Returns the user's preferences stored on the PDS.
 //! Preferences are the exception to the rule of proxying app.bsky.* to the AppView.
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{
-    extract::State,
+    extract::{ConnectInfo, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
@@ -16,7 +17,7 @@ use serde_json::Value as JsonValue;
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
 
-use super::auth_helpers::{auth_failure_response, check_user_auth};
+use super::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info};
 
 /// GET /xrpc/app.bsky.actor.getPreferences - Get user preferences.
 ///
@@ -33,13 +34,17 @@ use super::auth_helpers::{auth_failure_response, check_user_auth};
 /// * `401 Unauthorized` if not authenticated
 pub async fn get_preferences(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
 ) -> Response {
+    // Get caller info for statistics
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Increment statistics
     let stat_key = StatisticKey {
         name: "xrpc/app.bsky.actor.getPreferences".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 

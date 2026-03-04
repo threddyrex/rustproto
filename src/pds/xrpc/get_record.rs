@@ -2,18 +2,20 @@
 //!
 //! Retrieves a single record from a repository.
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{
     Json,
-    extract::{Query, State},
-    http::StatusCode,
+    extract::{ConnectInfo, Query, State},
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
 use serde::{Deserialize, Serialize};
 
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
+use crate::pds::xrpc::auth_helpers::get_caller_info;
 use crate::pds::xrpc::is_valid_outbound_host;
 use crate::repo::DagCborObject;
 use crate::ws::{ActorQueryOptions, BlueskyClient};
@@ -67,13 +69,18 @@ pub struct GetRecordError {
 /// * `404 Not Found` if the record doesn't exist
 pub async fn get_record(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Query(query): Query<GetRecordQuery>,
 ) -> Response {
+    // Get caller info for statistics
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Increment statistics
     let stat_key = StatisticKey {
         name: "xrpc/com.atproto.repo.getRecord".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 

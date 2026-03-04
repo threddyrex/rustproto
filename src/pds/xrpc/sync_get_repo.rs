@@ -4,12 +4,13 @@
 
 use std::collections::HashMap;
 use std::io::Write;
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{
     body::Body,
-    extract::{Query, State},
-    http::{StatusCode, header},
+    extract::{ConnectInfo, Query, State},
+    http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
     Json,
 };
@@ -18,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use crate::mst::{Mst, MstItem};
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
+use crate::pds::xrpc::auth_helpers::get_caller_info;
 use crate::repo::{CidV1, DagCborObject, RepoMst, VarInt};
 
 /// Query parameters for getRepo.
@@ -58,13 +60,18 @@ pub struct GetRepoError {
 /// * `404 Not Found` if repository doesn't exist
 pub async fn sync_get_repo(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Query(query): Query<GetRepoQuery>,
 ) -> Response {
+    // Get caller info for statistics
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Increment statistics
     let stat_key = StatisticKey {
         name: "xrpc/com.atproto.sync.getRepo".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 

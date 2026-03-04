@@ -65,15 +65,16 @@ pub async fn refresh_session(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
 ) -> Response {
+    // Get caller info for statistics
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Increment statistics
     let stat_key = StatisticKey {
         name: "xrpc/com.atproto.server.refreshSession".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address: ip_address.clone(),
+        user_agent: user_agent.clone(),
     };
     let _ = state.db.increment_statistic(&stat_key);
-
-    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
 
     // Extract the refresh token from Authorization header
     let original_refresh_jwt = match extract_bearer_token(&headers) {

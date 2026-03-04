@@ -2,11 +2,12 @@
 //!
 //! Returns information about the current authenticated session.
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{
     Json,
-    extract::State,
+    extract::{ConnectInfo, State},
     http::HeaderMap,
     response::{IntoResponse, Response},
 };
@@ -15,7 +16,7 @@ use serde::Serialize;
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
 
-use super::auth_helpers::{auth_failure_response, check_user_auth};
+use super::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info};
 
 /// Successful response for getSession.
 #[derive(Serialize)]
@@ -47,13 +48,17 @@ pub struct GetSessionResponse {
 /// * `401 Unauthorized` if not authenticated
 pub async fn get_session(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
 ) -> Response {
+    // Get caller info for statistics
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Increment statistics
     let stat_key = StatisticKey {
         name: "xrpc/com.atproto.server.getSession".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 

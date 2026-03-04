@@ -2,10 +2,11 @@
 //!
 //! Deactivates the authenticated user's account.
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{
-    extract::State,
+    extract::{ConnectInfo, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
@@ -14,7 +15,7 @@ use crate::pds::db::StatisticKey;
 use crate::pds::firehose_event_generator::FirehoseEventGenerator;
 use crate::pds::server::PdsState;
 
-use super::auth_helpers::{auth_failure_response, check_legacy_auth};
+use super::auth_helpers::{auth_failure_response, check_legacy_auth, get_caller_info};
 
 /// POST /xrpc/com.atproto.server.deactivateAccount - Deactivate account endpoint.
 ///
@@ -32,13 +33,17 @@ use super::auth_helpers::{auth_failure_response, check_legacy_auth};
 /// * `401 Unauthorized` if not authenticated
 pub async fn deactivate_account(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
 ) -> Response {
+    // Get caller info for statistics
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
     // Increment statistics
     let stat_key = StatisticKey {
         name: "xrpc/com.atproto.server.deactivateAccount".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 

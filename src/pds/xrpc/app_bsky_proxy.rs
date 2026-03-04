@@ -7,11 +7,12 @@
 //! See: <https://docs.bsky.app/docs/advanced-guides/api-directory>
 
 use std::collections::HashSet;
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{
     body::{Body, Bytes},
-    extract::State,
+    extract::{ConnectInfo, State},
     http::{HeaderMap, Method, StatusCode},
     response::{IntoResponse, Response},
     Json,
@@ -25,7 +26,7 @@ use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
 use crate::ws::{ActorQueryOptions, BlueskyClient};
 
-use super::auth_helpers::{auth_failure_response, check_user_auth};
+use super::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info};
 
 /// Default Atproto-Proxy value for the Bluesky AppView.
 const DEFAULT_ATPROTO_PROXY: &str = "did:web:api.bsky.app#bsky_appview";
@@ -222,12 +223,16 @@ pub async fn proxy_to_appview(
     query: String,
     headers: HeaderMap,
     body: Bytes,
+    socket_addr: Option<SocketAddr>,
 ) -> Response {
+    // Get caller info for statistics
+    let (ip_address, user_agent) = get_caller_info(&headers, socket_addr);
+
     // Increment statistics
     let stat_key = StatisticKey {
         name: format!("xrpc/proxy:{}", path),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 
@@ -570,6 +575,7 @@ pub async fn proxy_to_appview(
 /// This is used as the catch-all for app.bsky.* and chat.bsky.* endpoints.
 pub async fn app_bsky_fallback(
     State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     method: Method,
     axum::extract::OriginalUri(uri): axum::extract::OriginalUri,
     headers: HeaderMap,
@@ -580,14 +586,17 @@ pub async fn app_bsky_fallback(
 
     // Check if this is an app.bsky or chat.bsky route
     if path.starts_with("/xrpc/app.bsky.") || path.starts_with("/xrpc/chat.bsky.") {
-        return proxy_to_appview(State(state), method, path, query, headers, body).await;
+        return proxy_to_appview(State(state), method, path, query, headers, body, Some(addr)).await;
     }
+
+    // Get caller info for statistics
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
 
     // For non-app.bsky routes, return 501 Not Implemented
     let stat_key = StatisticKey {
         name: "xrpc/unimplemented".to_string(),
-        ip_address: "global".to_string(),
-        user_agent: "unknown".to_string(),
+        ip_address,
+        user_agent,
     };
     let _ = state.db.increment_statistic(&stat_key);
 
