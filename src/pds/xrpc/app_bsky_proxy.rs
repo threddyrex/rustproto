@@ -25,7 +25,7 @@ use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
 use crate::ws::{ActorQueryOptions, BlueskyClient};
 
-use super::auth_helpers::{auth_failure_response, check_legacy_auth};
+use super::auth_helpers::{auth_failure_response, check_user_auth};
 
 /// Default Atproto-Proxy value for the Bluesky AppView.
 const DEFAULT_ATPROTO_PROXY: &str = "did:web:api.bsky.app#bsky_appview";
@@ -231,8 +231,14 @@ pub async fn proxy_to_appview(
     };
     let _ = state.db.increment_statistic(&stat_key);
 
-    // Check authentication
-    let auth_result = check_legacy_auth(&state, &headers);
+    // Check authentication (supports Legacy and OAuth)
+    let auth_result = check_user_auth(
+        &state,
+        &headers,
+        None,
+        method.as_str(),
+        &path,
+    );
     if !auth_result.is_authenticated {
         return auth_failure_response(&auth_result);
     }

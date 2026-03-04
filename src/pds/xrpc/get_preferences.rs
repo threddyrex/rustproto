@@ -16,7 +16,7 @@ use serde_json::Value as JsonValue;
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
 
-use super::auth_helpers::{auth_failure_response, check_legacy_auth};
+use super::auth_helpers::{auth_failure_response, check_user_auth};
 
 /// GET /xrpc/app.bsky.actor.getPreferences - Get user preferences.
 ///
@@ -43,8 +43,14 @@ pub async fn get_preferences(
     };
     let _ = state.db.increment_statistic(&stat_key);
 
-    // Check authentication
-    let auth_result = check_legacy_auth(&state, &headers);
+    // Check authentication (supports Legacy and OAuth)
+    let auth_result = check_user_auth(
+        &state,
+        &headers,
+        None,
+        "GET",
+        "/xrpc/app.bsky.actor.getPreferences",
+    );
     if !auth_result.is_authenticated {
         return auth_failure_response(&auth_result);
     }

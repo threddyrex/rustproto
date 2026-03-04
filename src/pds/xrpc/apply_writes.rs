@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
 use crate::pds::user_repo::{ApplyWritesOperation, UserRepo, parse_json_to_dag_cbor, write_type};
-use crate::pds::xrpc::auth_helpers::{auth_failure_response, check_legacy_auth, get_caller_info};
+use crate::pds::xrpc::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info};
 
 /// A single write operation in the request.
 #[derive(Deserialize)]
@@ -118,8 +118,14 @@ pub async fn apply_writes(
 
     let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
 
-    // Check authentication
-    let auth_result = check_legacy_auth(&state, &headers);
+    // Check authentication (supports Legacy and OAuth)
+    let auth_result = check_user_auth(
+        &state,
+        &headers,
+        None,
+        "POST",
+        "/xrpc/com.atproto.repo.applyWrites",
+    );
     if !auth_result.is_authenticated {
         return auth_failure_response(&auth_result);
     }

@@ -14,7 +14,7 @@ use crate::pds::db::StatisticKey;
 use crate::pds::firehose_event_generator::FirehoseEventGenerator;
 use crate::pds::server::PdsState;
 
-use super::auth_helpers::{auth_failure_response, check_legacy_auth};
+use super::auth_helpers::{auth_failure_response, check_user_auth};
 
 /// POST /xrpc/com.atproto.server.activateAccount - Activate account endpoint.
 ///
@@ -41,8 +41,14 @@ pub async fn activate_account(
     };
     let _ = state.db.increment_statistic(&stat_key);
 
-    // Check authentication
-    let auth_result = check_legacy_auth(&state, &headers);
+    // Check authentication (supports Legacy and OAuth)
+    let auth_result = check_user_auth(
+        &state,
+        &headers,
+        None,
+        "POST",
+        "/xrpc/com.atproto.server.activateAccount",
+    );
     if !auth_result.is_authenticated {
         return auth_failure_response(&auth_result);
     }

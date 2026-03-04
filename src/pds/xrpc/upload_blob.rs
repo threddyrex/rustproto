@@ -17,7 +17,7 @@ use serde::Serialize;
 use crate::pds::blob_db::BlobDb;
 use crate::pds::db::{Blob, StatisticKey};
 use crate::pds::server::PdsState;
-use crate::pds::xrpc::auth_helpers::{auth_failure_response, check_legacy_auth, get_caller_info};
+use crate::pds::xrpc::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info};
 use crate::repo::CidV1;
 
 /// Blob reference response.
@@ -88,8 +88,14 @@ pub async fn upload_blob(
 
     let (_ip_address, _user_agent) = get_caller_info(&headers, Some(addr));
 
-    // Check authentication
-    let auth_result = check_legacy_auth(&state, &headers);
+    // Check authentication (supports Legacy and OAuth)
+    let auth_result = check_user_auth(
+        &state,
+        &headers,
+        None,
+        "POST",
+        "/xrpc/com.atproto.repo.uploadBlob",
+    );
     if !auth_result.is_authenticated {
         return auth_failure_response(&auth_result);
     }
