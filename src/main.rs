@@ -63,6 +63,9 @@ async fn main() {
         "installconfig" => cmd_install_config(&arguments),
         "runpds" => cmd_run_pds(&arguments).await,
         "inspectfirehoseevent" => cmd_inspect_firehose_event(&arguments),
+        "getplchistory" => cmd_get_plc_history(&arguments).await,
+        "getpdsinfo" => cmd_get_pds_info(&arguments).await,
+        "getpost" => cmd_get_post(&arguments).await,
         "help" => print_usage(),
         _ => {
             logger().error(&format!("Unknown command: {}", command));
@@ -115,6 +118,9 @@ fn print_usage() {
     println!("  WalkMst                Walk and print the MST structure of a repository");
     println!("  StartFirehoseConsumer  Listen to a PDS firehose and print events");
     println!("  InspectFirehoseEvent   Inspect a stored firehose event (for debugging)");
+    println!("  GetPlcHistory          Get PLC history for an actor and check repo status");
+    println!("  GetPdsInfo             Get PDS info (health, description, repos)");
+    println!("  GetPost                Get a post and print all URIs found");
     println!("  InstallDb              Create PDS database schema");
     println!("  InstallConfig          Configure PDS server settings");
     println!("  RunPds                 Run the PDS HTTP server");
@@ -123,6 +129,7 @@ fn print_usage() {
     println!("Arguments:");
     println!("  /command <name>       Command to run");
     println!("  /actor <handle>       Handle or DID to resolve");
+    println!("  /uri <at_uri>         AT URI or bsky.app URL (for GetPost)");
     println!("  /all <true|false>     Use all resolution methods");
     println!("  /dataDir <path>       Path to data directory");
     println!("  /repoFile <path>      Path to CAR file (for repo commands)");
@@ -148,6 +155,9 @@ fn print_usage() {
     println!("  rustproto /command WalkMst /actor alice.bsky.social /dataDir ./data");
     println!("  rustproto /command WalkMst /repoFile ./repo.car");
     println!("  rustproto /command StartFirehoseConsumer /actor alice.bsky.social /dataDir ./data");
+    println!("  rustproto /command GetPlcHistory /actor alice.bsky.social");
+    println!("  rustproto /command GetPdsInfo /actor alice.bsky.social");
+    println!("  rustproto /command GetPost /uri at://did:plc:xxx/app.bsky.feed.post/abc123");
     println!("  rustproto /command InstallDb /dataDir ./data");
     println!("  rustproto /command InstallConfig /dataDir ./data /listenScheme https /listenHost example.com /listenPort 443");
     println!("  rustproto /command RunPds /dataDir ./data");
@@ -1159,6 +1169,331 @@ fn cmd_inspect_firehose_event(args: &HashMap<String, String>) {
             log.error(&format!("Failed to parse body DAG-CBOR: {}", e));
             log.info(&format!("Body hex (first 500 bytes): {}", hex_encode(&event.body_dag_cbor_bytes[..std::cmp::min(500, event.body_dag_cbor_bytes.len())])));
         }
+    }
+}
+
+/// Gets PLC history for an actor and checks repo status on each PDS.
+async fn cmd_get_plc_history(args: &HashMap<String, String>) {
+    let log = logger();
+
+    let actor = match get_arg(args, "actor") {
+        Some(a) => a,
+        None => {
+            log.error("missing /actor argument");
+            log.error("Usage: rustproto /command GetPlcHistory /actor <handle_or_did>");
+            return;
+        }
+    };
+
+    let client = BlueskyClient::new();
+
+    // Resolve actor to get DID
+    let info = match client.resolve_actor_info(actor, None).await {
+        Ok(info) => info,
+        Err(e) => {
+            log.error(&format!("Error resolving actor: {}", e));
+            return;
+        }
+    };
+
+    let did = match &info.did {
+        Some(d) => d.clone(),
+        None => {
+            log.error("Could not resolve DID for actor");
+            return;
+        }
+    };
+
+    if did.starts_with("did:web") {
+        log.error(&format!("'{}' is a did:web and does not contain plc info.", did));
+        return;
+    }
+
+    // Get PLC history
+    let history = match client.get_plc_history(&did).await {
+        Ok(h) => h,
+        Err(e) => {
+            log.error(&format!("Error getting PLC history: {}", e));
+            return;
+        }
+    };
+
+    // Track PDS status
+    let mut pds_status: HashMap<String, String> = HashMap::new();
+    pds_status.insert("https://bsky.social".to_string(), "<na>".to_string());
+
+    let mut console_output: Vec<String> = Vec::new();
+
+    if let Some(entries) = history.as_array() {
+        for entry in entries {
+            let pds = entry["operation"]["services"]["atproto_pds"]["endpoint"]
+                .as_str()
+                .map(|s| s.to_string());
+            let created_at = entry["createdAt"].as_str();
+            let also_known_as = entry["operation"]["alsoKnownAs"]
+                .as_array()
+                .and_then(|arr| arr.first())
+                .and_then(|v| v.as_str());
+
+            if let Some(pds_url) = &pds {
+                // Extract hostname from PDS URL
+                let pds_host = pds_url
+                    .trim_start_matches("https://")
+                    .trim_start_matches("http://");
+
+                let active = if !pds_status.contains_key(pds_url) {
+                    match client.get_repo_status(pds_host, &did).await {
+                        Ok(status) => {
+                            let active_val = status["active"]
+                                .as_bool()
+                                .map(|b| b.to_string())
+                                .unwrap_or_else(|| "<null>".to_string());
+                            pds_status.insert(pds_url.clone(), active_val.clone());
+                            active_val
+                        }
+                        Err(_) => {
+                            pds_status.insert(pds_url.clone(), "<exception>".to_string());
+                            "<exception>".to_string()
+                        }
+                    }
+                } else {
+                    pds_status.get(pds_url).cloned().unwrap_or_default()
+                };
+
+                console_output.push(format!(
+                    "{}  pds: {}, handle: {}, active: {}",
+                    created_at.unwrap_or("<unknown>"),
+                    pds_url,
+                    also_known_as.unwrap_or("<unknown>"),
+                    active
+                ));
+            }
+        }
+    }
+
+    // Print results
+    log.info("");
+    log.info(&format!("PDS History for {}:", did));
+    for line in &console_output {
+        log.info(line);
+    }
+    log.info("");
+
+    // Check if account is active on multiple PDSs
+    let active_pds_count = pds_status.values().filter(|s| s.eq_ignore_ascii_case("true")).count();
+    if active_pds_count > 1 {
+        log.error(&format!(
+            "Account is active on {} PDSs. Expected at most 1.",
+            active_pds_count
+        ));
+        log.info("");
+    }
+}
+
+/// Gets PDS info including health, description, and repo list.
+async fn cmd_get_pds_info(args: &HashMap<String, String>) {
+    let log = logger();
+
+    let actor = match get_arg(args, "actor") {
+        Some(a) => a,
+        None => {
+            log.error("missing /actor argument");
+            log.error("Usage: rustproto /command GetPdsInfo /actor <handle_or_did>");
+            return;
+        }
+    };
+
+    let client = BlueskyClient::new();
+
+    // Resolve actor to get PDS
+    let info = match client.resolve_actor_info(actor, None).await {
+        Ok(info) => info,
+        Err(e) => {
+            log.error(&format!("Error resolving actor: {}", e));
+            return;
+        }
+    };
+
+    let pds = match &info.pds {
+        Some(p) => p.clone(),
+        None => {
+            log.error("Could not resolve PDS for actor");
+            return;
+        }
+    };
+
+    log.info(&format!("PDS: {}", pds));
+
+    // Health
+    log.info("");
+    log.info("HEALTH");
+    match client.pds_health(&pds).await {
+        Ok(health) => {
+            log.info(&serde_json::to_string_pretty(&health).unwrap_or_default());
+        }
+        Err(e) => {
+            log.error(&format!("Error getting health: {}", e));
+        }
+    }
+
+    // Describe Server
+    log.info("");
+    log.info("DESCRIBE SERVER");
+    match client.pds_describe_server(&pds).await {
+        Ok(desc) => {
+            log.info(&serde_json::to_string_pretty(&desc).unwrap_or_default());
+        }
+        Err(e) => {
+            log.error(&format!("Error describing server: {}", e));
+        }
+    }
+
+    // List Repos
+    log.info("");
+    log.info("LIST REPOS");
+    match client.list_repos(&pds, 100).await {
+        Ok(repos) => {
+            log.info(&format!("repo count: {}", repos.len()));
+            for repo in repos {
+                log.info(&serde_json::to_string_pretty(&repo).unwrap_or_default());
+            }
+        }
+        Err(e) => {
+            log.error(&format!("Error listing repos: {}", e));
+        }
+    }
+}
+
+/// Gets a post and prints all URIs found in the response.
+async fn cmd_get_post(args: &HashMap<String, String>) {
+    let log = logger();
+
+    let uri = match get_arg(args, "uri") {
+        Some(u) => u,
+        None => {
+            log.error("missing /uri argument");
+            log.error("Usage: rustproto /command GetPost /uri <at_uri_or_bsky_url>");
+            return;
+        }
+    };
+
+    let client = BlueskyClient::new();
+
+    // Parse URI - could be AT URI or bsky.app URL
+    let at_uri = parse_to_at_uri(uri, &client).await;
+
+    let at_uri = match at_uri {
+        Some(u) => u,
+        None => {
+            log.error("Invalid URI format");
+            return;
+        }
+    };
+
+    log.trace(&format!("AT URI: {}", at_uri));
+
+    // Get posts
+    match client.get_posts(&[&at_uri]).await {
+        Ok(response) => {
+            log.trace(&serde_json::to_string_pretty(&response).unwrap_or_default());
+
+            log.info("All URIs found in response:");
+            log.info("");
+            find_and_print_uris(&response, "", &log);
+        }
+        Err(e) => {
+            log.error(&format!("Error getting post: {}", e));
+        }
+    }
+}
+
+/// Parse a bsky.app URL or AT URI to an AT URI.
+async fn parse_to_at_uri(input: &str, client: &BlueskyClient) -> Option<String> {
+    // If already an AT URI
+    if input.starts_with("at://") {
+        return Some(input.to_string());
+    }
+
+    // Try to parse as bsky.app URL
+    // Format: https://bsky.app/profile/{handle}/post/{rkey}
+    if input.contains("bsky.app/profile/") && input.contains("/post/") {
+        let parts: Vec<&str> = input.split('/').collect();
+        
+        // Find profile and post indices
+        let profile_idx = parts.iter().position(|&p| p == "profile")?;
+        let post_idx = parts.iter().position(|&p| p == "post")?;
+        
+        if profile_idx + 1 < parts.len() && post_idx + 1 < parts.len() {
+            let handle_or_did = parts[profile_idx + 1];
+            let rkey = parts[post_idx + 1];
+            
+            // Resolve handle to DID if needed
+            let did = if handle_or_did.starts_with("did:") {
+                handle_or_did.to_string()
+            } else {
+                match client.resolve_actor_info(handle_or_did, None).await {
+                    Ok(info) => info.did?,
+                    Err(_) => return None,
+                }
+            };
+            
+            return Some(format!("at://{}/app.bsky.feed.post/{}", did, rkey));
+        }
+    }
+
+    None
+}
+
+/// Recursively find and print all URIs in a JSON value.
+fn find_and_print_uris(value: &serde_json::Value, path: &str, log: &rustproto::log::Logger) {
+    match value {
+        serde_json::Value::Object(obj) => {
+            for (key, val) in obj {
+                let current_path = if path.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{}.{}", path, key)
+                };
+
+                if key.eq_ignore_ascii_case("uri") {
+                    if let Some(uri_str) = val.as_str() {
+                        if let Some(url) = at_uri_to_bsky_url(uri_str) {
+                            log.info(&current_path);
+                            log.info(&url);
+                            log.info("");
+                        }
+                    }
+                }
+
+                find_and_print_uris(val, &current_path, log);
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for (i, val) in arr.iter().enumerate() {
+                let current_path = format!("{}[{}]", path, i);
+                find_and_print_uris(val, &current_path, log);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Convert an AT URI to a bsky.app URL.
+fn at_uri_to_bsky_url(at_uri: &str) -> Option<String> {
+    // Format: at://did:plc:xxx/app.bsky.feed.post/rkey
+    if !at_uri.starts_with("at://") {
+        return None;
+    }
+
+    let rest = at_uri.strip_prefix("at://")?;
+    let parts: Vec<&str> = rest.split('/').collect();
+
+    if parts.len() >= 3 && parts[1] == "app.bsky.feed.post" {
+        let did = parts[0];
+        let rkey = parts[2];
+        Some(format!("https://bsky.app/profile/{}/post/{}", did, rkey))
+    } else {
+        None
     }
 }
 

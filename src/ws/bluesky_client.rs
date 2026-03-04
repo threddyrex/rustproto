@@ -372,6 +372,114 @@ impl BlueskyClient {
         ))
     }
 
+    /// Gets the PLC audit log (history) for a DID.
+    ///
+    /// Calls `https://plc.directory/{did}/log/audit`.
+    pub async fn get_plc_history(&self, did: &str) -> Result<Value, BlueskyClientError> {
+        if !did.starts_with("did:plc:") {
+            return Err(BlueskyClientError::InvalidActor(format!(
+                "'{}' is not a did:plc",
+                did
+            )));
+        }
+
+        let url = format!("https://plc.directory/{}/log/audit", did);
+        let response = self.client.get(&url).send().await?;
+        let json: Value = response.json().await?;
+        Ok(json)
+    }
+
+    /// Gets the repo status for a DID from a PDS.
+    ///
+    /// Calls `com.atproto.sync.getRepoStatus` on the PDS.
+    pub async fn get_repo_status(
+        &self,
+        pds: &str,
+        did: &str,
+    ) -> Result<Value, BlueskyClientError> {
+        let url = format!(
+            "https://{}/xrpc/com.atproto.sync.getRepoStatus?did={}",
+            pds, did
+        );
+        let response = self.client.get(&url).send().await?;
+        let json: Value = response.json().await?;
+        Ok(json)
+    }
+
+    /// Gets health status for a PDS.
+    ///
+    /// Calls `_health` on the PDS.
+    pub async fn pds_health(&self, pds: &str) -> Result<Value, BlueskyClientError> {
+        let url = format!("https://{}/xrpc/_health", pds);
+        let response = self.client.get(&url).send().await?;
+        let json: Value = response.json().await?;
+        Ok(json)
+    }
+
+    /// Gets server description for a PDS.
+    ///
+    /// Calls `com.atproto.server.describeServer` on the PDS.
+    pub async fn pds_describe_server(&self, pds: &str) -> Result<Value, BlueskyClientError> {
+        let url = format!("https://{}/xrpc/com.atproto.server.describeServer", pds);
+        let response = self.client.get(&url).send().await?;
+        let json: Value = response.json().await?;
+        Ok(json)
+    }
+
+    /// Lists repos on a PDS.
+    ///
+    /// Calls `com.atproto.sync.listRepos` on the PDS.
+    pub async fn list_repos(&self, pds: &str, limit: u32) -> Result<Vec<Value>, BlueskyClientError> {
+        let mut repos = Vec::new();
+        let mut cursor: Option<String> = None;
+
+        loop {
+            let url = match &cursor {
+                Some(c) => format!(
+                    "https://{}/xrpc/com.atproto.sync.listRepos?limit={}&cursor={}",
+                    pds, limit, c
+                ),
+                None => format!(
+                    "https://{}/xrpc/com.atproto.sync.listRepos?limit={}",
+                    pds, limit
+                ),
+            };
+
+            let response = self.client.get(&url).send().await?;
+            let json: Value = response.json().await?;
+
+            if let Some(repos_array) = json["repos"].as_array() {
+                for repo in repos_array {
+                    repos.push(repo.clone());
+                }
+            }
+
+            cursor = json["cursor"].as_str().map(|s| s.to_string());
+            if cursor.is_none() {
+                break;
+            }
+
+            // Small delay between requests
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        }
+
+        Ok(repos)
+    }
+
+    /// Gets posts by URI.
+    ///
+    /// Calls `app.bsky.feed.getPosts` on the public API.
+    pub async fn get_posts(&self, uris: &[&str]) -> Result<Value, BlueskyClientError> {
+        let uris_param = uris.join(",");
+        let url = format!(
+            "https://public.api.bsky.app/xrpc/app.bsky.feed.getPosts?uris={}",
+            uris_param
+        );
+        let response = self.client.get(&url).send().await?;
+        let json: Value = response.json().await?;
+        Ok(json)
+    }
+
     /// Downloads a repository (CAR file) for the given DID from a PDS.
     ///
     /// Calls `com.atproto.sync.getRepo` on the PDS.
