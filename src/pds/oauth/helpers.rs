@@ -75,12 +75,15 @@ pub fn get_allowed_redirect_uris(db: &PdsDb) -> std::collections::HashSet<String
 }
 
 /// Parse URL-encoded form data into key-value pairs.
+/// Note: In application/x-www-form-urlencoded, + represents a space.
+/// urlencoding::decode only decodes %XX sequences, so we must replace + with space first.
 pub fn parse_form_data(body: &str) -> std::collections::HashMap<String, String> {
     let mut map = std::collections::HashMap::new();
     for pair in body.split('&') {
         if let Some((key, value)) = pair.split_once('=') {
-            let key = urlencoding::decode(key).unwrap_or_default().to_string();
-            let value = urlencoding::decode(value).unwrap_or_default().to_string();
+            // Replace + with space before URL decoding (per application/x-www-form-urlencoded spec)
+            let key = urlencoding::decode(&key.replace('+', " ")).unwrap_or_default().to_string();
+            let value = urlencoding::decode(&value.replace('+', " ")).unwrap_or_default().to_string();
             map.insert(key, value);
         }
     }
@@ -113,6 +116,17 @@ mod tests {
         assert_eq!(
             data.get("redirect_uri"),
             Some(&"https://example.com".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_form_data_plus_as_space() {
+        // In application/x-www-form-urlencoded, + represents a space
+        let body = "scope=atproto+transition:email+include:foo";
+        let data = parse_form_data(body);
+        assert_eq!(
+            data.get("scope"),
+            Some(&"atproto transition:email include:foo".to_string())
         );
     }
 
