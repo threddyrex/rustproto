@@ -1,8 +1,8 @@
-//! Passkey registration endpoint for OAuth.
+//! Passkey registration endpoints for admin.
 //!
-//! GET /oauth/register-passkey - Display registration form
-//! POST /oauth/passkeyregistrationoptions - Get WebAuthn registration options
-//! POST /oauth/registerpasskey - Complete passkey registration
+//! GET /admin/register-passkey - Display registration form
+//! POST /admin/passkeyregistrationoptions - Get WebAuthn registration options
+//! POST /admin/registerpasskey - Complete passkey registration
 
 use std::sync::Arc;
 
@@ -18,26 +18,58 @@ use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use tower_cookies::Cookies;
 
-use crate::pds::db::{Passkey, PasskeyChallenge, StatisticKey};
+use crate::pds::db::{Passkey, PasskeyChallenge, PdsDb, StatisticKey};
 use crate::pds::server::PdsState;
 
-use super::helpers::{get_hostname, html_encode, is_passkeys_enabled};
+use super::{is_admin_enabled, is_authenticated};
 
 // =============================================================================
-// GET /oauth/register-passkey - REGISTRATION FORM
+// HELPER FUNCTIONS
 // =============================================================================
 
-/// GET /oauth/register-passkey
+/// Check if passkeys are enabled.
+fn is_passkeys_enabled(db: &PdsDb) -> bool {
+    db.get_config_property_bool("FeatureEnabled_Passkeys")
+        .unwrap_or(false)
+}
+
+/// Get the PDS hostname.
+fn get_hostname(state: &Arc<PdsState>) -> String {
+    state
+        .db
+        .get_config_property("PdsHostname")
+        .unwrap_or_else(|_| "localhost".to_string())
+}
+
+/// HTML-encode a string to prevent XSS.
+fn html_encode(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#x27;")
+}
+
+// =============================================================================
+// GET /admin/register-passkey - REGISTRATION FORM
+// =============================================================================
+
+/// GET /admin/register-passkey
 ///
 /// Displays the passkey registration form.
 /// Requires admin session authentication.
-pub async fn register_passkey_get(
+pub async fn admin_register_passkey_get(
     State(state): State<Arc<PdsState>>,
     cookies: Cookies,
 ) -> impl IntoResponse {
+    // Check if admin is enabled
+    if !is_admin_enabled(&state.db) {
+        return (StatusCode::FORBIDDEN, Html("Admin dashboard is not enabled".to_string())).into_response();
+    }
+
     // Increment statistics
     let stat_key = StatisticKey {
-        name: "oauth/register-passkey GET".to_string(),
+        name: "admin/register-passkey GET".to_string(),
         ip_address: "global".to_string(),
         user_agent: "unknown".to_string(),
     };
@@ -48,8 +80,8 @@ pub async fn register_passkey_get(
         return (StatusCode::FORBIDDEN, Html("Passkeys are not enabled".to_string())).into_response();
     }
 
-    // Verify admin session
-    if !verify_admin_session(&state, &cookies) {
+    // Verify admin session (use "unknown" for IP since we don't have headers here)
+    if !is_authenticated(&state.db, &cookies, "unknown") {
         return (
             StatusCode::UNAUTHORIZED,
             Html("Admin authentication required. <a href=\"/admin/login\">Login</a>".to_string()),
@@ -60,20 +92,6 @@ pub async fn register_passkey_get(
     let hostname = get_hostname(&state);
     let html = generate_register_passkey_html(&hostname);
     Html(html).into_response()
-}
-
-/// Verify admin session from cookies.
-fn verify_admin_session(state: &Arc<PdsState>, cookies: &Cookies) -> bool {
-    let session_id = match cookies.get("adminSessionId") {
-        Some(cookie) => cookie.value().to_string(),
-        None => return false,
-    };
-
-    // Check if session exists in database
-    match state.db.get_all_admin_sessions() {
-        Ok(sessions) => sessions.iter().any(|s| s.session_id == session_id),
-        Err(_) => false,
-    }
 }
 
 /// Generate the HTML registration form.
@@ -250,7 +268,7 @@ fn generate_register_passkey_html(hostname: &str) -> String {
         
         try {{
             // Step 1: Get registration options from server
-            const optionsResponse = await fetch('/oauth/passkeyregistrationoptions', {{
+            const optionsResponse = await fetch('/admin/passkeyregistrationoptions', {{
                 method: 'POST',
                 headers: {{ 'Content-Type': 'application/json' }},
                 body: JSON.stringify({{ name: passkeyName }})
@@ -292,7 +310,7 @@ fn generate_register_passkey_html(hostname: &str) -> String {
             // Step 3: Send credential to server
             const attestationResponse = credential.response;
             
-            const registerResponse = await fetch('/oauth/registerpasskey', {{
+            const registerResponse = await fetch('/admin/registerpasskey', {{
                 method: 'POST',
                 headers: {{ 'Content-Type': 'application/json' }},
                 body: JSON.stringify({{
@@ -336,7 +354,7 @@ fn generate_register_passkey_html(hostname: &str) -> String {
 }
 
 // =============================================================================
-// POST /oauth/passkeyregistrationoptions - REGISTRATION OPTIONS
+// POST /admin/passkeyregistrationoptions - REGISTRATION OPTIONS
 // =============================================================================
 
 /// Request for passkey registration options.
@@ -395,18 +413,23 @@ struct RegistrationError {
     error: String,
 }
 
-/// POST /oauth/passkeyregistrationoptions
+/// POST /admin/passkeyregistrationoptions
 ///
 /// Returns WebAuthn registration options for creating a new passkey.
 /// Requires admin session authentication.
-pub async fn passkey_registration_options(
+pub async fn admin_passkey_registration_options(
     State(state): State<Arc<PdsState>>,
     cookies: Cookies,
     body: Bytes,
 ) -> impl IntoResponse {
+    // Check if admin is enabled
+    if !is_admin_enabled(&state.db) {
+        return (StatusCode::FORBIDDEN, Json(serde_json::json!({}))).into_response();
+    }
+
     // Increment statistics
     let stat_key = StatisticKey {
-        name: "oauth/passkeyregistrationoptions".to_string(),
+        name: "admin/passkeyregistrationoptions".to_string(),
         ip_address: "global".to_string(),
         user_agent: "unknown".to_string(),
     };
@@ -424,7 +447,7 @@ pub async fn passkey_registration_options(
     }
 
     // Verify admin session
-    if !verify_admin_session(&state, &cookies) {
+    if !is_authenticated(&state.db, &cookies, "unknown") {
         return (
             StatusCode::UNAUTHORIZED,
             Json(RegistrationError {
@@ -477,7 +500,7 @@ pub async fn passkey_registration_options(
 
     if let Err(e) = state.db.insert_passkey_challenge(&passkey_challenge) {
         state.log.error(&format!(
-            "[OAUTH] [PASSKEY] Failed to insert registration challenge: {}",
+            "[ADMIN] [PASSKEY] Failed to insert registration challenge: {}",
             e
         ));
         return (
@@ -521,17 +544,18 @@ pub async fn passkey_registration_options(
 }
 
 // =============================================================================
-// POST /oauth/registerpasskey - COMPLETE REGISTRATION
+// POST /admin/registerpasskey - COMPLETE REGISTRATION
 // =============================================================================
 
 /// Attestation response from WebAuthn credential creation.
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct AttestationResponse {
     /// Client data JSON (base64url encoded).
     #[allow(dead_code)]
+    #[serde(rename = "clientDataJSON")]
     client_data_json: String,
     /// Attestation object (base64url encoded).
+    #[serde(rename = "attestationObject")]
     attestation_object: String,
 }
 
@@ -554,18 +578,23 @@ struct RegisterPasskeySuccess {
     success: bool,
 }
 
-/// POST /oauth/registerpasskey
+/// POST /admin/registerpasskey
 ///
 /// Completes passkey registration by storing the credential.
 /// Requires admin session authentication.
-pub async fn register_passkey_post(
+pub async fn admin_register_passkey_post(
     State(state): State<Arc<PdsState>>,
     cookies: Cookies,
     body: Bytes,
 ) -> impl IntoResponse {
+    // Check if admin is enabled
+    if !is_admin_enabled(&state.db) {
+        return (StatusCode::FORBIDDEN, Json(serde_json::json!({}))).into_response();
+    }
+
     // Increment statistics
     let stat_key = StatisticKey {
-        name: "oauth/registerpasskey".to_string(),
+        name: "admin/registerpasskey".to_string(),
         ip_address: "global".to_string(),
         user_agent: "unknown".to_string(),
     };
@@ -583,7 +612,7 @@ pub async fn register_passkey_post(
     }
 
     // Verify admin session
-    if !verify_admin_session(&state, &cookies) {
+    if !is_authenticated(&state.db, &cookies, "unknown") {
         return (
             StatusCode::UNAUTHORIZED,
             Json(RegistrationError {
@@ -598,7 +627,7 @@ pub async fn register_passkey_post(
         Ok(r) => r,
         Err(e) => {
             state.log.warning(&format!(
-                "[OAUTH] [PASSKEY] Failed to parse registration request: {}",
+                "[ADMIN] [PASSKEY] Failed to parse registration request: {}",
                 e
             ));
             return (
@@ -616,7 +645,7 @@ pub async fn register_passkey_post(
         Ok(_) => {}
         Err(e) => {
             state.log.warning(&format!(
-                "[OAUTH] [PASSKEY] Challenge not found: {}",
+                "[ADMIN] [PASSKEY] Challenge not found: {}",
                 e
             ));
             return (
@@ -632,7 +661,7 @@ pub async fn register_passkey_post(
     // Delete the challenge (one-time use)
     if let Err(e) = state.db.delete_passkey_challenge(&request.challenge) {
         state.log.warning(&format!(
-            "[OAUTH] [PASSKEY] Failed to delete challenge: {}",
+            "[ADMIN] [PASSKEY] Failed to delete challenge: {}",
             e
         ));
     }
@@ -642,7 +671,7 @@ pub async fn register_passkey_post(
         Ok(bytes) => bytes,
         Err(e) => {
             state.log.warning(&format!(
-                "[OAUTH] [PASSKEY] Failed to decode attestation object: {}",
+                "[ADMIN] [PASSKEY] Failed to decode attestation object: {}",
                 e
             ));
             return (
@@ -660,7 +689,7 @@ pub async fn register_passkey_post(
         Ok(jwk) => jwk,
         Err(e) => {
             state.log.warning(&format!(
-                "[OAUTH] [PASSKEY] Failed to extract public key: {}",
+                "[ADMIN] [PASSKEY] Failed to extract public key: {}",
                 e
             ));
             return (
@@ -684,7 +713,7 @@ pub async fn register_passkey_post(
 
     if let Err(e) = state.db.insert_passkey(&passkey) {
         state.log.error(&format!(
-            "[OAUTH] [PASSKEY] Failed to insert passkey: {}",
+            "[ADMIN] [PASSKEY] Failed to insert passkey: {}",
             e
         ));
         return (
@@ -697,7 +726,7 @@ pub async fn register_passkey_post(
     }
 
     state.log.info(&format!(
-        "[OAUTH] [PASSKEY] Passkey registered: name={}",
+        "[ADMIN] [PASSKEY] Passkey registered: name={}",
         passkey.name
     ));
 

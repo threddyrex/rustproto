@@ -96,7 +96,7 @@ pub async fn admin_passkeys(
 
 <div class="section-header">
     <h2>Passkeys <span class="count">({passkey_count})</span></h2>
-    <a href="/oauth/register-passkey" class="add-btn">Add Passkey</a>
+    <a href="/admin/register-passkey" class="add-btn">Add Passkey</a>
 </div>
 <table class="passkeys-table">
     <thead>
