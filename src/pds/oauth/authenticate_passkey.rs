@@ -26,16 +26,18 @@ use super::helpers::{get_allowed_redirect_uris, get_form_value, get_hostname, is
 
 /// WebAuthn assertion response.
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct AssertionResponse {
     /// Client data JSON (base64url encoded).
+    #[serde(rename = "clientDataJSON")]
     client_data_json: String,
     /// Authenticator data (base64url encoded).
+    #[serde(rename = "authenticatorData")]
     authenticator_data: String,
     /// Signature (base64url encoded).
     signature: String,
     /// User handle (base64url encoded, optional).
     #[allow(dead_code)]
+    #[serde(rename = "userHandle")]
     user_handle: Option<String>,
 }
 
