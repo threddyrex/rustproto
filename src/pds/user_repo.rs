@@ -298,7 +298,7 @@ impl<'a> UserRepo<'a> {
         let (_signed_commit, commit_cid, signature) = self.create_and_sign_commit(
             &root_cid,
             &rev,
-            Some(&before_commit.root_mst_node_cid),
+            None,
         )?;
 
         // Update repo commit in database
@@ -307,7 +307,7 @@ impl<'a> UserRepo<'a> {
             cid: commit_cid.base32.clone(),
             root_mst_node_cid: root_cid.base32.clone(),
             rev: rev.clone(),
-            prev_mst_node_cid: Some(before_commit.root_mst_node_cid.clone()),
+            prev_mst_node_cid: None,
             signature,
         };
         self.db.update_repo_commit(&db_commit)?;
