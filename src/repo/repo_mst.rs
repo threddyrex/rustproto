@@ -270,10 +270,30 @@ pub struct MstNodeKey {
 
 impl MstNodeKey {
     /// Create a key from an MST node.
+    ///
+    /// Collects ALL descendant keys (in-order traversal), not just direct
+    /// entries. This ensures that two nodes at the same depth with the same
+    /// direct entries but different subtrees produce different cache keys.
     pub fn from_node(node: &MstNode) -> Self {
+        let mut all_keys = Vec::new();
+        Self::collect_all_keys(node, &mut all_keys);
         Self {
             key_depth: node.key_depth,
-            entry_keys: node.entries.iter().map(|e| e.key.clone()).collect(),
+            entry_keys: all_keys,
+        }
+    }
+
+    /// Recursively collect all entry keys from a node and its subtrees
+    /// via in-order traversal.
+    fn collect_all_keys(node: &MstNode, keys: &mut Vec<String>) {
+        if let Some(ref left) = node.left_tree {
+            Self::collect_all_keys(left, keys);
+        }
+        for entry in &node.entries {
+            keys.push(entry.key.clone());
+            if let Some(ref right) = entry.right_tree {
+                Self::collect_all_keys(right, keys);
+            }
         }
     }
 }
