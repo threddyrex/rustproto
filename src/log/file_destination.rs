@@ -6,10 +6,20 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+/// Maximum log file size before rolling (10 MB).
+const MAX_LOG_SIZE: usize = 10 * 1024 * 1024;
+
+/// Internal state protected by a single mutex.
+struct FileState {
+    writer: File,
+    log_length: usize,
+}
+
 /// Log destination that writes to a file.
+/// Rolls the log file when it exceeds MAX_LOG_SIZE.
 pub struct FileDestination {
     file_path: PathBuf,
-    writer: Mutex<File>,
+    state: Mutex<FileState>,
 }
 
 impl FileDestination {
@@ -26,6 +36,12 @@ impl FileDestination {
             fs::create_dir_all(parent)?;
         }
 
+        let initial_length = if file_path.exists() {
+            fs::metadata(&file_path).map(|m| m.len() as usize).unwrap_or(0)
+        } else {
+            0
+        };
+
         let file = OpenOptions::new()
             .create(true)
             .append(true)
@@ -33,7 +49,10 @@ impl FileDestination {
 
         Ok(Self {
             file_path,
-            writer: Mutex::new(file),
+            state: Mutex::new(FileState {
+                writer: file,
+                log_length: initial_length,
+            }),
         })
     }
 
@@ -68,12 +87,42 @@ impl FileDestination {
     pub fn file_path(&self) -> &Path {
         &self.file_path
     }
+
+    /// Rolls the log file if it exceeds MAX_LOG_SIZE.
+    /// Renames the current file with a timestamp `.bak` suffix and opens a new file.
+    /// Must be called while `state` is already locked (lock passed in).
+    fn check_roll_log(&self, state: &mut FileState) {
+        if state.log_length < MAX_LOG_SIZE {
+            return;
+        }
+
+        // Write roll marker and flush before renaming
+        let _ = writeln!(state.writer, " --- Rolling log file due to size limit --- ");
+        let _ = state.writer.flush();
+
+        // Rename old file
+        let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+        let bak_path = format!("{}.{}.bak", self.file_path.display(), timestamp);
+        let _ = fs::rename(&self.file_path, &bak_path);
+
+        // Open new file and reset length
+        if let Ok(new_file) = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.file_path)
+        {
+            state.writer = new_file;
+            state.log_length = 0;
+        }
+    }
 }
 
 impl LogDestination for FileDestination {
     fn write(&self, _level: LogLevel, message: &str) {
-        if let Ok(mut writer) = self.writer.lock() {
-            let _ = writeln!(writer, "{}", message);
+        if let Ok(mut state) = self.state.lock() {
+            let _ = writeln!(state.writer, "{}", message);
+            state.log_length += message.len();
+            self.check_roll_log(&mut state);
         }
     }
 }
