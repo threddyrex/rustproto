@@ -3,9 +3,7 @@
 
 Rust port of [dnproto](https://github.com/threddyrex/dnproto).
 
-My main account is hosted on a dnproto PDS:
-
-- https://bsky.app/profile/threddyrex.org
+This is an atproto PDS.
 
 
 
