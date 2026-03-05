@@ -13,9 +13,9 @@ param (
 
 if($cursor -ne $null -and $cursor -ne "")
 {
-    & $exePath /command StartFirehoseConsumer /actor $actor /logLevel $logLevel /logToDataDir $logToDataDir /cursor $cursor /showDagCborTypes $showDagCborTypes
+    & $exePath /command StartFirehoseConsumer /actor $actor /logLevel $logLevel /logToDataDir $logToDataDir /dataDir $dataDir /cursor $cursor /showDagCborTypes $showDagCborTypes
 }
 else
 {
-    & $exePath /command StartFirehoseConsumer /actor $actor /logLevel $logLevel /logToDataDir $logToDataDir /showDagCborTypes $showDagCborTypes
+    & $exePath /command StartFirehoseConsumer /actor $actor /logLevel $logLevel /logToDataDir $logToDataDir /dataDir $dataDir /showDagCborTypes $showDagCborTypes
 }

@@ -343,6 +343,12 @@ impl<'a> UserRepo<'a> {
     }
 
     /// Generate a TID (Timestamp ID) for revisions and record keys.
+    ///
+    /// TIDs are 64-bit integers encoded as 13-character base32-sortable strings.
+    /// Layout:
+    /// - Top 1 bit: always 0
+    /// - Next 53 bits: microseconds since UNIX epoch
+    /// - Final 10 bits: random clock identifier
     pub fn generate_tid() -> String {
         use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -350,18 +356,27 @@ impl<'a> UserRepo<'a> {
             .duration_since(UNIX_EPOCH)
             .unwrap();
 
-        // TID is microseconds since epoch, encoded in base32-sortable
+        // TID is microseconds since epoch, shifted left 10 bits for clock ID
         let microseconds = now.as_micros() as u64;
+
+        // Mask to 53 bits
+        let ts = microseconds & 0x1FFFFFFFFFFFFF;
+
+        // Random 10-bit clock identifier
+        let clock_id: u64 = rand::random::<u16>() as u64 & 0x3FF;
+
+        // Build 64-bit TID value: (timestamp << 10) | clock_id
+        let value = (ts << 10) | clock_id;
 
         // Convert to base32-sortable (using custom alphabet)
         const ALPHABET: &[u8] = b"234567abcdefghijklmnopqrstuvwxyz";
         let mut result = String::with_capacity(13);
-        let mut value = microseconds;
+        let mut remaining = value;
 
         for _ in 0..13 {
-            let idx = (value & 0x1F) as usize;
+            let idx = (remaining & 0x1F) as usize;
             result.insert(0, ALPHABET[idx] as char);
-            value >>= 5;
+            remaining >>= 5;
         }
 
         result
