@@ -358,6 +358,32 @@ impl PdsDb {
         Ok(blobs)
     }
 
+    /// Get all blobs.
+    pub fn get_all_blobs(&self) -> Result<Vec<Blob>, PdsDbError> {
+        let conn = self.get_connection_read_only()?;
+        let mut stmt = conn.prepare("SELECT Cid, ContentType, ContentLength FROM Blob")?;
+        let rows = stmt.query_map([], |row| {
+            Ok(Blob {
+                cid: row.get(0)?,
+                content_type: row.get(1)?,
+                content_length: row.get(2)?,
+            })
+        })?;
+
+        let mut blobs = Vec::new();
+        for row in rows {
+            blobs.push(row?);
+        }
+        Ok(blobs)
+    }
+
+    /// Delete a blob by CID.
+    pub fn delete_blob(&self, cid: &str) -> Result<(), PdsDbError> {
+        let conn = self.get_connection()?;
+        conn.execute("DELETE FROM Blob WHERE Cid = ?1", [cid])?;
+        Ok(())
+    }
+
     /// Delete all blobs.
     pub fn delete_all_blobs(&self) -> Result<(), PdsDbError> {
         let conn = self.get_connection()?;
