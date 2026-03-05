@@ -24,7 +24,6 @@ use serde_json::Value as JsonValue;
 use crate::pds::auth::sign_service_auth_token;
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
-use crate::ws::{ActorQueryOptions, BlueskyClient};
 
 use super::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info};
 
@@ -292,17 +291,9 @@ pub async fn proxy_to_appview(
             .into_response();
     }
 
-    // Resolve DID document for the proxy DID
-    let client = BlueskyClient::new();
-    let options = ActorQueryOptions {
-        all: false,
-        resolve_handle_via_bluesky: false,
-        resolve_handle_via_dns: false,
-        resolve_handle_via_http: false,
-        resolve_did_doc: true,
-    };
-
-    let actor_info = match client.resolve_actor_info(&atproto_proxy.did, Some(options)).await {
+    // Resolve DID document for the proxy DID (LFS cache with 3-hour expiry)
+    let cache_expiry_minutes: u64 = 60 * 3;
+    let actor_info = match state.lfs.resolve_actor_info(&atproto_proxy.did, Some(cache_expiry_minutes)).await {
         Ok(info) => info,
         Err(e) => {
             state.log.error(&format!(

@@ -9,7 +9,7 @@ use std::time::{Duration, Instant, SystemTime};
 use thiserror::Error;
 
 use crate::log::logger;
-use crate::ws::ActorInfo;
+use crate::ws::{ActorInfo, BlueskyClient};
 
 /// Errors that can occur during file system operations.
 #[derive(Error, Debug)]
@@ -235,10 +235,10 @@ impl LocalFileSystem {
     /// Default cache expiry time in minutes for actor info files.
     pub const DEFAULT_CACHE_EXPIRY_MINUTES: u64 = 15;
 
-    /// Resolves actor info from the local cache (file system).
+    /// Resolves actor info, checking the local cache first and falling back
+    /// to BlueskyClient if the file does not exist or is stale.
     ///
-    /// Loads the actor info from disk if the file exists and is fresh
-    /// (not older than `cache_expiry_minutes`).
+    /// On a successful remote resolve, the result is saved to the cache.
     ///
     /// # Arguments
     ///
@@ -247,20 +247,22 @@ impl LocalFileSystem {
     ///
     /// # Returns
     ///
-    /// The cached ActorInfo if found and fresh, or an error if not found/expired.
+    /// The resolved ActorInfo (from cache or remote), or an error.
     ///
     /// # Example
     ///
     /// ```no_run
+    /// # async fn example() {
     /// use rustproto::fs::LocalFileSystem;
     ///
     /// let lfs = LocalFileSystem::initialize("./data").unwrap();
-    /// match lfs.resolve_actor_info("alice.bsky.social", None) {
-    ///     Ok(info) => println!("Cached DID: {:?}", info.did),
-    ///     Err(e) => println!("Not in cache: {}", e),
+    /// match lfs.resolve_actor_info("alice.bsky.social", None).await {
+    ///     Ok(info) => println!("DID: {:?}", info.did),
+    ///     Err(e) => println!("Failed to resolve: {}", e),
     /// }
+    /// # }
     /// ```
-    pub fn resolve_actor_info(
+    pub async fn resolve_actor_info(
         &self,
         actor: &str,
         cache_expiry_minutes: Option<u64>,
@@ -276,65 +278,84 @@ impl LocalFileSystem {
 
         let cache_expiry = cache_expiry_minutes.unwrap_or(Self::DEFAULT_CACHE_EXPIRY_MINUTES);
         let actor_file = self.get_path_actor_file(actor)?;
-        let file_exists = actor_file.exists();
 
-        if !file_exists {
-            let elapsed_ms = start_time.elapsed().as_secs_f64() * 1000.0;
+        if actor_file.exists() {
+            // Check file age
+            let metadata = fs::metadata(&actor_file)?;
+            let modified = metadata.modified()?;
+            let age = SystemTime::now()
+                .duration_since(modified)
+                .unwrap_or(Duration::MAX);
+            let age_minutes = age.as_secs() / 60;
+            let age_minutes_f = age.as_secs_f64() / 60.0;
+            let file_old = age_minutes > cache_expiry;
+
+            if file_old {
+                logger().info(&format!(
+                    "[ACTOR] [LFS] actor={} fileExists=true fileAgeMinutes={:.1} cacheExpiryMinutes={} fileOld=true",
+                    actor, age_minutes_f, cache_expiry
+                ));
+            } else {
+                // Load and parse the file
+                let json = fs::read_to_string(&actor_file)?;
+                let info = ActorInfo::from_json_string(&json)?;
+
+                // Validate that the file has a DID
+                if !info.has_did() {
+                    logger().warning(&format!(
+                        "[ACTOR] [LFS] actor={} fileExists=true fileAgeMinutes={:.1} cacheExpiryMinutes={} fileOld=false missingDid=true",
+                        actor, age_minutes_f, cache_expiry
+                    ));
+                } else {
+                    let elapsed_ms = start_time.elapsed().as_secs_f64() * 1000.0;
+                    logger().info(&format!(
+                        "[ACTOR] [LFS] actor={} fileExists=true fileAgeMinutes={:.1} cacheExpiryMinutes={} fileOld=false [{:.2}ms]",
+                        actor, age_minutes_f, cache_expiry, elapsed_ms
+                    ));
+                    return Ok(info);
+                }
+            }
+        } else {
             logger().info(&format!(
-                "[ACTOR] [LFS] actor={} fileExists=false [{:.2}ms]",
-                actor, elapsed_ms
+                "[ACTOR] [LFS] actor={} fileExists=false",
+                actor
             ));
-            return Err(LocalFileSystemError::ActorInfoNotFound(format!(
-                "Actor info file not found: {}",
-                actor_file.display()
-            )));
         }
 
-        // Check file age
-        let metadata = fs::metadata(&actor_file)?;
-        let modified = metadata.modified()?;
-        let age = SystemTime::now()
-            .duration_since(modified)
-            .unwrap_or(Duration::MAX);
-        let age_minutes = age.as_secs() / 60;
-        let age_minutes_f = age.as_secs_f64() / 60.0;
-        let file_old = age_minutes > cache_expiry;
-
-        if file_old {
+        // Cache miss or stale — resolve via BlueskyClient and save to cache
+        let client = BlueskyClient::new();
+        let actor_info = client.resolve_actor_info(actor, None).await.map_err(|e| {
             let elapsed_ms = start_time.elapsed().as_secs_f64() * 1000.0;
-            logger().info(&format!(
-                "[ACTOR] [LFS] actor={} fileExists=true fileAgeMinutes={:.1} cacheExpiryMinutes={} fileOld=true filePath={} [{:.2}ms]",
-                actor, age_minutes_f, cache_expiry, actor_file.display(), elapsed_ms
+            logger().error(&format!(
+                "[ACTOR] [LFS] actor={} resolve=true resolveFailed=true error={} [{:.2}ms]",
+                actor, e, elapsed_ms
             ));
-            return Err(LocalFileSystemError::ActorInfoNotFound(format!(
-                "Actor info file expired (age: {} minutes, max: {} minutes)",
-                age_minutes, cache_expiry
-            )));
-        }
+            LocalFileSystemError::ActorInfoNotFound(format!(
+                "Failed to resolve actor info: {}",
+                e
+            ))
+        })?;
 
-        // Load and parse the file
-        let json = fs::read_to_string(&actor_file)?;
-        let info = ActorInfo::from_json_string(&json)?;
-
-        // Validate that the file has a DID
-        if !info.has_did() {
+        if !actor_info.has_did() {
             let elapsed_ms = start_time.elapsed().as_secs_f64() * 1000.0;
             logger().warning(&format!(
-                "[ACTOR] [LFS] actor={} fileExists=true fileAgeMinutes={:.1} cacheExpiryMinutes={} fileOld=false missingDid=true [{:.2}ms]",
-                actor, age_minutes_f, cache_expiry, elapsed_ms
+                "[ACTOR] [LFS] actor={} resolve=true missingDid=true [{:.2}ms]",
+                actor, elapsed_ms
             ));
             return Err(LocalFileSystemError::ActorInfoNotFound(
-                "Actor info loaded from file is missing DID".to_string(),
+                "Resolved actor info is missing DID".to_string(),
             ));
         }
+
+        let _ = self.save_actor_info(actor, &actor_info);
 
         let elapsed_ms = start_time.elapsed().as_secs_f64() * 1000.0;
         logger().info(&format!(
-            "[ACTOR] [LFS] actor={} fileExists=true fileAgeMinutes={:.1} cacheExpiryMinutes={} fileOld=false [{:.2}ms]",
-            actor, age_minutes_f, cache_expiry, elapsed_ms
+            "[ACTOR] [LFS] actor={} resolve=true [{:.2}ms]",
+            actor, elapsed_ms
         ));
 
-        Ok(info)
+        Ok(actor_info)
     }
 
     /// Saves actor info to the local cache (file system).
@@ -434,8 +455,8 @@ mod tests {
         let _ = fs::remove_dir_all(&temp_dir);
     }
 
-    #[test]
-    fn test_save_and_resolve_actor_info() {
+    #[tokio::test]
+    async fn test_save_and_resolve_actor_info() {
         let temp_dir = env::temp_dir().join("rustproto_test_actor_info");
         let _ = fs::remove_dir_all(&temp_dir);
         fs::create_dir_all(&temp_dir).unwrap();
@@ -451,23 +472,23 @@ mod tests {
         lfs.save_actor_info("alice.bsky.social", &info).unwrap();
 
         // Resolve it (should succeed since it's fresh)
-        let resolved = lfs.resolve_actor_info("alice.bsky.social", None).unwrap();
+        let resolved = lfs.resolve_actor_info("alice.bsky.social", None).await.unwrap();
         assert_eq!(resolved.did, Some("did:plc:abc123".to_string()));
         assert_eq!(resolved.pds, Some("bsky.social".to_string()));
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
 
-    #[test]
-    fn test_resolve_actor_info_not_found() {
+    #[tokio::test]
+    async fn test_resolve_actor_info_not_found() {
         let temp_dir = env::temp_dir().join("rustproto_test_actor_not_found");
         let _ = fs::remove_dir_all(&temp_dir);
         fs::create_dir_all(&temp_dir).unwrap();
 
         let lfs = LocalFileSystem::initialize(&temp_dir).unwrap();
 
-        // Try to resolve a non-existent actor
-        let result = lfs.resolve_actor_info("nonexistent.bsky.social", None);
+        // Try to resolve a truly non-existent actor (will attempt network call which will fail)
+        let result = lfs.resolve_actor_info("this-handle-does-not-exist-xyz123.invalid", None).await;
         assert!(result.is_err());
 
         let _ = fs::remove_dir_all(&temp_dir);

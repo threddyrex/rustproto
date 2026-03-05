@@ -772,40 +772,20 @@ async fn resolve_repo_file(args: &HashMap<String, String>) -> Option<std::path::
         // Already a DID
         actor.to_string()
     } else {
-        // Try to resolve handle from cached actor info
-        match lfs.resolve_actor_info(actor, None) {
+        // Try to resolve handle from cached actor info (falls back to online)
+        match lfs.resolve_actor_info(actor, None).await {
             Ok(info) => {
                 match info.did {
                     Some(d) => d,
                     None => {
-                        logger().error("Cached actor info does not contain a DID");
+                        logger().error("Resolved actor info does not contain a DID");
                         return None;
                     }
                 }
             }
-            Err(_) => {
-                // Cache miss - resolve online
-                logger().trace("Cache miss, resolving actor online...");
-                let client = BlueskyClient::new();
-                match client.resolve_actor_info(actor, None).await {
-                    Ok(info) => {
-                        // Save to cache for future use
-                        if let Err(e) = lfs.save_actor_info(actor, &info) {
-                            logger().warning(&format!("Failed to cache actor info: {}", e));
-                        }
-                        match info.did {
-                            Some(d) => d,
-                            None => {
-                                logger().error("Resolved actor info does not contain a DID");
-                                return None;
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        logger().error(&format!("Could not resolve actor: {}", e));
-                        return None;
-                    }
-                }
+            Err(e) => {
+                logger().error(&format!("Could not resolve actor: {}", e));
+                return None;
             }
         }
     };

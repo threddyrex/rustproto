@@ -130,9 +130,10 @@ pub async fn describe_repo(
     let did_doc = state
         .lfs
         .resolve_actor_info(&user_did, None)
+        .await
         .ok()
         .and_then(|info| info.did_doc)
-        .and_then(|doc| serde_json::from_str(&doc).ok());
+        .and_then(|doc| serde_json::from_str::<serde_json::Value>(&doc).ok());
 
     // Get the collections
     let collections = match state.db.get_unique_collections() {
