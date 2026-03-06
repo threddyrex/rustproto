@@ -403,6 +403,84 @@ impl LocalFileSystem {
             .replace('.', "_")
             .replace('@', "_")
     }
+
+    /// Loads a session file for the given DID.
+    ///
+    /// Returns the parsed JSON value if the session file exists and is not expired.
+    ///
+    /// # Arguments
+    ///
+    /// * `did` - The DID to load the session for
+    /// * `cache_expiry_minutes` - Maximum age of the session file in minutes (default: 30)
+    pub fn load_session(
+        &self,
+        did: &str,
+        cache_expiry_minutes: Option<u64>,
+    ) -> Option<serde_json::Value> {
+        let cache_expiry = cache_expiry_minutes.unwrap_or(30);
+
+        let session_file = match self.get_path_session_file(did) {
+            Ok(p) => p,
+            Err(e) => {
+                logger().warning(&format!("Failed to get session file path: {}", e));
+                return None;
+            }
+        };
+
+        if !session_file.exists() {
+            logger().warning(&format!(
+                "Session file does not exist: {}",
+                session_file.display()
+            ));
+            return None;
+        }
+
+        // Check file age
+        let metadata = match fs::metadata(&session_file) {
+            Ok(m) => m,
+            Err(e) => {
+                logger().warning(&format!("Failed to read session file metadata: {}", e));
+                return None;
+            }
+        };
+
+        if let Ok(modified) = metadata.modified() {
+            let age = SystemTime::now()
+                .duration_since(modified)
+                .unwrap_or(Duration::MAX);
+            let age_minutes = age.as_secs() / 60;
+
+            if age_minutes > cache_expiry {
+                logger().warning(&format!(
+                    "Session file is older than {} minutes, will not use: {}",
+                    cache_expiry,
+                    session_file.display()
+                ));
+                return None;
+            }
+        }
+
+        logger().info(&format!(
+            "Reading session file: {}",
+            session_file.display()
+        ));
+
+        let json_str = match fs::read_to_string(&session_file) {
+            Ok(s) => s,
+            Err(e) => {
+                logger().warning(&format!("Failed to read session file: {}", e));
+                return None;
+            }
+        };
+
+        match serde_json::from_str(&json_str) {
+            Ok(v) => Some(v),
+            Err(e) => {
+                logger().warning(&format!("Failed to parse session file JSON: {}", e));
+                None
+            }
+        }
+    }
 }
 
 #[cfg(test)]

@@ -548,6 +548,216 @@ impl BlueskyClient {
 
         Ok(bytes_written)
     }
+
+    /// Lists all blob CIDs for the given DID from a PDS.
+    ///
+    /// Calls `com.atproto.sync.listBlobs` on the PDS, paging through results.
+    pub async fn list_blobs(
+        &self,
+        pds: &str,
+        did: &str,
+    ) -> Result<Vec<String>, BlueskyClientError> {
+        let log = logger();
+        let mut blobs = Vec::new();
+        let mut cursor: Option<String> = None;
+        let limit = 100;
+
+        loop {
+            let url = match &cursor {
+                Some(c) => format!(
+                    "https://{}/xrpc/com.atproto.sync.listBlobs?did={}&limit={}&cursor={}",
+                    pds, did, limit, c
+                ),
+                None => format!(
+                    "https://{}/xrpc/com.atproto.sync.listBlobs?did={}&limit={}",
+                    pds, did, limit
+                ),
+            };
+
+            log.trace(&format!("ListBlobs: url: {}", url));
+
+            let response = self.client.get(&url).send().await?;
+            let json: Value = response.json().await?;
+
+            let cids = json["cids"].as_array();
+            let cid_count = cids.map(|c| c.len()).unwrap_or(0);
+
+            if let Some(cids) = cids {
+                for cid in cids {
+                    if let Some(s) = cid.as_str() {
+                        blobs.push(s.to_string());
+                    }
+                }
+            }
+
+            cursor = json["cursor"].as_str().map(|s| s.to_string());
+            log.trace(&format!("ListBlobs: count={}, cursor={:?}", cid_count, cursor));
+
+            if cid_count < limit || cursor.is_none() {
+                break;
+            }
+
+            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        }
+
+        Ok(blobs)
+    }
+
+    /// Downloads a blob from a PDS and saves it to a file.
+    /// Also writes a `.metadata.json` file alongside the blob containing
+    /// the HTTP status code, content type, and content length.
+    ///
+    /// Calls `com.atproto.sync.getBlob` on the PDS.
+    pub async fn get_blob(
+        &self,
+        pds: &str,
+        did: &str,
+        cid: &str,
+        output_path: &std::path::Path,
+    ) -> Result<u64, BlueskyClientError> {
+        use tokio::io::AsyncWriteExt;
+
+        let url = format!(
+            "https://{}/xrpc/com.atproto.sync.getBlob?did={}&cid={}",
+            pds, did, cid
+        );
+
+        let response = self.client.get(&url).send().await?;
+
+        if !response.status().is_success() {
+            return Err(BlueskyClientError::ResolutionFailed(format!(
+                "HTTP {} getting blob {}",
+                response.status(),
+                cid
+            )));
+        }
+
+        let status_code = response.status().as_u16();
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        let content_length = response
+            .headers()
+            .get("content-length")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(0);
+
+        let bytes = response.bytes().await?;
+        let bytes_written = bytes.len() as u64;
+
+        let mut file = tokio::fs::File::create(output_path).await.map_err(|e| {
+            BlueskyClientError::ResolutionFailed(format!("Failed to create blob file: {}", e))
+        })?;
+
+        file.write_all(&bytes).await.map_err(|e| {
+            BlueskyClientError::ResolutionFailed(format!("Failed to write blob file: {}", e))
+        })?;
+
+        // Write metadata file alongside the blob
+        let metadata_path = {
+            let mut p = output_path.as_os_str().to_os_string();
+            p.push(".metadata.json");
+            std::path::PathBuf::from(p)
+        };
+
+        let metadata = serde_json::json!({
+            "statusCode": status_code,
+            "contentType": content_type,
+            "contentLength": content_length,
+        });
+
+        let metadata_str = serde_json::to_string_pretty(&metadata).map_err(|e| {
+            BlueskyClientError::ResolutionFailed(format!("Failed to serialize metadata: {}", e))
+        })?;
+
+        tokio::fs::write(&metadata_path, metadata_str).await.map_err(|e| {
+            BlueskyClientError::ResolutionFailed(format!("Failed to write metadata file: {}", e))
+        })?;
+
+        Ok(bytes_written)
+    }
+
+    /// Gets user preferences from a PDS (requires authentication).
+    ///
+    /// Calls `app.bsky.actor.getPreferences` on the PDS.
+    pub async fn get_preferences(
+        &self,
+        pds: &str,
+        access_jwt: &str,
+    ) -> Result<Value, BlueskyClientError> {
+        let url = format!(
+            "https://{}/xrpc/app.bsky.actor.getPreferences",
+            pds
+        );
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", access_jwt))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(BlueskyClientError::ResolutionFailed(format!(
+                "HTTP {} getting preferences",
+                response.status()
+            )));
+        }
+
+        let json: Value = response.json().await?;
+        Ok(json)
+    }
+
+    /// Creates a session (logs in) on a PDS.
+    ///
+    /// Calls `com.atproto.server.createSession` on the PDS.
+    pub async fn create_session(
+        &self,
+        pds: &str,
+        identifier: &str,
+        password: &str,
+        auth_factor_token: Option<&str>,
+    ) -> Result<Value, BlueskyClientError> {
+        let url = format!(
+            "https://{}/xrpc/com.atproto.server.createSession",
+            pds
+        );
+
+        let body = if let Some(token) = auth_factor_token {
+            serde_json::json!({
+                "identifier": identifier,
+                "password": password,
+                "authFactorToken": token
+            })
+        } else {
+            serde_json::json!({
+                "identifier": identifier,
+                "password": password
+            })
+        };
+
+        let response = self
+            .client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .body(body.to_string())
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(BlueskyClientError::ResolutionFailed(format!(
+                "HTTP {} creating session",
+                response.status()
+            )));
+        }
+
+        let json: Value = response.json().await?;
+        Ok(json)
+    }
 }
 
 #[cfg(test)]
