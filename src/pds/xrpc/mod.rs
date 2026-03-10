@@ -33,6 +33,7 @@ mod sync_get_repo;
 mod sync_get_repo_status;
 mod sync_list_repos;
 mod upload_blob;
+mod well_known_atproto_did;
 mod well_known_did;
 
 pub use activate_account::activate_account;
@@ -64,4 +65,5 @@ pub use sync_get_repo::sync_get_repo;
 pub use sync_get_repo_status::sync_get_repo_status;
 pub use sync_list_repos::sync_list_repos;
 pub use upload_blob::upload_blob;
+pub use well_known_atproto_did::well_known_atproto_did;
 pub use well_known_did::well_known_did;
