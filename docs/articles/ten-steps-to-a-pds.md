@@ -2,10 +2,10 @@
 
 # Ten Steps to a PDS
 
-Building a PDS seems daunting at first. It was for me — I wasn't sure where to start.
+Building an atproto Personal Data Server (PDS) seems daunting at first. It was for me — I wasn't sure where to start.
 
 If you'd like to write a PDS, I suggest following these ten steps. Each step builds on the previous one, 
-starting from simple command-line tools and working up to a fully functioning Personal Data Server.
+starting from simple command-line tools and working up to a fully functioning PDS.
 
 Each section includes:
 
@@ -53,6 +53,7 @@ This is often the first thing that atproto devs learn about the protocol. In thi
 - *DID → did.json*
   - If it's a `did:plc`, use the [PLC Directory](https://web.plc.directory) to look up the DID document.
   - If it's a `did:web`, use the hostname in the DID to find the did.json (e.g. `threddyrex.org/.well-known/did.json`).
+  - [DID - AT Protocol](https://atproto.com/specs/did)
 - *did.json → PDS hostname*
   - Now that you have the did.json, you can look up the PDS hostname in the document itself.
 
@@ -64,7 +65,7 @@ This is often the first thing that atproto devs learn about the protocol. In thi
 
 **Source code examples:**
 
-- [bluesky_client.rs](/src/ws/bluesky_client.rs) — resolves a handle to a DID, fetches the DID document, and extracts the PDS hostname
+- [bluesky_client.rs](/src/ws/bluesky_client.rs) — the resolve_actor_info function resolves a handle to a DID, fetches the DID document, and extracts the PDS hostname
 - [actor_info.rs](/src/ws/actor_info.rs) — data structure representing the resolved actor info
 
 **Instructions:**
@@ -124,8 +125,8 @@ or write it from scratch yourself. In rustproto I did the latter.
 
 **Source code examples:**
 
-- [repo.rs](/src/repo/repo.rs) — repo parsing entry point, explains the overall repo structure ⭐
-- [dag_cbor.rs](/src/repo/dag_cbor.rs) — decoding DAG-CBOR binary format ⭐
+- [repo.rs](/src/repo/repo.rs) — repo parsing entry point, explains the overall repo structure
+- [dag_cbor.rs](/src/repo/dag_cbor.rs) — decoding DAG-CBOR binary format
 - [cid.rs](/src/repo/cid.rs) — decoding CID (Content Identifier)
 - [varint.rs](/src/repo/varint.rs) — decoding variable-length integers
 - [repo_header.rs](/src/repo/repo_header.rs) — parsing the repo header
@@ -178,7 +179,7 @@ can be reused here. The new code is mostly about connecting to the `subscribeRep
 
 **Reading:**
 
-- [Event Streams](https://atproto.com/specs/event-stream) — AT Protocol event stream spec
+- [Event Stream](https://atproto.com/specs/event-stream) — AT Protocol event stream spec
 
 **Coding concepts:**
 
@@ -233,8 +234,9 @@ tree structure. Then implement querying: given a record path, walk the tree to f
 
 ## Step 7: Database implementation
 
-Your PDS needs persistent storage. In this step, build out the database layer that stores accounts, repo records, sessions, blobs, 
-and configuration. This is the backbone that all the XRPC endpoints will use.
+Your PDS needs persistent storage. In this step, build out the database layer that will store accounts, repo records, sessions, blobs, 
+and configuration. Start by first adding the boilerplate stuff - like creating tables, creating connections, etc. - and then
+as you progress through the rest of the steps, you'll wind up adding more entities to store in the db.
 
 **T-shirt size:** Large
 
@@ -257,8 +259,8 @@ and configuration. This is the backbone that all the XRPC endpoints will use.
 
 **Instructions:**
 
-Design and implement your database schema. Create tables for accounts, repo records, sessions, blobs, and configuration. 
-Build a database access layer that provides clean functions for all the operations you'll need.
+Design and implement the basic database schema. Add helper functions for creating tables, creating connections, etc.
+
 
 &nbsp;
 
@@ -266,8 +268,9 @@ Build a database access layer that provides clean functions for all the operatio
 
 ## Step 8: Administrative interface
 
-Before diving into the XRPC endpoints, build an administrative UI for your PDS. This gives you a way to inspect 
-and manage the server without needing to use API calls.
+Before diving into the XRPC endpoints, build an administrative UI for your PDS. At least the basics.
+This gives you a way to manage the server. I found that once I had a simple admin UI started, I kept
+adding more functions to it. Feel free to skip things like passkeys for now.
 
 **T-shirt size:** Medium
 
@@ -275,24 +278,19 @@ and manage the server without needing to use API calls.
 
 - Server-side HTML rendering
 - Session-based authentication
-- WebAuthn / passkeys
 
 **Source code examples:**
 
+- [admin/login.rs](/src/pds/admin/login.rs) — admin authentication
 - [admin/home.rs](/src/pds/admin/home.rs) — home dashboard
 - [admin/sessions.rs](/src/pds/admin/sessions.rs) — active session management
 - [admin/stats.rs](/src/pds/admin/stats.rs) — server statistics
 - [admin/config.rs](/src/pds/admin/config.rs) — configuration management
 - [admin/actions.rs](/src/pds/admin/actions.rs) — administrative actions
-- [admin/login.rs](/src/pds/admin/login.rs) — admin authentication
-- [admin/passkeys.rs](/src/pds/admin/passkeys.rs) — passkey management
-- [admin/register_passkey.rs](/src/pds/admin/register_passkey.rs) — passkey registration
-- [admin/passkey_auth.rs](/src/pds/admin/passkey_auth.rs) — passkey-based login
 
 **Instructions:**
 
-Build a web-based admin interface with pages for viewing server status, managing sessions, viewing statistics, 
-editing configuration, and performing administrative actions. Protect it with authentication — passkeys are a great option.
+Build a web-based admin interface with pages for viewing server status, managing sessions, etc.
 
 &nbsp;
 
@@ -300,7 +298,7 @@ editing configuration, and performing administrative actions. Protect it with au
 
 ## Step 9: XRPC endpoints
 
-This is the big one. Implement the XRPC endpoints that make your PDS speak the AT Protocol. I suggest implementing them 
+This is the big one. Implement the XRPC endpoints that the larger network use to connect with your PDS. I suggest implementing them 
 in the following order, grouped by category. See the [XRPC Reference](/docs/xrpc-reference.md) for the list implemented by rustproto.
 
 **T-shirt size:** Extra Large
