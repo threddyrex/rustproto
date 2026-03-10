@@ -6,7 +6,6 @@ Rust port of [dnproto](https://github.com/threddyrex/dnproto).
 This is an atproto PDS.
 
 
-
 &nbsp;
 
 # Source code
@@ -52,7 +51,7 @@ Requires Rust.
 To get started, change into the root directory and build.
 
 ```powershell
-cargo build --release
+cargo build
 ```
 
 Next, change into the scripts directory, and list the files:
@@ -84,15 +83,6 @@ Most of the files in this directory represent one "command" of the tool. Here ar
 .\StartFirehoseConsumer.ps1
 ```
 
-Note: Some client debugging commands from dnproto are not yet ported to rustproto, including:
-- GetPlcHistory
-- PrintRepoPosts
-- CreateSession / DeleteSession
-- GetUnreadCount
-- CreatePost
-- GetPdsInfo
-- DescribeRepo
-
 
 &nbsp;
 
@@ -106,4 +96,4 @@ By default, it uses the "data" directory in the repo. You can change this in the
 
 # Linux Support
 
-Is Linux supported? Yes! I run my dnproto PDS on Linux.
+Is Linux supported? Yes! I run my rustproto PDS on Linux.
