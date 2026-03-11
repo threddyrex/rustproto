@@ -1,10 +1,11 @@
 
 # rustproto - software for ATProto and Bluesky
 
-Rust port of [dnproto](https://github.com/threddyrex/dnproto).
+This is a Rust port of [dnproto](https://github.com/threddyrex/dnproto), which is an atproto PDS.
 
-This is an atproto PDS.
+My main account runs on rustproto -> [threddyrex.org](https://bsky.app/profile/did:web:threddyrex.org).
 
+For info on how to implement a PDS from scratch, check out [Ten Steps to a PDS](/docs/articles/ten-steps-to-a-pds.md).
 
 &nbsp;
 
