@@ -277,7 +277,7 @@ pub async fn proxy_to_appview(
         .unwrap_or_default();
 
     if !allow_list.contains(&atproto_proxy.did) {
-        state.log.error(&format!(
+        state.log.warning(&format!(
             "[PROXY] Atproto proxy DID not in allow list: {}",
             atproto_proxy.did
         ));
