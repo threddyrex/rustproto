@@ -4,7 +4,7 @@
 //!
 //! Handles token exchange for authorization_code and refresh_token grants.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use axum::{
     Json,
@@ -23,6 +23,9 @@ use crate::pds::server::PdsState;
 
 use super::dpop::validate_dpop;
 use super::helpers::{get_caller_info, get_form_value, get_hostname, is_oauth_enabled};
+
+/// Lock for OAuth refresh operations to prevent race conditions.
+static OAUTH_REFRESH_LOCK: Mutex<()> = Mutex::new(());
 
 /// Token success response.
 #[derive(Serialize)]
@@ -311,6 +314,9 @@ async fn handle_refresh_token(
     headers: &HeaderMap,
     body_str: &str,
 ) -> impl IntoResponse {
+    // Acquire lock to prevent concurrent refresh races.
+    let _guard = OAUTH_REFRESH_LOCK.lock().unwrap();
+
     // Get refresh_token
     let refresh_token = match get_form_value(body_str, "refresh_token") {
         Some(t) if !t.is_empty() => t,
