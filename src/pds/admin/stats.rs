@@ -101,6 +101,7 @@ fn build_stats_summary_page(hostname: &str, statistics: &[Statistic]) -> String 
     rows.sort_by(|a, b| b.2.cmp(&a.2));
 
     let stats_count = rows.len();
+    let total_rows = statistics.len();
     let stats_rows = build_summary_rows_html(&rows);
 
     format!(
@@ -135,7 +136,7 @@ fn build_stats_summary_page(hostname: &str, statistics: &[Statistic]) -> String 
 <h1>Statistics</h1>
 
 <div class="section-header">
-    <h2>Statistics <span class="session-count">({stats_count})</span></h2>
+    <h2>Statistics <span class="session-count">({stats_count} endpoints, {total_rows} total rows)</span></h2>
     <div style="display: flex; gap: 8px;">
         <form method="post" action="/admin/deleteallstatistics" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete all statistics?');">
             <button type="submit" class="delete-all-btn">Delete All</button>
