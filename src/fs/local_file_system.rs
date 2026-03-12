@@ -41,6 +41,7 @@ const SUBDIRS: &[&str] = &[
     "scratch",
     "logs",
     "records",
+    "static",
 ];
 
 /// Subdirectories to create under pds directory.
@@ -230,6 +231,13 @@ impl LocalFileSystem {
     /// Returns a path like `{data_dir}/pds/pds.db`
     pub fn get_path_pds_db(&self) -> PathBuf {
         self.data_dir.join("pds").join("pds.db")
+    }
+
+    /// Gets the path to the static directory.
+    ///
+    /// Returns a path like `{data_dir}/static/`
+    pub fn get_path_static_dir(&self) -> PathBuf {
+        self.data_dir.join("static")
     }
 
     /// Default cache expiry time in minutes for actor info files.

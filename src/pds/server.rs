@@ -188,6 +188,8 @@ impl PdsServer {
             .route("/xrpc/app.bsky.actor.putPreferences", axum::routing::post(xrpc::put_preferences))
             // Catch-all for app.bsky.* and chat.bsky.* routes - proxy to AppView
             .fallback(xrpc::app_bsky_fallback)
+            // Static file endpoints
+            .route("/favicon.ico", axum::routing::get(xrpc::favicon))
             // .well-known endpoints
             .route("/.well-known/did.json", axum::routing::get(xrpc::well_known_did))
             .route("/.well-known/atproto-did", axum::routing::get(xrpc::well_known_atproto_did))
