@@ -16,7 +16,7 @@ use serde::Deserialize;
 use tower_cookies::Cookies;
 
 use super::{get_base_styles, get_caller_info, get_navbar_css, get_navbar_html, is_admin_enabled, is_authenticated};
-use crate::pds::db::{AdminSession, LegacySession, OauthSession, StatisticKey};
+use crate::pds::db::{AdminSession, LegacySession, OauthSession, PasskeyChallenge, StatisticKey};
 use crate::pds::server::PdsState;
 
 /// Handle GET /admin/sessions - Show sessions page.
@@ -67,7 +67,9 @@ pub async fn admin_sessions(
 
     let mut admin_sessions = state.db.get_all_admin_sessions().unwrap_or_default();
     admin_sessions.sort_by(|a, b| b.created_date.cmp(&a.created_date));
-
+    // Get all passkey challenges sorted by newest first
+    let mut challenges = state.db.get_all_passkey_challenges().unwrap_or_default();
+    challenges.sort_by(|a, b| b.created_date.cmp(&a.created_date));
     let html = format!(
         r#"<!DOCTYPE html>
 <html>
@@ -90,6 +92,7 @@ pub async fn admin_sessions(
     .ip-address {{ font-weight: bold; color: #1d9bf0; }}
     .sessions-table tr:last-child td {{ border-bottom: none; }}
     .sessions-table tr:hover {{ background-color: #3a3d41; }}
+    .challenge-text {{ font-family: monospace; font-size: 12px; }}
 </style>
 </head>
 <body>
@@ -144,6 +147,20 @@ pub async fn admin_sessions(
     </thead>
     <tbody>
         {admin_rows}
+    </tbody>
+</table>
+
+<h2>Passkey Challenges <span class="session-count">({challenge_count})</span></h2>
+<table class="sessions-table" id="passkeyChallengesTable">
+    <thead>
+        <tr>
+            <th>Challenge</th>
+            <th>Created</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody>
+        {challenge_rows}
     </tbody>
 </table>
 </div>
@@ -213,6 +230,8 @@ pub async fn admin_sessions(
         oauth_rows = build_oauth_sessions_html(&oauth_sessions),
         admin_count = admin_sessions.len(),
         admin_rows = build_admin_sessions_html(&admin_sessions),
+        challenge_count = challenges.len(),
+        challenge_rows = build_challenges_html(&challenges),
     );
 
     Html(html).into_response()
@@ -483,6 +502,35 @@ fn build_admin_sessions_html(sessions: &[AdminSession]) -> String {
                 age = html_encode(&calculate_age(&s.created_date)),
                 auth_type = html_encode(&s.auth_type),
                 session_id = html_encode(&s.session_id),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Build HTML rows for passkey challenges.
+fn build_challenges_html(challenges: &[PasskeyChallenge]) -> String {
+    if challenges.is_empty() {
+        return r#"<tr><td colspan="3" style="text-align: center; color: #8899a6;">No passkey challenges</td></tr>"#.to_string();
+    }
+
+    challenges
+        .iter()
+        .map(|c| {
+            format!(
+                r#"<tr>
+                    <td class="challenge-text">{challenge}</td>
+                    <td>{created}</td>
+                    <td>
+                        <form method="post" action="/admin/deletepasskeychallenge" style="display:inline;">
+                            <input type="hidden" name="challenge" value="{challenge_value}" />
+                            <button type="submit" class="delete-btn">Delete</button>
+                        </form>
+                    </td>
+                </tr>"#,
+                challenge = html_encode(&c.challenge),
+                created = html_encode(&c.created_date),
+                challenge_value = html_encode(&c.challenge),
             )
         })
         .collect::<Vec<_>>()
