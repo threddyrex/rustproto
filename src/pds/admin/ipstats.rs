@@ -113,6 +113,8 @@ fn build_ipstats_summary_page(hostname: &str, statistics: &[Statistic]) -> Strin
     {navbar_css}
     .section-header {{ display: flex; justify-content: space-between; align-items: center; }}
     .session-count {{ color: #8899a6; font-size: 14px; margin-left: 8px; }}
+    .delete-all-btn {{ background-color: #4caf50; color: white; border: none; padding: 6px 12px; border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: 500; font-family: inherit; }}
+    .delete-all-btn:hover {{ background-color: #388e3c; }}
     .stats-table {{ width: 100%; border-collapse: collapse; background-color: #2f3336; border-radius: 8px; overflow: hidden; }}
     .stats-table th {{ background-color: #1d1f23; color: #8899a6; text-align: left; padding: 12px 16px; font-size: 14px; font-weight: 500; }}
     .stats-table th.sortable {{ cursor: pointer; user-select: none; }}
@@ -134,6 +136,14 @@ fn build_ipstats_summary_page(hostname: &str, statistics: &[Statistic]) -> Strin
 
 <div class="section-header">
     <h2>By IP Address <span class="session-count">({ip_count} addresses)</span></h2>
+    <div style="display: flex; gap: 8px;">
+        <form method="post" action="/admin/deleteallstatistics" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete all statistics?');">
+            <button type="submit" class="delete-all-btn">Delete All</button>
+        </form>
+        <form method="post" action="/admin/deleteoldstatistics" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete statistics older than 24 hours?');">
+            <button type="submit" class="delete-all-btn">Delete Old (&gt;24hr)</button>
+        </form>
+    </div>
 </div>
 <div style="margin-bottom: 16px; display: flex; gap: 12px;">
     <input type="text" id="showFilterInput" placeholder="Show..." style="flex: 1; padding: 10px 14px; font-size: 14px; background-color: #2f3336; color: #e7e9ea; border: 1px solid #444; border-radius: 6px; outline: none;" onfocus="this.style.borderColor='#4caf50'" onblur="this.style.borderColor='#444'" />
