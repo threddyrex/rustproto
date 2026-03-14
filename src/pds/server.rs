@@ -221,6 +221,8 @@ impl PdsServer {
             .route("/admin/deleteadminsession", axum::routing::post(admin::admin_delete_admin_session))
             .route("/admin/stats", axum::routing::get(admin::admin_stats))
             .route("/admin/stats/", axum::routing::get(admin::admin_stats))
+            .route("/admin/ipstats", axum::routing::get(admin::admin_ipstats))
+            .route("/admin/ipstats/", axum::routing::get(admin::admin_ipstats))
             .route("/admin/deletestatistic", axum::routing::post(admin::admin_delete_statistic))
             .route("/admin/deleteallstatistics", axum::routing::post(admin::admin_delete_all_statistics))
             .route("/admin/deleteoldstatistics", axum::routing::post(admin::admin_delete_old_statistics))
