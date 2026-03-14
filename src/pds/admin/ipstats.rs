@@ -212,9 +212,10 @@ fn build_ipstats_detail_page(hostname: &str, filter_ip: &str, statistics: &[&Sta
     <thead>
         <tr>
             <th class="sortable" data-col="0" data-type="string">Name</th>
-            <th class="sortable" data-col="1" data-type="number" style="text-align: right;">Value</th>
-            <th class="sortable desc" data-col="2" data-type="string">Last Updated</th>
-            <th class="sortable" data-col="3" data-type="number" style="text-align: right;">Minutes Ago</th>
+            <th class="sortable" data-col="1" data-type="string">User Agent</th>
+            <th class="sortable" data-col="2" data-type="number" style="text-align: right;">Value</th>
+            <th class="sortable desc" data-col="3" data-type="string">Last Updated</th>
+            <th class="sortable" data-col="4" data-type="number" style="text-align: right;">Minutes Ago</th>
         </tr>
     </thead>
     <tbody>
@@ -267,7 +268,7 @@ fn build_summary_rows_html(rows: &[(String, String, i64, String)]) -> String {
 /// Build HTML rows for the detail page (individual stats for an IP address).
 fn build_detail_rows_html(statistics: &[&Statistic]) -> String {
     if statistics.is_empty() {
-        return r#"<tr><td colspan="4" style="text-align: center; color: #8899a6;">No statistics</td></tr>"#.to_string();
+        return r#"<tr><td colspan="5" style="text-align: center; color: #8899a6;">No statistics</td></tr>"#.to_string();
     }
 
     statistics
@@ -276,12 +277,14 @@ fn build_detail_rows_html(statistics: &[&Statistic]) -> String {
             format!(
                 r#"<tr>
                     <td><a href="/admin/stats?name={name_url}" class="name-link">{name}</a></td>
+                    <td>{user_agent}</td>
                     <td style="text-align: right;">{value}</td>
                     <td>{last_updated}</td>
                     <td style="text-align: right;">{minutes_ago}</td>
                 </tr>"#,
                 name_url = url_encode(&s.name),
                 name = html_encode(&s.name),
+                user_agent = html_encode(&s.user_agent),
                 value = s.value,
                 last_updated = html_encode(&s.last_updated_date),
                 minutes_ago = calculate_minutes_ago(&s.last_updated_date),
