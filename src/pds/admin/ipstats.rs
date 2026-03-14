@@ -6,16 +6,23 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{
-    extract::{ConnectInfo, State},
+    extract::{ConnectInfo, Query, State},
     http::HeaderMap,
     response::{Html, IntoResponse, Redirect, Response},
 };
 use chrono::{DateTime, Utc};
+use serde::Deserialize;
 use tower_cookies::Cookies;
 
 use super::{get_base_styles, get_caller_info, get_navbar_css, get_navbar_html, is_admin_enabled, is_authenticated};
 use crate::pds::db::{Statistic, StatisticKey};
 use crate::pds::server::PdsState;
+
+/// Query parameters for the IP stats page.
+#[derive(Deserialize, Default)]
+pub struct IpStatsQuery {
+    ip: Option<String>,
+}
 
 /// Handle GET /admin/ipstats - Show statistics aggregated by IP address.
 pub async fn admin_ipstats(
@@ -23,6 +30,7 @@ pub async fn admin_ipstats(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     cookies: Cookies,
+    Query(query): Query<IpStatsQuery>,
 ) -> impl IntoResponse {
     // Extract caller info first for IP-based session validation
     let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
@@ -57,18 +65,28 @@ pub async fn admin_ipstats(
         .unwrap_or_else(|_| "(PdsHostname not set)".to_string());
 
     // Get all statistics sorted by last updated (newest first)
-    let statistics = state.db.get_all_statistics().unwrap_or_default();
+    let mut statistics = state.db.get_all_statistics().unwrap_or_default();
+    statistics.sort_by(|a, b| b.last_updated_date.cmp(&a.last_updated_date));
 
-    let html = build_ipstats_page(&hostname, &statistics);
+    let html = if let Some(filter_ip) = &query.ip {
+        // Detail page: show all stats for a specific IP address
+        let filtered: Vec<&Statistic> = statistics.iter().filter(|s| s.ip_address == *filter_ip).collect();
+        build_ipstats_detail_page(&hostname, filter_ip, &filtered)
+    } else {
+        // Summary page: show aggregated table grouped by IP address
+        build_ipstats_summary_page(&hostname, &statistics)
+    };
+
     Html(html).into_response()
 }
 
-/// Build the IP stats page HTML.
-fn build_ipstats_page(hostname: &str, statistics: &[Statistic]) -> String {
-    // Aggregate statistics by IP address: (total_value, most_recent_last_updated)
-    let mut summary: std::collections::BTreeMap<String, (i64, String)> = std::collections::BTreeMap::new();
+/// Build the IP stats summary page HTML.
+fn build_ipstats_summary_page(hostname: &str, statistics: &[Statistic]) -> String {
+    // Aggregate statistics by (IP address, User Agent): (total_value, most_recent_last_updated)
+    let mut summary: std::collections::BTreeMap<(String, String), (i64, String)> = std::collections::BTreeMap::new();
     for s in statistics {
-        let entry = summary.entry(s.ip_address.clone()).or_insert((0, String::new()));
+        let key = (s.ip_address.clone(), s.user_agent.clone());
+        let entry = summary.entry(key).or_insert((0, String::new()));
         entry.0 += s.value;
         if entry.1.is_empty() || s.last_updated_date > entry.1 {
             entry.1 = s.last_updated_date.clone();
@@ -76,14 +94,14 @@ fn build_ipstats_page(hostname: &str, statistics: &[Statistic]) -> String {
     }
 
     // Convert to vec and sort by last_updated desc
-    let mut rows: Vec<(String, i64, String)> = summary
+    let mut rows: Vec<(String, String, i64, String)> = summary
         .into_iter()
-        .map(|(ip, (value, last_updated))| (ip, value, last_updated))
+        .map(|((ip, ua), (value, last_updated))| (ip, ua, value, last_updated))
         .collect();
-    rows.sort_by(|a, b| b.2.cmp(&a.2));
+    rows.sort_by(|a, b| b.3.cmp(&a.3));
 
     let ip_count = rows.len();
-    let stats_rows = build_ipstats_rows_html(&rows);
+    let stats_rows = build_summary_rows_html(&rows);
 
     format!(
         r#"<!DOCTYPE html>
@@ -105,7 +123,8 @@ fn build_ipstats_page(hostname: &str, statistics: &[Statistic]) -> String {
     .stats-table td {{ padding: 10px 16px; border-bottom: 1px solid #444; font-size: 14px; }}
     .stats-table tr:last-child td {{ border-bottom: none; }}
     .stats-table tr:hover {{ background-color: #3a3d41; }}
-    .ip-address {{ font-weight: bold; color: #1d9bf0; }}
+    .ip-link {{ font-weight: bold; color: #1d9bf0; text-decoration: none; }}
+    .ip-link:hover {{ text-decoration: underline; }}
 </style>
 </head>
 <body>
@@ -124,9 +143,10 @@ fn build_ipstats_page(hostname: &str, statistics: &[Statistic]) -> String {
     <thead>
         <tr>
             <th class="sortable" data-col="0" data-type="string">IP Address</th>
-            <th class="sortable" data-col="1" data-type="number" style="text-align: right;">Value</th>
-            <th class="sortable desc" data-col="2" data-type="string">Last Updated</th>
-            <th class="sortable" data-col="3" data-type="number" style="text-align: right;">Minutes Ago</th>
+            <th class="sortable" data-col="1" data-type="string">User Agent</th>
+            <th class="sortable" data-col="2" data-type="number" style="text-align: right;">Value</th>
+            <th class="sortable desc" data-col="3" data-type="string">Last Updated</th>
+            <th class="sortable" data-col="4" data-type="number" style="text-align: right;">Minutes Ago</th>
         </tr>
     </thead>
     <tbody>
@@ -147,25 +167,124 @@ fn build_ipstats_page(hostname: &str, statistics: &[Statistic]) -> String {
     )
 }
 
-/// Build HTML rows for the IP stats page (grouped by IP address).
-fn build_ipstats_rows_html(rows: &[(String, i64, String)]) -> String {
+/// Build the IP stats detail page HTML for a specific IP address.
+fn build_ipstats_detail_page(hostname: &str, filter_ip: &str, statistics: &[&Statistic]) -> String {
+    let stats_count = statistics.len();
+    let stats_rows = build_detail_rows_html(statistics);
+
+    format!(
+        r#"<!DOCTYPE html>
+<html>
+<head>
+<title>Admin - IP Statistics - {filter_ip} - {hostname}</title>
+<style>
+    {base_styles}
+    {navbar_css}
+    .section-header {{ display: flex; justify-content: space-between; align-items: center; }}
+    .session-count {{ color: #8899a6; font-size: 14px; margin-left: 8px; }}
+    .stats-table {{ width: 100%; border-collapse: collapse; background-color: #2f3336; border-radius: 8px; overflow: hidden; }}
+    .stats-table th {{ background-color: #1d1f23; color: #8899a6; text-align: left; padding: 12px 16px; font-size: 14px; font-weight: 500; }}
+    .stats-table th.sortable {{ cursor: pointer; user-select: none; }}
+    .stats-table th.sortable:hover {{ background-color: #2a2d31; color: #e7e9ea; }}
+    .stats-table th.sortable::after {{ content: ' \2195'; opacity: 0.3; }}
+    .stats-table th.sortable.asc::after {{ content: ' \2191'; opacity: 1; }}
+    .stats-table th.sortable.desc::after {{ content: ' \2193'; opacity: 1; }}
+    .stats-table td {{ padding: 10px 16px; border-bottom: 1px solid #444; font-size: 14px; }}
+    .stats-table tr:last-child td {{ border-bottom: none; }}
+    .stats-table tr:hover {{ background-color: #3a3d41; }}
+    .name-link {{ color: #1d9bf0; text-decoration: none; }}
+    .name-link:hover {{ text-decoration: underline; }}
+    .back-link {{ color: #1d9bf0; text-decoration: none; font-size: 14px; }}
+    .back-link:hover {{ text-decoration: underline; }}
+</style>
+</head>
+<body>
+<div class="container">
+{navbar}
+<h1>IP Statistics</h1>
+
+<a href="/admin/ipstats" class="back-link">&larr; Back to Summary</a>
+
+<div class="section-header">
+    <h2>{filter_ip} <span class="session-count">({stats_count})</span></h2>
+</div>
+<table class="stats-table" id="statsTable">
+    <thead>
+        <tr>
+            <th class="sortable" data-col="0" data-type="string">Name</th>
+            <th class="sortable" data-col="1" data-type="number" style="text-align: right;">Value</th>
+            <th class="sortable desc" data-col="2" data-type="string">Last Updated</th>
+            <th class="sortable" data-col="3" data-type="number" style="text-align: right;">Minutes Ago</th>
+        </tr>
+    </thead>
+    <tbody>
+        {stats_rows}
+    </tbody>
+</table>
+</div>
+{sort_and_filter_script}
+</body>
+</html>"#,
+        hostname = html_encode(hostname),
+        filter_ip = html_encode(filter_ip),
+        base_styles = get_base_styles(),
+        navbar_css = get_navbar_css(),
+        navbar = get_navbar_html("ipstats"),
+        stats_count = stats_count,
+        stats_rows = stats_rows,
+        sort_and_filter_script = get_sort_and_filter_script(),
+    )
+}
+
+/// Build HTML rows for the summary page (grouped by IP address + user agent).
+fn build_summary_rows_html(rows: &[(String, String, i64, String)]) -> String {
     if rows.is_empty() {
-        return r#"<tr><td colspan="4" style="text-align: center; color: #8899a6;">No statistics</td></tr>"#.to_string();
+        return r#"<tr><td colspan="5" style="text-align: center; color: #8899a6;">No statistics</td></tr>"#.to_string();
     }
 
     rows.iter()
-        .map(|(ip, value, last_updated)| {
+        .map(|(ip, ua, value, last_updated)| {
             format!(
                 r#"<tr>
-                    <td class="ip-address">{ip}</td>
+                    <td><a href="/admin/ipstats?ip={ip_url}" class="ip-link">{ip}</a></td>
+                    <td>{ua}</td>
                     <td style="text-align: right;">{value}</td>
                     <td>{last_updated}</td>
                     <td style="text-align: right;">{minutes_ago}</td>
                 </tr>"#,
+                ip_url = url_encode(ip),
                 ip = html_encode(ip),
+                ua = html_encode(ua),
                 value = value,
                 last_updated = html_encode(last_updated),
                 minutes_ago = calculate_minutes_ago(last_updated),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Build HTML rows for the detail page (individual stats for an IP address).
+fn build_detail_rows_html(statistics: &[&Statistic]) -> String {
+    if statistics.is_empty() {
+        return r#"<tr><td colspan="4" style="text-align: center; color: #8899a6;">No statistics</td></tr>"#.to_string();
+    }
+
+    statistics
+        .iter()
+        .map(|s| {
+            format!(
+                r#"<tr>
+                    <td><a href="/admin/stats?name={name_url}" class="name-link">{name}</a></td>
+                    <td style="text-align: right;">{value}</td>
+                    <td>{last_updated}</td>
+                    <td style="text-align: right;">{minutes_ago}</td>
+                </tr>"#,
+                name_url = url_encode(&s.name),
+                name = html_encode(&s.name),
+                value = s.value,
+                last_updated = html_encode(&s.last_updated_date),
+                minutes_ago = calculate_minutes_ago(&s.last_updated_date),
             )
         })
         .collect::<Vec<_>>()
@@ -278,6 +397,22 @@ fn get_sort_and_filter_script() -> &'static str {
     hideFilterInput.addEventListener('input', applyFilters);
 })();
 </script>"#
+}
+
+/// URL-encode a string for use in query parameters.
+fn url_encode(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    for byte in s.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                result.push(byte as char);
+            }
+            _ => {
+                result.push_str(&format!("%{:02X}", byte));
+            }
+        }
+    }
+    result
 }
 
 /// HTML encode a string to prevent XSS.
