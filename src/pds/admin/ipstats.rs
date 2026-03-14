@@ -101,6 +101,7 @@ fn build_ipstats_summary_page(hostname: &str, statistics: &[Statistic]) -> Strin
     rows.sort_by(|a, b| b.3.cmp(&a.3));
 
     let ip_count = rows.len();
+    let total_stats = statistics.len();
     let stats_rows = build_summary_rows_html(&rows);
 
     format!(
@@ -135,12 +136,14 @@ fn build_ipstats_summary_page(hostname: &str, statistics: &[Statistic]) -> Strin
 <h1>IP Statistics</h1>
 
 <div class="section-header">
-    <h2>By IP Address <span class="session-count">({ip_count} addresses)</span></h2>
+    <h2>By IP Address <span class="session-count">({ip_count} addresses, {total_stats} total stats)</span></h2>
     <div style="display: flex; gap: 8px;">
         <form method="post" action="/admin/deleteallstatistics" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete all statistics?');">
+            <input type="hidden" name="redirectTo" value="/admin/ipstats" />
             <button type="submit" class="delete-all-btn">Delete All</button>
         </form>
         <form method="post" action="/admin/deleteoldstatistics" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete statistics older than 24 hours?');">
+            <input type="hidden" name="redirectTo" value="/admin/ipstats" />
             <button type="submit" class="delete-all-btn">Delete Old (&gt;24hr)</button>
         </form>
     </div>
@@ -172,6 +175,7 @@ fn build_ipstats_summary_page(hostname: &str, statistics: &[Statistic]) -> Strin
         navbar_css = get_navbar_css(),
         navbar = get_navbar_html("ipstats"),
         ip_count = ip_count,
+        total_stats = total_stats,
         stats_rows = stats_rows,
         sort_and_filter_script = get_sort_and_filter_script(),
     )
@@ -286,13 +290,12 @@ fn build_detail_rows_html(statistics: &[&Statistic]) -> String {
         .map(|s| {
             format!(
                 r#"<tr>
-                    <td><a href="/admin/stats?name={name_url}" class="name-link">{name}</a></td>
+                    <td>{name}</td>
                     <td>{user_agent}</td>
                     <td style="text-align: right;">{value}</td>
                     <td>{last_updated}</td>
                     <td style="text-align: right;">{minutes_ago}</td>
                 </tr>"#,
-                name_url = url_encode(&s.name),
                 name = html_encode(&s.name),
                 user_agent = html_encode(&s.user_agent),
                 value = s.value,
