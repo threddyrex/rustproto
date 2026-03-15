@@ -1629,6 +1629,95 @@ fn cmd_inspect_firehose_event(args: &HashMap<String, String>) {
     }
 }
 
+/// Validate and normalize a PLC-provided PDS endpoint into a safe hostname.
+fn sanitize_pds_host_for_repo_status(endpoint: &str) -> Result<String, String> {
+    let endpoint = endpoint.trim();
+    if endpoint.is_empty() {
+        return Err("PDS endpoint is empty".to_string());
+    }
+
+    // Accept both full URLs and bare hostnames from PLC history.
+    let endpoint_url = if endpoint.contains("://") {
+        endpoint.to_string()
+    } else {
+        format!("https://{}", endpoint)
+    };
+
+    let parsed = reqwest::Url::parse(&endpoint_url)
+        .map_err(|e| format!("Invalid PDS endpoint URL '{}': {}", endpoint, e))?;
+
+    let scheme = parsed.scheme().to_ascii_lowercase();
+    if scheme != "https" && scheme != "http" {
+        return Err(format!("Unsupported URL scheme '{}'", parsed.scheme()));
+    }
+
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err("PDS endpoint must not include user info".to_string());
+    }
+
+    // We only accept a bare authority (optional trailing slash) from PLC endpoint.
+    let path = parsed.path();
+    if path != "/" && !path.is_empty() {
+        return Err(format!("PDS endpoint must not include path '{}'.", path));
+    }
+
+    if parsed.query().is_some() {
+        return Err("PDS endpoint must not include query parameters".to_string());
+    }
+
+    if parsed.fragment().is_some() {
+        return Err("PDS endpoint must not include a URL fragment".to_string());
+    }
+
+    if parsed.port().is_some() {
+        return Err("PDS endpoint must not include an explicit port".to_string());
+    }
+
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| "PDS endpoint is missing a hostname".to_string())?
+        .to_ascii_lowercase();
+
+    if host == "localhost" || host.ends_with(".localhost") {
+        return Err("Localhost PDS endpoints are not allowed".to_string());
+    }
+
+    if host.parse::<std::net::IpAddr>().is_ok() {
+        return Err("IP address PDS endpoints are not allowed".to_string());
+    }
+
+    if !is_valid_dns_hostname(&host) {
+        return Err(format!("Invalid DNS hostname '{}'.", host));
+    }
+
+    Ok(host)
+}
+
+fn is_valid_dns_hostname(host: &str) -> bool {
+    if host.is_empty() || host.len() > 253 {
+        return false;
+    }
+
+    let labels: Vec<&str> = host.split('.').collect();
+    if labels.iter().any(|label| label.is_empty() || label.len() > 63) {
+        return false;
+    }
+
+    labels.iter().all(|label| {
+        let bytes = label.as_bytes();
+
+        let first = bytes.first().copied().unwrap_or_default();
+        let last = bytes.last().copied().unwrap_or_default();
+        if !first.is_ascii_alphanumeric() || !last.is_ascii_alphanumeric() {
+            return false;
+        }
+
+        bytes
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || *b == b'-')
+    })
+}
+
 /// Gets PLC history for an actor and checks repo status on each PDS.
 async fn cmd_get_plc_history(args: &HashMap<String, String>) {
     let log = logger();
@@ -1677,7 +1766,7 @@ async fn cmd_get_plc_history(args: &HashMap<String, String>) {
 
     // Track PDS status
     let mut pds_status: HashMap<String, String> = HashMap::new();
-    pds_status.insert("https://bsky.social".to_string(), "<na>".to_string());
+    pds_status.insert("bsky.social".to_string(), "<na>".to_string());
 
     let mut console_output: Vec<String> = Vec::new();
 
@@ -1693,28 +1782,43 @@ async fn cmd_get_plc_history(args: &HashMap<String, String>) {
                 .and_then(|v| v.as_str());
 
             if let Some(pds_url) = &pds {
-                // Extract hostname from PDS URL
-                let pds_host = pds_url
-                    .trim_start_matches("https://")
-                    .trim_start_matches("http://");
+                let pds_host = match sanitize_pds_host_for_repo_status(pds_url) {
+                    Ok(host) => host,
+                    Err(e) => {
+                        console_output.push(format!(
+                            "{}  pds: {}, handle: {}, active: <invalid-endpoint>, reason: {}",
+                            created_at.unwrap_or("<unknown>"),
+                            pds_url,
+                            also_known_as.unwrap_or("<unknown>"),
+                            e
+                        ));
+                        continue;
+                    }
+                };
 
-                let active = if !pds_status.contains_key(pds_url) {
-                    match client.get_repo_status(pds_host, &did).await {
+                let repo_status_url = format!(
+                    "https://{}/xrpc/com.atproto.sync.getRepoStatus?did={}",
+                    pds_host, did
+                );
+
+                let active = if !pds_status.contains_key(&pds_host) {
+                    log.info(&format!("Repo status URL: {}", repo_status_url));
+                    match client.get_repo_status(&pds_host, &did).await {
                         Ok(status) => {
                             let active_val = status["active"]
                                 .as_bool()
                                 .map(|b| b.to_string())
                                 .unwrap_or_else(|| "<null>".to_string());
-                            pds_status.insert(pds_url.clone(), active_val.clone());
+                            pds_status.insert(pds_host.clone(), active_val.clone());
                             active_val
                         }
                         Err(_) => {
-                            pds_status.insert(pds_url.clone(), "<exception>".to_string());
+                            pds_status.insert(pds_host.clone(), "<exception>".to_string());
                             "<exception>".to_string()
                         }
                     }
                 } else {
-                    pds_status.get(pds_url).cloned().unwrap_or_default()
+                    pds_status.get(&pds_host).cloned().unwrap_or_default()
                 };
 
                 console_output.push(format!(
