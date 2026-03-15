@@ -228,7 +228,15 @@ impl BlueskyClient {
             //
             if info.handle.is_none() {
                 if let Ok(handle) = Self::extract_handle_from_did_doc(did_doc) {
-                    info.handle = Some(handle);
+                    let normalized_handle = handle.to_ascii_lowercase();
+                    if Self::is_valid_handle(&normalized_handle) {
+                        info.handle = Some(normalized_handle);
+                    } else {
+                        logger().warning(&format!(
+                            "[SECURITY] Ignored invalid handle extracted from DID document: actor={} did={} handle={}",
+                            actor, did, handle
+                        ));
+                    }
                 }
             }
 
