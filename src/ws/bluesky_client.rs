@@ -3,6 +3,7 @@
 //! This module provides functionality to resolve handles to DIDs,
 //! fetch DID documents, and extract PDS endpoints.
 
+use std::net::IpAddr;
 use std::time::Instant;
 
 use crate::log::logger;
@@ -346,16 +347,161 @@ impl BlueskyClient {
 
     /// Resolves a did:web to its DID document via .well-known/did.json.
     async fn resolve_did_to_did_doc_web(&self, did: &str) -> Result<String, BlueskyClientError> {
-        let hostname = did
-            .strip_prefix("did:web:")
-            .ok_or_else(|| BlueskyClientError::InvalidActor("Invalid did:web format".to_string()))?;
-
-        let url = format!("https://{}/.well-known/did.json", hostname);
+        let url = Self::build_did_web_doc_url(did)?;
 
         let response = self.client.get(&url).send().await?;
         let text = response.text().await?;
 
         Ok(text)
+    }
+
+    /// Builds a canonical did:web document URL after method-specific validation.
+    ///
+    /// did:web examples:
+    /// - did:web:example.com => https://example.com/.well-known/did.json
+    /// - did:web:example.com:users:alice => https://example.com/users/alice/did.json
+    fn build_did_web_doc_url(did: &str) -> Result<String, BlueskyClientError> {
+        let identifier = did
+            .strip_prefix("did:web:")
+            .ok_or_else(|| BlueskyClientError::InvalidActor("Invalid did:web format".to_string()))?;
+
+        let parts: Vec<&str> = identifier.split(':').collect();
+        if parts.is_empty() || parts[0].is_empty() {
+            return Err(BlueskyClientError::InvalidActor(
+                "Invalid did:web identifier".to_string(),
+            ));
+        }
+
+        let authority = parts[0];
+        if !Self::is_valid_did_web_authority(authority) {
+            return Err(BlueskyClientError::InvalidActor(format!(
+                "Invalid did:web authority: {}",
+                authority
+            )));
+        }
+
+        let mut path_segments = Vec::new();
+        for segment in parts.iter().skip(1) {
+            if !Self::is_valid_did_web_path_segment(segment) {
+                return Err(BlueskyClientError::InvalidActor(format!(
+                    "Invalid did:web path segment: {}",
+                    segment
+                )));
+            }
+            path_segments.push(*segment);
+        }
+
+        let path = if path_segments.is_empty() {
+            "/.well-known/did.json".to_string()
+        } else {
+            format!("/{}/did.json", path_segments.join("/"))
+        };
+
+        let url = format!("https://{}{}", authority, path);
+        let parsed = reqwest::Url::parse(&url).map_err(|_| {
+            BlueskyClientError::InvalidActor("Invalid did:web URL after parsing".to_string())
+        })?;
+
+        if parsed.host_str().is_none() {
+            return Err(BlueskyClientError::InvalidActor(
+                "Invalid did:web URL host".to_string(),
+            ));
+        }
+
+        Ok(url)
+    }
+
+    fn is_valid_did_web_authority(authority: &str) -> bool {
+        if authority.is_empty() || !authority.is_ascii() {
+            return false;
+        }
+
+        if authority
+            .bytes()
+            .any(|b| matches!(b, b'/' | b'\\' | b'?' | b'#' | b'@' | b'%'))
+        {
+            return false;
+        }
+
+        let (host, port) = match authority.rsplit_once(':') {
+            Some((host, port)) if !host.is_empty() && !port.is_empty() => {
+                if !port.bytes().all(|b| b.is_ascii_digit()) {
+                    return false;
+                }
+                if port.parse::<u16>().is_err() {
+                    return false;
+                }
+                (host, Some(port))
+            }
+            Some((_, _)) => return false,
+            None => (authority, None),
+        };
+
+        let _ = port;
+        let host_lower = host.to_ascii_lowercase();
+
+        if host_lower == "localhost" || host_lower.ends_with(".localhost") {
+            return false;
+        }
+
+        if let Ok(ip) = host_lower.parse::<IpAddr>() {
+            return Self::is_public_ip(ip);
+        }
+
+        Self::is_valid_handle(&host_lower)
+    }
+
+    fn is_public_ip(ip: IpAddr) -> bool {
+        match ip {
+            IpAddr::V4(v4) => {
+                !(v4.is_private()
+                    || v4.is_loopback()
+                    || v4.is_link_local()
+                    || v4.is_broadcast()
+                    || v4.is_unspecified())
+            }
+            IpAddr::V6(v6) => {
+                !(v6.is_loopback()
+                    || v6.is_unspecified()
+                    || v6.is_unique_local()
+                    || v6.is_unicast_link_local())
+            }
+        }
+    }
+
+    fn is_valid_did_web_path_segment(segment: &str) -> bool {
+        if segment.is_empty() || segment == "." || segment == ".." {
+            return false;
+        }
+
+        if !segment.is_ascii() {
+            return false;
+        }
+
+        let bytes = segment.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            let b = bytes[i];
+
+            if b == b'%' {
+                if i + 2 >= bytes.len()
+                    || !bytes[i + 1].is_ascii_hexdigit()
+                    || !bytes[i + 2].is_ascii_hexdigit()
+                {
+                    return false;
+                }
+                i += 3;
+                continue;
+            }
+
+            if !(b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~')) {
+                return false;
+            }
+
+            i += 1;
+        }
+
+        true
     }
 
     /// Extracts the PDS endpoint from a DID document.
@@ -970,5 +1116,33 @@ mod tests {
         assert!(!BlueskyClient::is_valid_did("did:plc:abc%"));
         assert!(!BlueskyClient::is_valid_did("did:plc:abc:"));
         assert!(!BlueskyClient::is_valid_did("did:plc:ab c"));
+    }
+
+    #[test]
+    fn test_build_did_web_doc_url_root() {
+        let url = BlueskyClient::build_did_web_doc_url("did:web:example.com").unwrap();
+        assert_eq!(url, "https://example.com/.well-known/did.json");
+    }
+
+    #[test]
+    fn test_build_did_web_doc_url_with_path() {
+        let url = BlueskyClient::build_did_web_doc_url("did:web:example.com:users:alice").unwrap();
+        assert_eq!(url, "https://example.com/users/alice/did.json");
+    }
+
+    #[test]
+    fn test_build_did_web_doc_url_rejects_weird_authority() {
+        assert!(BlueskyClient::build_did_web_doc_url("did:web:localhost").is_err());
+        assert!(BlueskyClient::build_did_web_doc_url("did:web:127.0.0.1").is_err());
+        assert!(BlueskyClient::build_did_web_doc_url("did:web:example.com@evil.com").is_err());
+        assert!(BlueskyClient::build_did_web_doc_url("did:web:example.com:users:alice").is_ok());
+    }
+
+    #[test]
+    fn test_build_did_web_doc_url_rejects_bad_path_segments() {
+        assert!(BlueskyClient::build_did_web_doc_url("did:web:example.com::alice").is_err());
+        assert!(BlueskyClient::build_did_web_doc_url("did:web:example.com:..:alice").is_err());
+        assert!(BlueskyClient::build_did_web_doc_url("did:web:example.com:%zz").is_err());
+        assert!(BlueskyClient::build_did_web_doc_url("did:web:example.com:alice%2Fbob").is_ok());
     }
 }
