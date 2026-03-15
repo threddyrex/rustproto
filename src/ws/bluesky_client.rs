@@ -530,10 +530,7 @@ impl BlueskyClient {
             for service in services {
                 if service["type"].as_str() == Some("AtprotoPersonalDataServer") {
                     if let Some(endpoint) = service["serviceEndpoint"].as_str() {
-                        let pds = endpoint
-                            .trim_start_matches("https://")
-                            .trim_start_matches("http://");
-                        return Ok(pds.to_string());
+                        return Self::extract_pds_host_from_endpoint(endpoint);
                     }
                 }
             }
@@ -542,6 +539,69 @@ impl BlueskyClient {
         Err(BlueskyClientError::ResolutionFailed(
             "No PDS found in DID document".to_string(),
         ))
+    }
+
+    /// Parses and validates a PDS serviceEndpoint URL, returning normalized host[:port].
+    fn extract_pds_host_from_endpoint(endpoint: &str) -> Result<String, BlueskyClientError> {
+        let parsed = reqwest::Url::parse(endpoint).map_err(|_| {
+            BlueskyClientError::ResolutionFailed("Invalid PDS serviceEndpoint URL".to_string())
+        })?;
+
+        if parsed.scheme() != "https" && parsed.scheme() != "http" {
+            return Err(BlueskyClientError::ResolutionFailed(
+                "PDS serviceEndpoint must use http or https".to_string(),
+            ));
+        }
+
+        if !parsed.username().is_empty() || parsed.password().is_some() {
+            return Err(BlueskyClientError::ResolutionFailed(
+                "PDS serviceEndpoint must not contain user info".to_string(),
+            ));
+        }
+
+        if parsed.query().is_some() || parsed.fragment().is_some() {
+            return Err(BlueskyClientError::ResolutionFailed(
+                "PDS serviceEndpoint must not contain query or fragment".to_string(),
+            ));
+        }
+
+        if parsed.path() != "/" {
+            return Err(BlueskyClientError::ResolutionFailed(
+                "PDS serviceEndpoint must not contain a path".to_string(),
+            ));
+        }
+
+        let host = parsed
+            .host_str()
+            .ok_or_else(|| {
+                BlueskyClientError::ResolutionFailed(
+                    "PDS serviceEndpoint must include a host".to_string(),
+                )
+            })?
+            .to_ascii_lowercase();
+
+        if host == "localhost" || host.ends_with(".localhost") {
+            return Err(BlueskyClientError::ResolutionFailed(
+                "PDS hostname must not be localhost".to_string(),
+            ));
+        }
+
+        if let Ok(ip) = host.parse::<IpAddr>() {
+            if !Self::is_public_ip(ip) {
+                return Err(BlueskyClientError::ResolutionFailed(
+                    "PDS hostname must not be a local/private IP".to_string(),
+                ));
+            }
+        } else if !Self::is_valid_handle(&host) {
+            return Err(BlueskyClientError::ResolutionFailed(
+                "PDS hostname is invalid".to_string(),
+            ));
+        }
+
+        Ok(match parsed.port() {
+            Some(port) => format!("{}:{}", host, port),
+            None => host,
+        })
     }
 
     /// Extracts the handle from a DID document.
@@ -1077,6 +1137,28 @@ mod tests {
     fn test_extract_pds() {
         let pds = BlueskyClient::extract_pds_from_did_doc(sample_did_doc()).unwrap();
         assert_eq!(pds, "bsky.social");
+    }
+
+    #[test]
+    fn test_extract_pds_rejects_unsafe_endpoint_inputs() {
+        let did_doc_localhost = r##"{"service":[{"type":"AtprotoPersonalDataServer","serviceEndpoint":"https://localhost"}]}"##;
+        assert!(BlueskyClient::extract_pds_from_did_doc(did_doc_localhost).is_err());
+
+        let did_doc_private_ip = r##"{"service":[{"type":"AtprotoPersonalDataServer","serviceEndpoint":"https://10.0.0.1"}]}"##;
+        assert!(BlueskyClient::extract_pds_from_did_doc(did_doc_private_ip).is_err());
+
+        let did_doc_userinfo = r##"{"service":[{"type":"AtprotoPersonalDataServer","serviceEndpoint":"https://user@example.com"}]}"##;
+        assert!(BlueskyClient::extract_pds_from_did_doc(did_doc_userinfo).is_err());
+
+        let did_doc_path = r##"{"service":[{"type":"AtprotoPersonalDataServer","serviceEndpoint":"https://example.com/pds"}]}"##;
+        assert!(BlueskyClient::extract_pds_from_did_doc(did_doc_path).is_err());
+    }
+
+    #[test]
+    fn test_extract_pds_accepts_host_with_port() {
+        let did_doc_port = r##"{"service":[{"type":"AtprotoPersonalDataServer","serviceEndpoint":"https://pds.example.com:8443"}]}"##;
+        let pds = BlueskyClient::extract_pds_from_did_doc(did_doc_port).unwrap();
+        assert_eq!(pds, "pds.example.com:8443");
     }
 
     #[test]
