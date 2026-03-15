@@ -99,7 +99,10 @@ impl BlueskyClient {
             ));
         }
 
+
+        //
         // Step 1: Resolve handle to DID
+        //
         if actor.starts_with("did:") {
             if !Self::is_valid_did(actor) {
                 logger().warning(&format!(
@@ -195,27 +198,40 @@ impl BlueskyClient {
             )));
         }
 
+
+
+        //
         // Step 2: Resolve DID to DID document
+        //
         if options.should_resolve_did_doc() {
             if let Ok(did_doc) = self.resolve_did_to_did_doc(&did).await {
                 info.did_doc = Some(did_doc);
             }
         }
 
+
+        //
         // Step 3: Extract PDS from DID document
+        //
         if let Some(ref did_doc) = info.did_doc {
             if let Ok(pds) = Self::extract_pds_from_did_doc(did_doc) {
                 info.pds = Some(pds);
             }
 
+            
+            //
             // Step 4: Extract handle from DID document if not known
+            //
             if info.handle.is_none() {
                 if let Ok(handle) = Self::extract_handle_from_did_doc(did_doc) {
                     info.handle = Some(handle);
                 }
             }
 
+
+            //
             // Step 5: Extract public key from DID document
+            //
             if let Ok(pubkey) = Self::extract_public_key_from_did_doc(did_doc) {
                 info.public_key_multibase = Some(pubkey);
             }
