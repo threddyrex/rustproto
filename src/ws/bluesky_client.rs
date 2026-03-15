@@ -100,6 +100,16 @@ impl BlueskyClient {
 
         // Step 1: Resolve handle to DID
         if actor.starts_with("did:") {
+            if !Self::is_valid_did(actor) {
+                logger().warning(&format!(
+                    "[SECURITY] Rejected invalid DID during actor resolution: {}",
+                    actor
+                ));
+                return Err(BlueskyClientError::InvalidActor(format!(
+                    "Invalid DID: {}",
+                    actor
+                )));
+            }
             info.did = Some(actor.to_string());
         } else {
             let normalized_handle = actor.to_ascii_lowercase();
@@ -160,6 +170,17 @@ impl BlueskyClient {
                 return Ok(info);
             }
         };
+
+        if !Self::is_valid_did(&did) {
+            logger().warning(&format!(
+                "[SECURITY] Rejected invalid DID syntax during actor resolution: actor={} did={}",
+                actor, did
+            ));
+            return Err(BlueskyClientError::InvalidActor(format!(
+                "Invalid DID: {}",
+                did
+            )));
+        }
 
         // Allow only did:plc and did:web methods.
         if !did.starts_with("did:plc:") && !did.starts_with("did:web:") {
@@ -452,6 +473,45 @@ impl BlueskyClient {
         }
 
         true
+    }
+
+    /// Validates whether a string is a syntactically valid DID in ATProto context.
+    ///
+    /// Rules implemented:
+    /// - ASCII only and max length 2048
+    /// - Must start with `did:`
+    /// - Method is one or more lowercase letters, followed by `:`
+    /// - Identifier uses only `[A-Za-z0-9._:%-]`
+    /// - Identifier must not end with `:` or `%`
+    pub fn is_valid_did(did: &str) -> bool {
+        if did.is_empty() || !did.is_ascii() || did.len() > 2048 {
+            return false;
+        }
+
+        let rest = match did.strip_prefix("did:") {
+            Some(rest) => rest,
+            None => return false,
+        };
+
+        let method_sep = match rest.find(':') {
+            Some(idx) => idx,
+            None => return false,
+        };
+
+        let method = &rest[..method_sep];
+        let identifier = &rest[method_sep + 1..];
+
+        if method.is_empty() || !method.chars().all(|c| c.is_ascii_lowercase()) {
+            return false;
+        }
+
+        if identifier.is_empty() || identifier.ends_with(':') || identifier.ends_with('%') {
+            return false;
+        }
+
+        identifier.bytes().all(|b| {
+            b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b':' | b'%' | b'-')
+        })
     }
 
 
@@ -887,5 +947,28 @@ mod tests {
         assert!(!BlueskyClient::is_valid_handle("foo._example.com"));
         assert!(!BlueskyClient::is_valid_handle("foo.123"));
         assert!(!BlueskyClient::is_valid_handle("foo.exa mple.com"));
+    }
+
+    #[test]
+    fn test_valid_dids() {
+        assert!(BlueskyClient::is_valid_did("did:plc:z72i7hdynmk6r22z27h6tvur"));
+        assert!(BlueskyClient::is_valid_did("did:web:example.com"));
+        assert!(BlueskyClient::is_valid_did("did:web:example.com:users:alice"));
+        assert!(BlueskyClient::is_valid_did("did:example:abc.DEF_123-%:x"));
+    }
+
+    #[test]
+    fn test_invalid_dids() {
+        assert!(!BlueskyClient::is_valid_did(""));
+        assert!(!BlueskyClient::is_valid_did("did"));
+        assert!(!BlueskyClient::is_valid_did("did:"));
+        assert!(!BlueskyClient::is_valid_did("did:plc"));
+        assert!(!BlueskyClient::is_valid_did("did:Plc:abc"));
+        assert!(!BlueskyClient::is_valid_did("did:plc:"));
+        assert!(!BlueskyClient::is_valid_did("did:plc:abc?query"));
+        assert!(!BlueskyClient::is_valid_did("did:plc:abc#fragment"));
+        assert!(!BlueskyClient::is_valid_did("did:plc:abc%"));
+        assert!(!BlueskyClient::is_valid_did("did:plc:abc:"));
+        assert!(!BlueskyClient::is_valid_did("did:plc:ab c"));
     }
 }
