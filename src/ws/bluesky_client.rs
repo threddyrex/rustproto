@@ -161,6 +161,18 @@ impl BlueskyClient {
             }
         };
 
+        // Allow only did:plc and did:web methods.
+        if !did.starts_with("did:plc:") && !did.starts_with("did:web:") {
+            logger().warning(&format!(
+                "[SECURITY] Rejected unsupported DID method during actor resolution: actor={} did={}",
+                actor, did
+            ));
+            return Err(BlueskyClientError::InvalidActor(format!(
+                "Unsupported DID method: {}",
+                did
+            )));
+        }
+
         // Step 2: Resolve DID to DID document
         if options.should_resolve_did_doc() {
             if let Ok(did_doc) = self.resolve_did_to_did_doc(&did).await {
