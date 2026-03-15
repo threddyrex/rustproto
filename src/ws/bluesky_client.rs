@@ -104,6 +104,8 @@ impl BlueskyClient {
         // Step 1: Resolve handle to DID
         //
         if actor.starts_with("did:") {
+
+            // check that it is a valid did
             if !Self::is_valid_did(actor) {
                 logger().warning(&format!(
                     "[SECURITY] Rejected invalid DID during actor resolution: {}",
@@ -117,6 +119,8 @@ impl BlueskyClient {
             info.did = Some(actor.to_string());
         } else {
             let normalized_handle = actor.to_ascii_lowercase();
+
+            // check that it is a valid handle
             if !Self::is_valid_handle(&normalized_handle) {
                 logger().warning(&format!(
                     "[SECURITY] Rejected invalid handle during actor resolution: {}",
