@@ -39,6 +39,7 @@ impl Default for BlueskyClient {
 }
 
 impl BlueskyClient {
+
     /// Creates a new BlueskyClient with default settings.
     pub fn new() -> Self {
         Self {
@@ -101,19 +102,40 @@ impl BlueskyClient {
         if actor.starts_with("did:") {
             info.did = Some(actor.to_string());
         } else {
-            info.handle = Some(actor.to_string());
+            let normalized_handle = actor.to_ascii_lowercase();
+            if !Self::is_valid_handle(&normalized_handle) {
+                logger().warning(&format!(
+                    "[SECURITY] Rejected invalid handle during actor resolution: {}",
+                    actor
+                ));
+                return Err(BlueskyClientError::InvalidActor(format!(
+                    "Invalid handle: {}",
+                    actor
+                )));
+            }
+
+            info.handle = Some(normalized_handle.clone());
 
             // Try different resolution methods
             if options.should_resolve_via_bluesky() {
-                info.did_bsky = self.resolve_handle_to_did_via_bluesky(actor).await.ok();
+                info.did_bsky = self
+                    .resolve_handle_to_did_via_bluesky(&normalized_handle)
+                    .await
+                    .ok();
             }
 
             if options.should_resolve_via_dns() {
-                info.did_dns = self.resolve_handle_to_did_via_dns(actor).await.ok();
+                info.did_dns = self
+                    .resolve_handle_to_did_via_dns(&normalized_handle)
+                    .await
+                    .ok();
             }
 
             if options.should_resolve_via_http() {
-                info.did_http = self.resolve_handle_to_did_via_http(actor).await.ok();
+                info.did_http = self
+                    .resolve_handle_to_did_via_http(&normalized_handle)
+                    .await
+                    .ok();
             }
 
             // Use first successful resolution
@@ -371,6 +393,55 @@ impl BlueskyClient {
             "No public key found in DID document".to_string(),
         ))
     }
+
+
+    /// Validates whether a string is a syntactically valid ATProto handle.
+    ///
+    /// This follows the handle syntax rules from the ATProto specification:
+    /// ASCII only, dot-separated labels, 2+ labels, per-label charset/length
+    /// constraints, and top-level label must not start with a digit.
+    pub fn is_valid_handle(handle: &str) -> bool {
+        if handle.is_empty() || !handle.is_ascii() || handle.len() > 253 {
+            return false;
+        }
+
+        if handle.starts_with('.') || handle.ends_with('.') {
+            return false;
+        }
+
+        let labels: Vec<&str> = handle.split('.').collect();
+        if labels.len() < 2 {
+            return false;
+        }
+
+        for label in &labels {
+            if label.is_empty() || label.len() > 63 {
+                return false;
+            }
+
+            if label.starts_with('-') || label.ends_with('-') {
+                return false;
+            }
+
+            if !label
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+            {
+                return false;
+            }
+        }
+
+        if labels
+            .last()
+            .and_then(|tld| tld.as_bytes().first())
+            .is_some_and(u8::is_ascii_digit)
+        {
+            return false;
+        }
+
+        true
+    }
+
 
     /// Gets the PLC audit log (history) for a DID.
     ///
@@ -784,5 +855,25 @@ mod tests {
     fn test_extract_public_key() {
         let pubkey = BlueskyClient::extract_public_key_from_did_doc(sample_did_doc()).unwrap();
         assert_eq!(pubkey, "zDnaekGxj2Fz4Cdf");
+    }
+
+    #[test]
+    fn test_valid_handles() {
+        assert!(BlueskyClient::is_valid_handle("alice.bsky.social"));
+        assert!(BlueskyClient::is_valid_handle("Alice.BSKY.Social"));
+        assert!(BlueskyClient::is_valid_handle("foo-bar.example"));
+    }
+
+    #[test]
+    fn test_invalid_handles() {
+        assert!(!BlueskyClient::is_valid_handle(""));
+        assert!(!BlueskyClient::is_valid_handle("localhost"));
+        assert!(!BlueskyClient::is_valid_handle(".example.com"));
+        assert!(!BlueskyClient::is_valid_handle("example.com."));
+        assert!(!BlueskyClient::is_valid_handle("-foo.example"));
+        assert!(!BlueskyClient::is_valid_handle("foo-.example"));
+        assert!(!BlueskyClient::is_valid_handle("foo._example.com"));
+        assert!(!BlueskyClient::is_valid_handle("foo.123"));
+        assert!(!BlueskyClient::is_valid_handle("foo.exa mple.com"));
     }
 }
