@@ -1998,11 +1998,16 @@ impl PdsDb {
 
     /// Increment a statistic.
     pub fn increment_statistic(&self, key: &StatisticKey) -> Result<(), PdsDbError> {
-        if self.statistic_exists(key)? {
-            let current = self.get_statistic_value(key)?;
-            self.update_statistic(key, current + 1)
+        let mut statistic_key = key.clone();
+        if statistic_key.user_agent.contains("UptimeRobot") {
+            statistic_key.ip_address = "global".to_string();
+        }
+
+        if self.statistic_exists(&statistic_key)? {
+            let current = self.get_statistic_value(&statistic_key)?;
+            self.update_statistic(&statistic_key, current + 1)
         } else {
-            self.insert_statistic(key, 1)
+            self.insert_statistic(&statistic_key, 1)
         }
     }
 
