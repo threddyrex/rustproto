@@ -174,7 +174,7 @@ fn build_config_table(db: &PdsDb) -> String {
 
     // App View section
     rows.push(section("App View"));
-    rows.push(row("AppViewUrl", get_value("AppViewUrl"), "URL for the App View service (ex: https://public.api.bsky.app)."));
+    rows.push(row("AppViewHostName", get_value("AppViewHostName"), "Host name for the App View service (ex: public.api.bsky.app)."));
 
     rows.join("\n")
 }

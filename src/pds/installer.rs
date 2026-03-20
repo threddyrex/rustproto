@@ -191,7 +191,7 @@ impl Installer {
         db.set_config_property("PdsCrawlers", "bsky.network")?;
 
         // App View
-        db.set_config_property("AppViewUrl", "https://public.api.bsky.app")?;
+        db.set_config_property("AppViewHostName", "public.api.bsky.app")?;
 
         // Security
         db.set_config_property(
