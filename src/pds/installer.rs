@@ -166,7 +166,7 @@ impl Installer {
         let db = PdsDb::connect(lfs)?;
 
         // Admin password
-        let admin_password = Self::generate_random_password(16);
+        let admin_password = Self::generate_random_password(24);
         let hashed_password = Self::hash_password(&admin_password);
         db.set_config_property("AdminHashedPassword", &hashed_password)?;
         log.info("admin username: admin");
@@ -189,6 +189,9 @@ impl Installer {
         db.set_config_property_bool("FeatureEnabled_Passkeys", false)?;
         db.set_config_property_int("LogRetentionDays", 10)?;
         db.set_config_property("PdsCrawlers", "bsky.network")?;
+
+        // App View
+        db.set_config_property("AppViewUrl", "https://public.api.bsky.app")?;
 
         // Security
         db.set_config_property(

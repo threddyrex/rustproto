@@ -172,6 +172,10 @@ fn build_config_table(db: &PdsDb) -> String {
     rows.push(row("AtprotoProxyAllowedDids", get_value("AtprotoProxyAllowedDids"), "Comma-separated list of DIDs allowed for Atproto-Proxy header."));
     rows.push(row("OauthAllowedRedirectUris", get_value("OauthAllowedRedirectUris"), "Comma-separated list of allowed OAuth redirect URIs."));
 
+    // App View section
+    rows.push(section("App View"));
+    rows.push(row("AppViewUrl", get_value("AppViewUrl"), "URL for the App View service (ex: https://public.api.bsky.app)."));
+
     rows.join("\n")
 }
 

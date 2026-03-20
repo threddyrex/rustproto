@@ -41,6 +41,7 @@ const ALLOWED_CONFIG_KEYS: &[&str] = &[
     "FeatureEnabled_RequestCrawl",
     "AtprotoProxyAllowedDids",
     "OauthAllowedRedirectUris",
+    "AppViewUrl",
 ];
 
 /// Form data for setting a config property.
@@ -302,6 +303,13 @@ fn render_config_page(db: &PdsDb) -> Html<String> {
         <td><button class="set-btn" onclick="setConfig('OauthAllowedRedirectUris', '{oauth_allowed_redirect_uris_js}')">Set</button></td>
         <td>Comma-separated list of allowed OAuth redirect URIs.</td>
     </tr>
+    <tr class="section-header"><td colspan="4">App View</td></tr>
+    <tr>
+        <td class="key-name">AppViewUrl</td>
+        <td>{app_view_url}</td>
+        <td><button class="set-btn" onclick="setConfig('AppViewUrl', '{app_view_url_js}')">Set</button></td>
+        <td>URL for the App View service (ex: https://public.api.bsky.app).</td>
+    </tr>
 </table>
 <script>
 function setConfig(key, currentValue) {{
@@ -391,6 +399,9 @@ function setBoolConfig(key, value) {{
         atproto_proxy_allowed_dids_js = get_config_value_for_js(db, "AtprotoProxyAllowedDids"),
         oauth_allowed_redirect_uris = get_config_value(db, "OauthAllowedRedirectUris"),
         oauth_allowed_redirect_uris_js = get_config_value_for_js(db, "OauthAllowedRedirectUris"),
+        // App View section
+        app_view_url = get_config_value(db, "AppViewUrl"),
+        app_view_url_js = get_config_value_for_js(db, "AppViewUrl"),
     );
 
     Html(html)
