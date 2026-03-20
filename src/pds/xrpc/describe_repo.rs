@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
+use crate::ws::DEFAULT_APP_VIEW_HOST_NAME;
 use crate::pds::xrpc::auth_helpers::get_caller_info;
 
 /// Query parameters for describeRepo.
@@ -127,9 +128,11 @@ pub async fn describe_repo(
     }
 
     // Get the DID document
+    let app_view_host_name = state.db.get_config_property("AppViewHostName")
+        .unwrap_or_else(|_| DEFAULT_APP_VIEW_HOST_NAME.to_string());
     let did_doc = state
         .lfs
-        .resolve_actor_info(&user_did, None)
+        .resolve_actor_info(&user_did, None, &app_view_host_name)
         .await
         .ok()
         .and_then(|info| info.did_doc)

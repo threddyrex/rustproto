@@ -10,7 +10,7 @@
 //!
 //! #[tokio::main]
 //! async fn main() {
-//!     let client = BlueskyClient::new();
+//!     let client = BlueskyClient::new("public.api.bsky.app");
 //!
 //!     // Resolve actor info using default options
 //!     let info = client.resolve_actor_info("alice.bsky.social", None).await.unwrap();

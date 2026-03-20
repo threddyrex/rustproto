@@ -18,7 +18,7 @@ use crate::pds::server::PdsState;
 use crate::pds::xrpc::auth_helpers::get_caller_info;
 use crate::pds::xrpc::is_valid_outbound_host;
 use crate::repo::DagCborObject;
-use crate::ws::{ActorQueryOptions, BlueskyClient};
+use crate::ws::{ActorQueryOptions, BlueskyClient, DEFAULT_APP_VIEW_HOST_NAME};
 
 /// Query parameters for getRecord.
 #[derive(Deserialize)]
@@ -128,7 +128,9 @@ pub async fn get_record(
         state.log.info(&format!("Proxying getRecord request for repo: {}", repo));
 
         // Resolve the repo
-        let client = BlueskyClient::new();
+        let app_view_host_name = state.db.get_config_property("AppViewHostName")
+            .unwrap_or_else(|_| DEFAULT_APP_VIEW_HOST_NAME.to_string());
+        let client = BlueskyClient::new(&app_view_host_name);
         let options = ActorQueryOptions {
             resolve_handle_via_bluesky: true,
             ..Default::default()

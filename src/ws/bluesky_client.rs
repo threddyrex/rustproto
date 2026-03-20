@@ -28,32 +28,37 @@ pub enum BlueskyClientError {
     ResolutionFailed(String),
 }
 
+/// Default App View host name for the Bluesky public API.
+pub const DEFAULT_APP_VIEW_HOST_NAME: &str = "public.api.bsky.app";
+
 /// Client for interacting with Bluesky/AT Protocol services.
 pub struct BlueskyClient {
     client: Client,
+    app_view_host_name: String,
 }
 
 impl Default for BlueskyClient {
     fn default() -> Self {
-        Self::new()
+        Self::new(DEFAULT_APP_VIEW_HOST_NAME)
     }
 }
 
 impl BlueskyClient {
 
     /// Creates a new BlueskyClient with default settings.
-    pub fn new() -> Self {
+    pub fn new(app_view_host_name: &str) -> Self {
         Self {
             client: Client::builder()
                 .user_agent("rustproto")
                 .build()
                 .expect("Failed to create HTTP client"),
+            app_view_host_name: app_view_host_name.to_string(),
         }
     }
 
     /// Creates a new BlueskyClient with a custom reqwest Client.
-    pub fn with_client(client: Client) -> Self {
-        Self { client }
+    pub fn with_client(client: Client, app_view_host_name: &str) -> Self {
+        Self { client, app_view_host_name: app_view_host_name.to_string() }
     }
 
     /// Resolves actor information for a handle or DID.
@@ -77,7 +82,7 @@ impl BlueskyClient {
     ///
     /// #[tokio::main]
     /// async fn main() {
-    ///     let client = BlueskyClient::new();
+    ///     let client = BlueskyClient::new("public.api.bsky.app");
     ///     let info = client.resolve_actor_info("alice.bsky.social", None).await.unwrap();
     ///     println!("DID: {:?}", info.did);
     ///     println!("PDS: {:?}", info.pds);
@@ -170,10 +175,10 @@ impl BlueskyClient {
             _ => {
                 let elapsed_ms = start_time.elapsed().as_secs_f64() * 1000.0;
                 logger().info(&format!(
-                    "[ACTOR] [BSKY] actor={} all={} bsky={} dns={} http={} didDoc={} did=None [{:.2}ms]",
+                    "[ACTOR] [BSKY] actor={} all={} bsky={} dns={} http={} didDoc={} did=None appview={} [{:.2}ms]",
                     actor, options.all, options.resolve_handle_via_bluesky,
                     options.resolve_handle_via_dns, options.resolve_handle_via_http,
-                    options.resolve_did_doc, elapsed_ms
+                    options.resolve_did_doc, self.app_view_host_name, elapsed_ms
                 ));
                 return Ok(info);
             }
@@ -253,13 +258,14 @@ impl BlueskyClient {
         let elapsed_ms = start_time.elapsed().as_secs_f64() * 1000.0;
         let did_doc_length = info.did_doc.as_ref().map(|d| d.len()).unwrap_or(0);
         logger().info(&format!(
-            "[ACTOR] [BSKY] actor={} all={} bsky={} dns={} http={} didDoc={} did={} didDocLength={} pds={} [{:.2}ms]",
+            "[ACTOR] [BSKY] actor={} all={} bsky={} dns={} http={} didDoc={} did={} didDocLength={} pds={} appview={} [{:.2}ms]",
             actor, options.all, options.resolve_handle_via_bluesky,
             options.resolve_handle_via_dns, options.resolve_handle_via_http,
             options.resolve_did_doc,
             info.did.as_deref().unwrap_or("None"),
             did_doc_length,
             info.pds.as_deref().unwrap_or("None"),
+            self.app_view_host_name,
             elapsed_ms
         ));
 
@@ -274,8 +280,8 @@ impl BlueskyClient {
         handle: &str,
     ) -> Result<String, BlueskyClientError> {
         let url = format!(
-            "https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle={}",
-            handle
+            "https://{}/xrpc/com.atproto.identity.resolveHandle?handle={}",
+            self.app_view_host_name, handle
         );
 
         let response = self.client.get(&url).send().await?;
@@ -849,8 +855,8 @@ impl BlueskyClient {
     pub async fn get_posts(&self, uris: &[&str]) -> Result<Value, BlueskyClientError> {
         let uris_param = uris.join(",");
         let url = format!(
-            "https://public.api.bsky.app/xrpc/app.bsky.feed.getPosts?uris={}",
-            uris_param
+            "https://{}/xrpc/app.bsky.feed.getPosts?uris={}",
+            self.app_view_host_name, uris_param
         );
         let response = self.client.get(&url).send().await?;
         let json: Value = response.json().await?;
@@ -875,7 +881,7 @@ impl BlueskyClient {
     ///
     /// #[tokio::main]
     /// async fn main() {
-    ///     let client = BlueskyClient::new();
+    ///     let client = BlueskyClient::new("public.api.bsky.app");
     ///     client.get_repo(
     ///         "bsky.social",
     ///         "did:plc:abc123",

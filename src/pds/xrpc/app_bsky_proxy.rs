@@ -24,6 +24,7 @@ use serde_json::Value as JsonValue;
 use crate::pds::auth::sign_service_auth_token;
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
+use crate::ws::DEFAULT_APP_VIEW_HOST_NAME;
 
 use super::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info};
 
@@ -292,8 +293,10 @@ pub async fn proxy_to_appview(
     }
 
     // Resolve DID document for the proxy DID (LFS cache with 3-hour expiry)
+    let app_view_host_name = state.db.get_config_property("AppViewHostName")
+        .unwrap_or_else(|_| DEFAULT_APP_VIEW_HOST_NAME.to_string());
     let cache_expiry_minutes: u64 = 60 * 3;
-    let actor_info = match state.lfs.resolve_actor_info(&atproto_proxy.did, Some(cache_expiry_minutes)).await {
+    let actor_info = match state.lfs.resolve_actor_info(&atproto_proxy.did, Some(cache_expiry_minutes), &app_view_host_name).await {
         Ok(info) => info,
         Err(e) => {
             state.log.error(&format!(

@@ -485,7 +485,7 @@ pub fn validate_service_auth_token(
     headers: &HeaderMap,
     expected_lxm: Option<&str>,
 ) -> ServiceAuthResult {
-    use crate::ws::{ActorQueryOptions, BlueskyClient};
+    use crate::ws::{ActorQueryOptions, BlueskyClient, DEFAULT_APP_VIEW_HOST_NAME};
     
     let mut result = ServiceAuthResult::default();
 
@@ -597,11 +597,13 @@ pub fn validate_service_auth_token(
 
     // Resolve the issuer's DID document to get their public key
     // Use tokio's Handle to run async code in sync context
+    let app_view_host_name = state.db.get_config_property("AppViewHostName")
+        .unwrap_or_else(|_| DEFAULT_APP_VIEW_HOST_NAME.to_string());
     let actor_info = match tokio::runtime::Handle::try_current() {
         Ok(handle) => {
             let issuer_clone = issuer.clone();
             handle.block_on(async {
-                let client = BlueskyClient::new();
+                let client = BlueskyClient::new(&app_view_host_name);
                 let options = ActorQueryOptions {
                     resolve_did_doc: true,
                     ..Default::default()
@@ -662,7 +664,7 @@ pub async fn validate_service_auth_token_async(
     headers: &HeaderMap,
     expected_lxm: Option<&str>,
 ) -> ServiceAuthResult {
-    use crate::ws::{ActorQueryOptions, BlueskyClient};
+    use crate::ws::{ActorQueryOptions, BlueskyClient, DEFAULT_APP_VIEW_HOST_NAME};
 
     let mut result = ServiceAuthResult::default();
 
@@ -773,7 +775,9 @@ pub async fn validate_service_auth_token_async(
     }
 
     // Resolve the issuer's DID document to get their public key (async)
-    let client = BlueskyClient::new();
+    let app_view_host_name = state.db.get_config_property("AppViewHostName")
+        .unwrap_or_else(|_| DEFAULT_APP_VIEW_HOST_NAME.to_string());
+    let client = BlueskyClient::new(&app_view_host_name);
     let options = ActorQueryOptions {
         resolve_did_doc: true,
         ..Default::default()

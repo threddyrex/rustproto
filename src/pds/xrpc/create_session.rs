@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use crate::pds::auth::{generate_access_jwt, generate_refresh_jwt, verify_password};
 use crate::pds::db::{LegacySession, StatisticKey};
 use crate::pds::server::PdsState;
-use crate::ws::{ActorQueryOptions, BlueskyClient};
+use crate::ws::{ActorQueryOptions, BlueskyClient, DEFAULT_APP_VIEW_HOST_NAME};
 
 use super::auth_helpers::get_caller_info;
 
@@ -96,7 +96,9 @@ pub async fn create_session(
     }
 
     // Resolve actor info using BlueskyClient
-    let client = BlueskyClient::new();
+    let app_view_host_name = state.db.get_config_property("AppViewHostName")
+        .unwrap_or_else(|_| DEFAULT_APP_VIEW_HOST_NAME.to_string());
+    let client = BlueskyClient::new(&app_view_host_name);
     let options = ActorQueryOptions {
         resolve_handle_via_bluesky: true,
         ..Default::default()

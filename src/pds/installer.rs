@@ -19,6 +19,7 @@ use crate::fs::LocalFileSystem;
 use crate::log::Logger;
 use crate::mst::{Mst, MstNode};
 use crate::repo::{CidV1, DagCborObject, RepoMst};
+use crate::ws::DEFAULT_APP_VIEW_HOST_NAME;
 
 /// Last timestamp for monotonic TID generation (module level static)
 static LAST_TIMESTAMP: AtomicI64 = AtomicI64::new(0);
@@ -191,7 +192,7 @@ impl Installer {
         db.set_config_property("PdsCrawlers", "bsky.network")?;
 
         // App View
-        db.set_config_property("AppViewHostName", "public.api.bsky.app")?;
+        db.set_config_property("AppViewHostName", DEFAULT_APP_VIEW_HOST_NAME)?;
 
         // Security
         db.set_config_property(

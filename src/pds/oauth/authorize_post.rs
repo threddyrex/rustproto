@@ -19,6 +19,7 @@ use crate::pds::auth::verify_password;
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
 use crate::ws::BlueskyClient;
+use crate::ws::DEFAULT_APP_VIEW_HOST_NAME;
 
 use super::authorize_get::generate_auth_form;
 use super::helpers::{
@@ -113,7 +114,9 @@ pub async fn oauth_authorize_post(
     };
 
     // Resolve actor info
-    let bluesky_client = BlueskyClient::new();
+    let app_view_host_name = state.db.get_config_property("AppViewHostName")
+        .unwrap_or_else(|_| DEFAULT_APP_VIEW_HOST_NAME.to_string());
+    let bluesky_client = BlueskyClient::new(&app_view_host_name);
     let actor_exists = bluesky_client.resolve_actor_info(&username, None).await.is_ok();
 
     // Check password

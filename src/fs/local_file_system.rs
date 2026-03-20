@@ -264,7 +264,7 @@ impl LocalFileSystem {
     /// use rustproto::fs::LocalFileSystem;
     ///
     /// let lfs = LocalFileSystem::initialize("./data").unwrap();
-    /// match lfs.resolve_actor_info("alice.bsky.social", None).await {
+    /// match lfs.resolve_actor_info("alice.bsky.social", None, "public.api.bsky.app").await {
     ///     Ok(info) => println!("DID: {:?}", info.did),
     ///     Err(e) => println!("Failed to resolve: {}", e),
     /// }
@@ -274,6 +274,7 @@ impl LocalFileSystem {
         &self,
         actor: &str,
         cache_expiry_minutes: Option<u64>,
+        app_view_host_name: &str,
     ) -> Result<ActorInfo, LocalFileSystemError> {
         let start_time = Instant::now();
 
@@ -331,7 +332,7 @@ impl LocalFileSystem {
         }
 
         // Cache miss or stale — resolve via BlueskyClient and save to cache
-        let client = BlueskyClient::new();
+        let client = BlueskyClient::new(app_view_host_name);
         let actor_info = client.resolve_actor_info(actor, None).await.map_err(|e| {
             let elapsed_ms = start_time.elapsed().as_secs_f64() * 1000.0;
             logger().error(&format!(
@@ -558,7 +559,7 @@ mod tests {
         lfs.save_actor_info("alice.bsky.social", &info).unwrap();
 
         // Resolve it (should succeed since it's fresh)
-        let resolved = lfs.resolve_actor_info("alice.bsky.social", None).await.unwrap();
+        let resolved = lfs.resolve_actor_info("alice.bsky.social", None, "public.api.bsky.app").await.unwrap();
         assert_eq!(resolved.did, Some("did:plc:abc123".to_string()));
         assert_eq!(resolved.pds, Some("bsky.social".to_string()));
 
@@ -574,7 +575,7 @@ mod tests {
         let lfs = LocalFileSystem::initialize(&temp_dir).unwrap();
 
         // Try to resolve a truly non-existent actor (will attempt network call which will fail)
-        let result = lfs.resolve_actor_info("this-handle-does-not-exist-xyz123.invalid", None).await;
+        let result = lfs.resolve_actor_info("this-handle-does-not-exist-xyz123.invalid", None, "public.api.bsky.app").await;
         assert!(result.is_err());
 
         let _ = fs::remove_dir_all(&temp_dir);

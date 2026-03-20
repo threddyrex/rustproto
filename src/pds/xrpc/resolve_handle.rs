@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
 use crate::pds::xrpc::auth_helpers::get_caller_info;
-use crate::ws::{ActorQueryOptions, BlueskyClient};
+use crate::ws::{ActorQueryOptions, BlueskyClient, DEFAULT_APP_VIEW_HOST_NAME};
 
 /// Query parameters for resolveHandle.
 #[derive(Deserialize)]
@@ -85,7 +85,9 @@ pub async fn resolve_handle(
     };
 
     // Resolve the handle to a DID
-    let client = BlueskyClient::new();
+    let app_view_host_name = state.db.get_config_property("AppViewHostName")
+        .unwrap_or_else(|_| DEFAULT_APP_VIEW_HOST_NAME.to_string());
+    let client = BlueskyClient::new(&app_view_host_name);
     let options = ActorQueryOptions::default().with_did_doc(false);
 
     let actor_info = match client.resolve_actor_info(&handle, Some(options)).await {

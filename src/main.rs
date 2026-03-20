@@ -10,7 +10,7 @@ use rustproto::log::{init_logger, logger, FileDestination, LogLevel};
 use rustproto::mst::Mst;
 use rustproto::pds::{Installer, PdsDb};
 use rustproto::repo::{CidV1, DagCborObject, DagCborValue, Repo, RepoMst, RepoRecord, AtProtoType, MstNodeKey};
-use rustproto::ws::{ActorQueryOptions, BlueskyClient};
+use rustproto::ws::{ActorQueryOptions, BlueskyClient, DEFAULT_APP_VIEW_HOST_NAME};
 
 #[tokio::main]
 async fn main() {
@@ -633,7 +633,7 @@ async fn cmd_resolve_actor(args: &HashMap<String, String>) {
         ActorQueryOptions::default()
     };
 
-    let client = BlueskyClient::new();
+    let client = BlueskyClient::new(DEFAULT_APP_VIEW_HOST_NAME);
 
     log.info(&format!("Resolving actor: {}", actor));
 
@@ -697,7 +697,7 @@ async fn cmd_get_repo(args: &HashMap<String, String>) {
         }
     };
 
-    let client = BlueskyClient::new();
+    let client = BlueskyClient::new(DEFAULT_APP_VIEW_HOST_NAME);
 
     log.info(&format!("Resolving actor: {}", actor));
 
@@ -785,7 +785,7 @@ async fn resolve_repo_file(args: &HashMap<String, String>) -> Option<std::path::
         actor.to_string()
     } else {
         // Try to resolve handle from cached actor info (falls back to online)
-        match lfs.resolve_actor_info(actor, None).await {
+        match lfs.resolve_actor_info(actor, None, DEFAULT_APP_VIEW_HOST_NAME).await {
             Ok(info) => {
                 match info.did {
                     Some(d) => d,
@@ -1115,7 +1115,7 @@ async fn cmd_walk_mst(args: &HashMap<String, String>) {
         };
 
         // Resolve actor to get DID
-        let client = BlueskyClient::new();
+        let client = BlueskyClient::new(DEFAULT_APP_VIEW_HOST_NAME);
         let info = match client.resolve_actor_info(act, None).await {
             Ok(info) => info,
             Err(e) => {
@@ -1398,7 +1398,7 @@ async fn cmd_start_firehose_consumer(args: &HashMap<String, String>) {
         .map(|v| v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
 
-    let client = BlueskyClient::new();
+    let client = BlueskyClient::new(DEFAULT_APP_VIEW_HOST_NAME);
 
     // Resolve actor info to get PDS and DID
     log.info(&format!("Resolving actor: {}", actor));
@@ -1731,7 +1731,7 @@ async fn cmd_get_plc_history(args: &HashMap<String, String>) {
         }
     };
 
-    let client = BlueskyClient::new();
+    let client = BlueskyClient::new(DEFAULT_APP_VIEW_HOST_NAME);
 
     // Resolve actor to get DID
     let info = match client.resolve_actor_info(actor, None).await {
@@ -1864,7 +1864,7 @@ async fn cmd_get_pds_info(args: &HashMap<String, String>) {
         }
     };
 
-    let client = BlueskyClient::new();
+    let client = BlueskyClient::new(DEFAULT_APP_VIEW_HOST_NAME);
 
     // Resolve actor to get PDS
     let info = match client.resolve_actor_info(actor, None).await {
@@ -1938,7 +1938,7 @@ async fn cmd_get_post(args: &HashMap<String, String>) {
         }
     };
 
-    let client = BlueskyClient::new();
+    let client = BlueskyClient::new(DEFAULT_APP_VIEW_HOST_NAME);
 
     // Parse URI - could be AT URI or bsky.app URL
     let at_uri = parse_to_at_uri(uri, &client).await;
@@ -2952,7 +2952,7 @@ async fn cmd_backup_account(args: &HashMap<String, String>) {
         }
     };
 
-    let actor_info = match lfs.resolve_actor_info(actor, None).await {
+    let actor_info = match lfs.resolve_actor_info(actor, None, DEFAULT_APP_VIEW_HOST_NAME).await {
         Ok(info) => info,
         Err(e) => {
             log.error(&format!("Failed to resolve actor info for actor: {} - {}", actor, e));
@@ -3000,7 +3000,7 @@ async fn cmd_backup_account(args: &HashMap<String, String>) {
     //
     // Verify session by calling getPreferences.
     //
-    let client = BlueskyClient::new();
+    let client = BlueskyClient::new(DEFAULT_APP_VIEW_HOST_NAME);
 
     if has_session && get_prefs {
         log.info("Verifying session by calling getPreferences...");
@@ -3226,7 +3226,7 @@ async fn cmd_create_session(args: &HashMap<String, String>) {
         }
     };
 
-    let actor_info = match lfs.resolve_actor_info(actor, None).await {
+    let actor_info = match lfs.resolve_actor_info(actor, None, DEFAULT_APP_VIEW_HOST_NAME).await {
         Ok(info) => info,
         Err(e) => {
             log.error(&format!("Failed to resolve actor info: {}", e));
@@ -3266,7 +3266,7 @@ async fn cmd_create_session(args: &HashMap<String, String>) {
     //
     // Create session.
     //
-    let client = BlueskyClient::new();
+    let client = BlueskyClient::new(DEFAULT_APP_VIEW_HOST_NAME);
 
     let mut session = match client
         .create_session(
