@@ -284,6 +284,9 @@ impl BlueskyClient {
             self.app_view_host_name, handle
         );
 
+        // trace log the url
+        logger().trace(&format!("[ACTOR] [BSKY] Resolving handle via Bluesky API: handle={} url={}", handle, url));
+
         let response = self.client.get(&url).send().await?;
         let json: Value = response.json().await?;
 
@@ -320,12 +323,14 @@ impl BlueskyClient {
                 if let Some(data) = answer["data"].as_str() {
                     let data = data.trim_matches('"');
                     if let Some(did) = data.strip_prefix("did=") {
+                        logger().trace(&format!("[ACTOR] [BSKY] Resolved handle via DNS: handle={} did={}", handle, did));
                         return Ok(did.to_string());
                     }
                 }
             }
         }
 
+        logger().trace(&format!("[ACTOR] [BSKY] Failed to resolve handle via DNS: handle={}", handle));
         Err(BlueskyClientError::ResolutionFailed(
             "No DID found in DNS TXT records".to_string(),
         ))
@@ -340,13 +345,16 @@ impl BlueskyClient {
     ) -> Result<String, BlueskyClientError> {
         let url = format!("https://{}/.well-known/atproto-did", handle);
 
+        logger().trace(&format!("[ACTOR] [BSKY] Resolving handle via HTTP: handle={} url={}", handle, url));
         let response = self.client.get(&url).send().await?;
         let text = response.text().await?;
 
         let did = text.trim();
         if did.starts_with("did:") {
+            logger().trace(&format!("[ACTOR] [BSKY] Resolved handle via HTTP: handle={} did={}", handle, did));
             Ok(did.to_string())
         } else {
+            logger().trace(&format!("[ACTOR] [BSKY] Failed to resolve handle via HTTP: handle={} response={}", handle, text));
             Err(BlueskyClientError::ResolutionFailed(
                 "Invalid DID in HTTP response".to_string(),
             ))
@@ -376,16 +384,18 @@ impl BlueskyClient {
         let response = self.client.get(&url).send().await?;
         let text = response.text().await?;
 
+        logger().trace(&format!("[ACTOR] [BSKY] Resolved did:plc to DID document: did={} didDocLength={}", did, text.len()));
         Ok(text)
     }
 
     /// Resolves a did:web to its DID document via .well-known/did.json.
     async fn resolve_did_to_did_doc_web(&self, did: &str) -> Result<String, BlueskyClientError> {
         let url = Self::build_did_web_doc_url(did)?;
-
+        logger().trace(&format!("[ACTOR] [BSKY] Resolving did:web to DID document: did={} url={}", did, url));
         let response = self.client.get(&url).send().await?;
         let text = response.text().await?;
 
+        logger().trace(&format!("[ACTOR] [BSKY] Resolved did:web to DID document: did={} didDocLength={}", did, text.len()));
         Ok(text)
     }
 
