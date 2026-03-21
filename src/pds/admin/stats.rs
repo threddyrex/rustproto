@@ -116,9 +116,13 @@ fn build_stats_all_page(hostname: &str, statistics: &[Statistic]) -> String {
         </form>
     </div>
 </div>
-<div style="margin-bottom: 16px; display: flex; gap: 12px;">
+<div style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center;">
     <input type="text" id="showFilterInput" placeholder="Show..." style="flex: 1; padding: 10px 14px; font-size: 14px; background-color: #2f3336; color: #e7e9ea; border: 1px solid #444; border-radius: 6px; outline: none;" onfocus="this.style.borderColor='#4caf50'" onblur="this.style.borderColor='#444'" />
     <input type="text" id="hideFilterInput" placeholder="Hide..." style="flex: 1; padding: 10px 14px; font-size: 14px; background-color: #2f3336; color: #e7e9ea; border: 1px solid #444; border-radius: 6px; outline: none;" onfocus="this.style.borderColor='#f44336'" onblur="this.style.borderColor='#444'" />
+    <label style="display: flex; align-items: center; gap: 6px; color: #e7e9ea; font-size: 14px; white-space: nowrap; cursor: pointer;">
+        <input type="checkbox" id="showOnlyWritesCheckbox" style="accent-color: #4caf50; width: 16px; height: 16px; cursor: pointer;" />
+        Show only writes
+    </label>
 </div>
 <table class="stats-table filterable-table" id="statsTable">
     <thead>
@@ -422,12 +426,16 @@ fn get_sort_and_filter_script() -> &'static str {
 (function() {
     const showFilterInput = document.getElementById('showFilterInput');
     const hideFilterInput = document.getElementById('hideFilterInput');
+    const showOnlyWritesCheckbox = document.getElementById('showOnlyWritesCheckbox');
     const tables = document.querySelectorAll('.filterable-table');
     if (!showFilterInput || !hideFilterInput || tables.length === 0) return;
+    
+    const writeKeywords = ['put', 'create', 'apply'];
     
     function applyFilters() {
         const showText = showFilterInput.value.toLowerCase();
         const hideText = hideFilterInput.value.toLowerCase();
+        const onlyWrites = showOnlyWritesCheckbox && showOnlyWritesCheckbox.checked;
         
         tables.forEach(table => {
             const tbody = table.querySelector('tbody');
@@ -439,6 +447,12 @@ fn get_sort_and_filter_script() -> &'static str {
                 cells.forEach(cell => {
                     rowText += cell.textContent.toLowerCase() + ' ';
                 });
+                
+                // "Show only writes" filter
+                if (onlyWrites && !writeKeywords.some(kw => rowText.includes(kw))) {
+                    row.style.display = 'none';
+                    return;
+                }
                 
                 // Hide filter takes precedence
                 if (hideText && rowText.includes(hideText)) {
@@ -459,6 +473,7 @@ fn get_sort_and_filter_script() -> &'static str {
     
     showFilterInput.addEventListener('input', applyFilters);
     hideFilterInput.addEventListener('input', applyFilters);
+    if (showOnlyWritesCheckbox) showOnlyWritesCheckbox.addEventListener('change', applyFilters);
 })();
 </script>"#
 }
