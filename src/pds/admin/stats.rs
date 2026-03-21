@@ -430,7 +430,7 @@ fn get_sort_and_filter_script() -> &'static str {
     const tables = document.querySelectorAll('.filterable-table');
     if (!showFilterInput || !hideFilterInput || tables.length === 0) return;
     
-    const writeKeywords = ['put', 'create', 'apply'];
+    const writeKeywords = ['put', 'create', 'apply', 'delete', 'upload', 'activate', 'deactivate', 'createsession', 'refreshsession', 'revoke'];
     
     function applyFilters() {
         const showText = showFilterInput.value.toLowerCase();
@@ -448,10 +448,13 @@ fn get_sort_and_filter_script() -> &'static str {
                     rowText += cell.textContent.toLowerCase() + ' ';
                 });
                 
-                // "Show only writes" filter
-                if (onlyWrites && !writeKeywords.some(kw => rowText.includes(kw))) {
-                    row.style.display = 'none';
-                    return;
+                // "Show only writes" filter (check Name column only to avoid matching the Delete button)
+                if (onlyWrites) {
+                    const nameText = (cells[0] ? cells[0].textContent.toLowerCase() : '');
+                    if (!writeKeywords.some(kw => nameText.includes(kw))) {
+                        row.style.display = 'none';
+                        return;
+                    }
                 }
                 
                 // Hide filter takes precedence
