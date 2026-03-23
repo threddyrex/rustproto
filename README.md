@@ -13,7 +13,7 @@ For info on how to implement a PDS from scratch, check out [Ten Steps to a PDS](
 
 CAR repo encoding and decoding:
 
-- [repo.rs](/src/repo/repo.rs) - repo parsing entry point, and explains repo structure ⭐
+- [repo/mod.rs](/src/repo/mod.rs) - repo module - explains repo structure ⭐
 - [dag_cbor.rs](/src/repo/dag_cbor.rs) - decoding/encoding dag cbor ⭐
 - [cid.rs](/src/repo/cid.rs) - decoding/encoding cid
 - [varint.rs](/src/repo/varint.rs) - decoding/encoding varint

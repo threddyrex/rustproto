@@ -13,7 +13,7 @@
 //! for querying. If you need to make changes, do those changes on
 //! the repo records, and then re-assemble the MST again.
 //!
-//! Atproto uses MST for the repos: https://atproto.com/specs/repository
+//! Atproto uses MST for the repos: <https://atproto.com/specs/repository>
 
 use std::collections::HashMap;
 

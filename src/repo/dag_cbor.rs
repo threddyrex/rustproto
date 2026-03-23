@@ -3,7 +3,7 @@
 //! Represents the data block section of a repository record.
 //! Handles converting data between DAG-CBOR binary format and Rust types.
 //!
-//! Reference: https://ipld.io/specs/codecs/dag-cbor/spec/
+//! Reference: <https://ipld.io/specs/codecs/dag-cbor/spec/>
 
 use std::collections::HashMap;
 use std::io::{self, Read, Write, Cursor};

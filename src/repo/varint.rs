@@ -4,7 +4,7 @@
 //! A varint is a sequence of bytes where the lower 7 bits of each byte are data
 //! and the high bit is a flag indicating whether there are more bytes in the sequence.
 //!
-//! Reference: https://protobuf.dev/programming-guides/encoding/#varints
+//! Reference: <https://protobuf.dev/programming-guides/encoding/#varints>
 
 use std::io::{self, Read, Write};
 

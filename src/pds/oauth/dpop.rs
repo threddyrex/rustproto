@@ -1,7 +1,7 @@
 //! DPoP (Demonstrating Proof of Possession) validation.
 //!
 //! Implements RFC 9449 DPoP proof validation for OAuth 2.0.
-//! See: https://datatracker.ietf.org/doc/html/rfc9449
+//! See: <https://datatracker.ietf.org/doc/html/rfc9449>
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use p256::ecdsa::{Signature as P256Signature, VerifyingKey as P256VerifyingKey, signature::Verifier};
@@ -29,6 +29,7 @@ pub struct DpopValidationResult {
     pub iat: Option<i64>,
 }
 
+#[allow(rustdoc::bare_urls)]
 /// Validates a DPoP (Demonstrating Proof of Possession) proof.
 ///
 /// # Arguments

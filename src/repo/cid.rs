@@ -5,7 +5,7 @@
 //! - dag-cbor (0x71) for records
 //! - raw (0x55) for blobs
 //!
-//! Reference: https://github.com/multiformats/cid
+//! Reference: <https://github.com/multiformats/cid>
 
 use std::io::{self, Read, Write, Cursor};
 

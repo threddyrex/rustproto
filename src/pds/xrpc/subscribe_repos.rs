@@ -65,7 +65,7 @@ fn get_toxic_tracker() -> &'static Mutex<HashMap<i64, (u32, std::time::Instant)>
 /// 1. Header - indicates message type (op and t fields)
 /// 2. Body - the actual message content
 ///
-/// Reference: https://atproto.com/specs/event-stream
+/// Reference: <https://atproto.com/specs/event-stream>
 ///
 /// # Query Parameters
 ///

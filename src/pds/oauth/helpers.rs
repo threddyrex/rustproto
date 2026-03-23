@@ -45,6 +45,7 @@ pub fn is_passkeys_enabled(db: &PdsDb) -> bool {
         .unwrap_or(false)
 }
 
+#[allow(rustdoc::bare_urls)]
 /// Get the PDS issuer URL (e.g., "https://pds.example.com").
 pub fn get_issuer(state: &Arc<PdsState>) -> String {
     let hostname = state

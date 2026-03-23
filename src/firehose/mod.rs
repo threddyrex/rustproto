@@ -3,7 +3,7 @@
 //! This module provides functionality to connect to a PDS firehose
 //! and process repo events in real-time.
 //!
-//! Reference: https://atproto.com/specs/event-stream
+//! Reference: <https://atproto.com/specs/event-stream>
 //!
 
 use std::io::Cursor;
@@ -41,7 +41,7 @@ pub struct Firehose;
 impl Firehose {
     /// Listens to a firehose and sends messages back to caller.
     ///
-    /// Reference: https://atproto.com/specs/event-stream#streaming-wire-protocol-v0
+    /// Reference: <https://atproto.com/specs/event-stream#streaming-wire-protocol-v0>
     ///
     /// > "Every WebSocket frame contains two DAG-CBOR objects,
     /// > with bytes concatenated together: a header (indicating message type),
