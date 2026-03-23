@@ -64,14 +64,6 @@ impl LocalFileSystem {
     ///
     /// A LocalFileSystem instance if successful
     ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use rustproto::fs::LocalFileSystem;
-    ///
-    /// let lfs = LocalFileSystem::initialize("./data").unwrap();
-    /// println!("Data dir: {:?}", lfs.get_data_dir());
-    /// ```
     pub fn initialize<P: AsRef<Path>>(data_dir: P) -> Result<Self, LocalFileSystemError> {
         let data_dir = data_dir.as_ref();
 
@@ -257,19 +249,6 @@ impl LocalFileSystem {
     ///
     /// The resolved ActorInfo (from cache or remote), or an error.
     ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # async fn example() {
-    /// use rustproto::fs::LocalFileSystem;
-    ///
-    /// let lfs = LocalFileSystem::initialize("./data").unwrap();
-    /// match lfs.resolve_actor_info("alice.bsky.social", None, "public.api.bsky.app").await {
-    ///     Ok(info) => println!("DID: {:?}", info.did),
-    ///     Err(e) => println!("Failed to resolve: {}", e),
-    /// }
-    /// # }
-    /// ```
     pub async fn resolve_actor_info(
         &self,
         actor: &str,
@@ -374,16 +353,6 @@ impl LocalFileSystem {
     /// * `actor` - The actor handle or DID (used for the filename)
     /// * `info` - The ActorInfo to save
     ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use rustproto::fs::LocalFileSystem;
-    /// use rustproto::ws::ActorInfo;
-    ///
-    /// let lfs = LocalFileSystem::initialize("./data").unwrap();
-    /// let info = ActorInfo::with_actor("alice.bsky.social");
-    /// lfs.save_actor_info("alice.bsky.social", &info).unwrap();
-    /// ```
     pub fn save_actor_info(
         &self,
         actor: &str,

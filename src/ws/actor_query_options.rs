@@ -5,22 +5,6 @@
 /// By default, it enables Bluesky API for handle resolution and DID document
 /// resolution. The caller can turn on/off any options as needed.
 ///
-/// # Examples
-///
-/// ```
-/// use rustproto::ws::ActorQueryOptions;
-///
-/// // Default options: Bluesky API + DID doc resolution
-/// let default_opts = ActorQueryOptions::default();
-///
-/// // Enable all resolution methods
-/// let all_opts = ActorQueryOptions::all();
-///
-/// // Custom options
-/// let custom_opts = ActorQueryOptions::default()
-///     .with_dns(true)
-///     .with_http(true);
-/// ```
 #[derive(Debug, Clone)]
 pub struct ActorQueryOptions {
     /// Enable all resolution methods.

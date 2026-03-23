@@ -99,21 +99,6 @@ impl Repo {
     /// The record callback receives each RepoRecord and should return `true` to continue
     /// processing or `false` to stop.
     ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use rustproto::repo::Repo;
-    /// use std::fs::File;
-    ///
-    /// let file = File::open("repo.car").unwrap();
-    /// Repo::walk_repo(file, |header| {
-    ///     println!("Version: {}", header.version);
-    ///     true
-    /// }, |record| {
-    ///     println!("Record: {:?}", record.at_proto_type);
-    ///     true
-    /// }).unwrap();
-    /// ```
     pub fn walk_repo<R, FH, FR>(
         reader: R,
         header_callback: FH,
@@ -200,19 +185,9 @@ impl Repo {
         })
     }
 
+    ///
     /// Writes a repository to a stream.
     ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use rustproto::repo::{Repo, RepoHeader, RepoRecord};
-    /// use std::fs::File;
-    ///
-    /// let header: RepoHeader = /* create header */;
-    /// let records: Vec<RepoRecord> = vec![/* records */];
-    /// let file = File::create("output.car").unwrap();
-    /// Repo::write_repo(file, &header, &records).unwrap();
-    /// ```
     pub fn write_repo<W: Write>(
         writer: W,
         header: &RepoHeader,

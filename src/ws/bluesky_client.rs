@@ -75,19 +75,6 @@ impl BlueskyClient {
     /// * `actor` - A handle (e.g., "alice.bsky.social") or DID (e.g., "did:plc:abc123")
     /// * `options` - Optional query options to control resolution behavior
     ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use rustproto::ws::BlueskyClient;
-    ///
-    /// #[tokio::main]
-    /// async fn main() {
-    ///     let client = BlueskyClient::new("public.api.bsky.app");
-    ///     let info = client.resolve_actor_info("alice.bsky.social", None).await.unwrap();
-    ///     println!("DID: {:?}", info.did);
-    ///     println!("PDS: {:?}", info.pds);
-    /// }
-    /// ```
     pub async fn resolve_actor_info(
         &self,
         actor: &str,
@@ -883,22 +870,6 @@ impl BlueskyClient {
     /// * `did` - The DID to fetch the repo for
     /// * `output_path` - Path to write the CAR file to
     ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use rustproto::ws::BlueskyClient;
-    /// use std::path::Path;
-    ///
-    /// #[tokio::main]
-    /// async fn main() {
-    ///     let client = BlueskyClient::new("public.api.bsky.app");
-    ///     client.get_repo(
-    ///         "bsky.social",
-    ///         "did:plc:abc123",
-    ///         Path::new("./repo.car")
-    ///     ).await.unwrap();
-    /// }
-    /// ```
     pub async fn get_repo(
         &self,
         pds: &str,

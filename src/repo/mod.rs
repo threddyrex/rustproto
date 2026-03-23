@@ -10,21 +10,6 @@
 //! - RepoRecord: Individual records within a repository
 //! - RepoMst: MST integration helpers
 //!
-//! # Example
-//!
-//! ```no_run
-//! use rustproto::repo::Repo;
-//! use std::fs::File;
-//!
-//! let file = File::open("repo.car").unwrap();
-//! Repo::walk_repo(file, |header| {
-//!     println!("Repo version: {}", header.version);
-//!     true
-//! }, |record| {
-//!     println!("Record type: {:?}", record.at_proto_type);
-//!     true
-//! }).unwrap();
-//! ```
 
 mod base32;
 mod varint;

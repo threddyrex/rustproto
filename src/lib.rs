@@ -3,28 +3,6 @@
 //! This crate provides utilities for working with the AT Protocol and Bluesky,
 //! including actor resolution, identity lookup, repository parsing, and related functionality.
 //!
-//! # Example
-//!
-//! ```no_run
-//! use rustproto::ws::{BlueskyClient, ActorQueryOptions};
-//!
-//! #[tokio::main]
-//! async fn main() {
-//!     let client = BlueskyClient::new("public.api.bsky.app");
-//!
-//!     // Resolve actor info using default options
-//!     let info = client.resolve_actor_info("alice.bsky.social", None).await.unwrap();
-//!     println!("DID: {:?}", info.did);
-//!     println!("PDS: {:?}", info.pds);
-//!
-//!     // Resolve with all methods enabled
-//!     let info = client.resolve_actor_info(
-//!         "bob.bsky.social",
-//!         Some(ActorQueryOptions::all())
-//!     ).await.unwrap();
-//! }
-//! ```
-
 pub mod firehose;
 pub mod fs;
 pub mod log;

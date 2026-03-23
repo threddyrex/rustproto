@@ -5,21 +5,6 @@
 //!
 //! Reference: https://atproto.com/specs/event-stream
 //!
-//! # Example
-//!
-//! ```no_run
-//! use rustproto::firehose::Firehose;
-//! use rustproto::repo::DagCborObject;
-//!
-//! #[tokio::main]
-//! async fn main() {
-//!     let url = "wss://bsky.network/xrpc/com.atproto.sync.subscribeRepos";
-//!     Firehose::listen(url, |header, body| {
-//!         println!("Received frame");
-//!         true // continue listening
-//!     }).await.unwrap();
-//! }
-//! ```
 
 use std::io::Cursor;
 
@@ -72,20 +57,6 @@ impl Firehose {
     /// * `message_callback` - A callback function that receives the header and body DAG-CBOR objects.
     ///                        Return `true` to continue listening, `false` to stop.
     ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use rustproto::firehose::Firehose;
-    ///
-    /// #[tokio::main]
-    /// async fn main() {
-    ///     Firehose::listen("wss://example.com/xrpc/com.atproto.sync.subscribeRepos", |header, body| {
-    ///         // Process the frame
-    ///         println!("Got frame");
-    ///         true // keep listening
-    ///     }).await.unwrap();
-    /// }
-    /// ```
     pub async fn listen<F>(url: &str, mut message_callback: F) -> Result<(), FirehoseError>
     where
         F: FnMut(&DagCborObject, &DagCborObject) -> bool,
