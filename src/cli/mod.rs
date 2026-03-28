@@ -11,6 +11,7 @@ pub mod repair_commit;
 pub mod resolve_actor;
 pub mod run_pds;
 pub mod start_firehose_consumer;
+pub mod sync_get_record_local;
 pub mod sync_repo;
 pub mod test_apply_writes_and_log_firehose;
 pub mod walk_mst;
