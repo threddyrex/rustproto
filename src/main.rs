@@ -1,10 +1,7 @@
 //! rustproto CLI - AT Protocol / Bluesky tools
 
-use std::collections::HashMap;
 use std::sync::Arc;
-use rustproto::fs::LocalFileSystem;
 use rustproto::log::{init_logger, logger, FileDestination, LogLevel};
-use rustproto::ws::{BlueskyClient, DEFAULT_APP_VIEW_HOST_NAME};
 
 use rustproto::cli::{get_arg, parse_arguments};
 
@@ -13,6 +10,7 @@ use rustproto::cli::create_session::cmd_create_session;
 use rustproto::cli::get_pds_info::cmd_get_pds_info;
 use rustproto::cli::get_plc_history::cmd_get_plc_history;
 use rustproto::cli::get_post::cmd_get_post;
+use rustproto::cli::get_repo::cmd_get_repo;
 use rustproto::cli::inspect_firehose_event::cmd_inspect_firehose_event;
 use rustproto::cli::install_config::cmd_install_config;
 use rustproto::cli::install_db::cmd_install_db;
@@ -173,92 +171,6 @@ fn print_usage() {
     println!("  rustproto /command SyncRepo /sourceDataDir ./source-data /destDataDir ./dest-data");
     println!("  rustproto /command BackupAccount /actor alice.bsky.social /dataDir ./data");
     println!("  rustproto /command CreateSession /actor alice.bsky.social /dataDir ./data /password mypass");
-}
-
-
-async fn cmd_get_repo(args: &HashMap<String, String>) {
-    let log = logger();
-
-    let actor = match get_arg(args, "actor") {
-        Some(a) => a,
-        None => {
-            log.error("missing /actor argument");
-            log.error("Usage: rustproto /command GetRepo /actor <handle_or_did> /dataDir <path>");
-            return;
-        }
-    };
-
-    let data_dir = match get_arg(args, "datadir") {
-        Some(d) => d,
-        None => {
-            log.error("missing /dataDir argument");
-            log.error("Usage: rustproto /command GetRepo /actor <handle_or_did> /dataDir <path>");
-            return;
-        }
-    };
-
-    // Initialize the local file system
-    let lfs = match LocalFileSystem::initialize_with_create(data_dir) {
-        Ok(lfs) => lfs,
-        Err(e) => {
-            log.error(&format!("Error initializing data directory: {}", e));
-            return;
-        }
-    };
-
-    let client = BlueskyClient::new(DEFAULT_APP_VIEW_HOST_NAME);
-
-    log.info(&format!("Resolving actor: {}", actor));
-
-    // First, resolve actor to get DID and PDS
-    let info = match client.resolve_actor_info(actor, None).await {
-        Ok(info) => info,
-        Err(e) => {
-            log.error(&format!("Error resolving actor: {}", e));
-            return;
-        }
-    };
-
-    let did = match &info.did {
-        Some(d) => d.clone(),
-        None => {
-            log.error("Could not resolve DID for actor");
-            return;
-        }
-    };
-
-    let pds = match &info.pds {
-        Some(p) => p.clone(),
-        None => {
-            log.error("Could not resolve PDS for actor");
-            return;
-        }
-    };
-
-    log.info(&format!("DID: {}", did));
-    log.info(&format!("PDS: {}", pds));
-
-    // Get the repo file path
-    let repo_file = match lfs.get_path_repo_file(&did) {
-        Ok(path) => path,
-        Err(e) => {
-            log.error(&format!("Error getting repo file path: {}", e));
-            return;
-        }
-    };
-
-    log.info(&format!("Downloading repo to: {}", repo_file.display()));
-
-    // Download the repo
-    match client.get_repo(&pds, &did, &repo_file).await {
-        Ok(bytes) => {
-            log.info(&format!("Downloaded {} bytes", bytes));
-            log.info(&format!("Repo saved to: {}", repo_file.display()));
-        }
-        Err(e) => {
-            log.error(&format!("Error downloading repo: {}", e));
-        }
-    }
 }
 
 

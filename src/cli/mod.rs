@@ -4,6 +4,7 @@ pub mod create_session;
 pub mod get_pds_info;
 pub mod get_plc_history;
 pub mod get_post;
+pub mod get_repo;
 pub mod inspect_firehose_event;
 pub mod install_config;
 pub mod install_db;
