@@ -1,3 +1,4 @@
+//! Command line interface module
 
 pub mod backup_account;
 pub mod create_session;
