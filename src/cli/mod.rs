@@ -10,6 +10,7 @@ pub mod start_firehose_consumer;
 pub mod inspect_firehose_event;
 pub mod get_plc_history;
 pub mod get_pds_info;
+pub mod create_session;
 
 use std::collections::HashMap;
 
