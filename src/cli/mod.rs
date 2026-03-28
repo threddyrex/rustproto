@@ -9,6 +9,7 @@ pub mod print_db_mst;
 pub mod start_firehose_consumer;
 pub mod inspect_firehose_event;
 pub mod get_plc_history;
+pub mod get_pds_info;
 
 use std::collections::HashMap;
 

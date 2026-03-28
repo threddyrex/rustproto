@@ -24,6 +24,7 @@ use rustproto::cli::print_db_mst::cmd_print_db_mst;
 use rustproto::cli::start_firehose_consumer::cmd_start_firehose_consumer;
 use rustproto::cli::inspect_firehose_event::cmd_inspect_firehose_event;
 use rustproto::cli::get_plc_history::cmd_get_plc_history;
+use rustproto::cli::get_pds_info::cmd_get_pds_info;
 
 
 #[tokio::main]
@@ -586,80 +587,6 @@ async fn cmd_print_repo_records(args: &HashMap<String, String>) {
     sorted_types.sort_by(|a, b| b.1.cmp(a.1));
     for (record_type, count) in sorted_types {
         log.info(&format!("  {} - {}", record_type, count));
-    }
-}
-
-/// Gets PDS info including health, description, and repo list.
-async fn cmd_get_pds_info(args: &HashMap<String, String>) {
-    let log = logger();
-
-    let actor = match get_arg(args, "actor") {
-        Some(a) => a,
-        None => {
-            log.error("missing /actor argument");
-            log.error("Usage: rustproto /command GetPdsInfo /actor <handle_or_did>");
-            return;
-        }
-    };
-
-    let client = BlueskyClient::new(DEFAULT_APP_VIEW_HOST_NAME);
-
-    // Resolve actor to get PDS
-    let info = match client.resolve_actor_info(actor, None).await {
-        Ok(info) => info,
-        Err(e) => {
-            log.error(&format!("Error resolving actor: {}", e));
-            return;
-        }
-    };
-
-    let pds = match &info.pds {
-        Some(p) => p.clone(),
-        None => {
-            log.error("Could not resolve PDS for actor");
-            return;
-        }
-    };
-
-    log.info(&format!("PDS: {}", pds));
-
-    // Health
-    log.info("");
-    log.info("HEALTH");
-    match client.pds_health(&pds).await {
-        Ok(health) => {
-            log.info(&serde_json::to_string_pretty(&health).unwrap_or_default());
-        }
-        Err(e) => {
-            log.error(&format!("Error getting health: {}", e));
-        }
-    }
-
-    // Describe Server
-    log.info("");
-    log.info("DESCRIBE SERVER");
-    match client.pds_describe_server(&pds).await {
-        Ok(desc) => {
-            log.info(&serde_json::to_string_pretty(&desc).unwrap_or_default());
-        }
-        Err(e) => {
-            log.error(&format!("Error describing server: {}", e));
-        }
-    }
-
-    // List Repos
-    log.info("");
-    log.info("LIST REPOS");
-    match client.list_repos(&pds, 100).await {
-        Ok(repos) => {
-            log.info(&format!("repo count: {}", repos.len()));
-            for repo in repos {
-                log.info(&serde_json::to_string_pretty(&repo).unwrap_or_default());
-            }
-        }
-        Err(e) => {
-            log.error(&format!("Error listing repos: {}", e));
-        }
     }
 }
 
