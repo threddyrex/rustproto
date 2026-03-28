@@ -18,6 +18,7 @@ use crate::pds::server::PdsState;
 use crate::pds::xrpc::auth_helpers::get_caller_info;
 use crate::repo::DagCborObject;
 use crate::ws::{ActorQueryOptions, BlueskyClient, DEFAULT_APP_VIEW_HOST_NAME};
+use urlencoding::encode;
 
 /// Query parameters for getRecord.
 #[derive(Deserialize)]
@@ -154,7 +155,7 @@ pub async fn get_record(
         // Make proxy request to AppView
         let target_url = format!(
             "https://{}/xrpc/com.atproto.repo.getRecord?repo={}&collection={}&rkey={}",
-            app_view_host_name, actor_did, collection, rkey
+            app_view_host_name, encode(&actor_did), encode(collection), encode(rkey)
         );
 
         state.log.info(&format!("Proxying to: {}", target_url));
