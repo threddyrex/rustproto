@@ -10,9 +10,7 @@ use rustproto::mst::Mst;
 use rustproto::repo::{CidV1, DagCborObject, DagCborValue, Repo, RepoMst, RepoRecord, AtProtoType, MstNodeKey};
 use rustproto::ws::{BlueskyClient, DEFAULT_APP_VIEW_HOST_NAME};
 
-use rustproto::cli::get_arg;
-use rustproto::cli::hex_encode;
-use rustproto::cli::parse_arguments;
+use rustproto::cli::{build_commit_dag_cbor_local, get_arg, hex_encode, parse_arguments};
 
 use rustproto::cli::backup_account::cmd_backup_account;
 use rustproto::cli::create_session::cmd_create_session;
@@ -1310,34 +1308,5 @@ fn print_repo_commit_details(
     log.info(&format!("Prev MST Node CID: {}", commit.prev_mst_node_cid.as_deref().unwrap_or("<null>")));
     log.info(&format!("Signature hex ({} bytes):", commit.signature.len()));
     log.info(&hex_encode(&commit.signature));
-}
-
-/// Build commit DAG-CBOR object for local display.
-fn build_commit_dag_cbor_local(db: &rustproto::pds::db::PdsDb, commit: &rustproto::pds::db::DbRepoCommit) -> Result<DagCborObject, String> {
-    let user_did = db.get_config_property("UserDid")
-        .map_err(|e| format!("Failed to get UserDid: {}", e))?;
-
-    let root_cid = CidV1::from_base32(&commit.root_mst_node_cid)
-        .map_err(|e| format!("Invalid root CID: {}", e))?;
-
-    let mut commit_map: std::collections::HashMap<String, DagCborObject> = std::collections::HashMap::new();
-    commit_map.insert("did".to_string(), DagCborObject::new_text(user_did));
-    commit_map.insert("version".to_string(), DagCborObject::new_unsigned_int(commit.version as i64));
-    commit_map.insert("data".to_string(), DagCborObject::new_cid(root_cid));
-    commit_map.insert("rev".to_string(), DagCborObject::new_text(commit.rev.clone()));
-
-    if let Some(ref prev_cid_str) = commit.prev_mst_node_cid {
-        if let Ok(prev_cid) = CidV1::from_base32(prev_cid_str) {
-            commit_map.insert("prev".to_string(), DagCborObject::new_cid(prev_cid));
-        } else {
-            commit_map.insert("prev".to_string(), DagCborObject::new_null());
-        }
-    } else {
-        commit_map.insert("prev".to_string(), DagCborObject::new_null());
-    }
-
-    commit_map.insert("sig".to_string(), DagCborObject::new_byte_string(commit.signature.clone()));
-
-    Ok(DagCborObject::new_map(commit_map))
 }
 
