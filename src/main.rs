@@ -14,6 +14,7 @@ use rustproto::repo::{CidV1, DagCborObject, DagCborValue, Repo, RepoMst, RepoRec
 use rustproto::ws::{ActorQueryOptions, BlueskyClient, DEFAULT_APP_VIEW_HOST_NAME};
 use rustproto::cli::repair_commit::cmd_repair_commit;
 use rustproto::cli::get_arg;
+use rustproto::cli::parse_arguments;
 
 #[tokio::main]
 async fn main() {
@@ -84,31 +85,6 @@ async fn main() {
     }
 }
 
-/// Parses command line arguments in the format `/name1 value1 /name2 value2`.
-fn parse_arguments(args: &[String]) -> Result<HashMap<String, String>, String> {
-    if args.len() % 2 != 0 {
-        return Err("Arguments must be in the format '/name1 value1 /name2 value2'".to_string());
-    }
-
-    let mut arguments = HashMap::new();
-
-    for chunk in args.chunks(2) {
-        let key = &chunk[0];
-        let value = &chunk[1];
-
-        if !key.starts_with('/') {
-            return Err(format!(
-                "Argument name must start with '/': {}",
-                key
-            ));
-        }
-
-        let key_name = key[1..].to_lowercase();
-        arguments.insert(key_name, value.clone());
-    }
-
-    Ok(arguments)
-}
 
 
 fn print_usage() {
