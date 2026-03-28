@@ -11,6 +11,7 @@ pub mod repair_commit;
 pub mod resolve_actor;
 pub mod run_pds;
 pub mod start_firehose_consumer;
+pub mod sync_repo;
 pub mod walk_mst;
 
 use std::collections::HashMap;
