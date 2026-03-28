@@ -18,7 +18,10 @@ pub mod test_apply_writes_and_log_firehose;
 pub mod walk_mst;
 
 use std::collections::HashMap;
+use crate::fs::{LocalFileSystem};
+use crate::log::{logger};
 use crate::repo::{CidV1, DagCborObject};
+use crate::ws::DEFAULT_APP_VIEW_HOST_NAME;
 
 
 /// Gets an argument value or returns None.
@@ -108,3 +111,71 @@ pub fn at_uri_to_bsky_url(at_uri: &str) -> Option<String> {
         None
     }
 }
+
+
+/// Resolves the repo file path from arguments.
+/// Supports either /repoFile directly or /actor + /dataDir combination.
+/// If actor is not cached, resolves online via BlueskyClient.
+pub async fn resolve_repo_file(args: &HashMap<String, String>) -> Option<std::path::PathBuf> {
+    // Check for direct repoFile argument
+    if let Some(repo_file) = get_arg(args, "repofile") {
+        let path = std::path::PathBuf::from(repo_file);
+        if path.exists() {
+            return Some(path);
+        } else {
+            logger().error(&format!("Repo file does not exist: {}", repo_file));
+            return None;
+        }
+    }
+
+    // Try to resolve from actor + dataDir
+    let actor = get_arg(args, "actor")?;
+    let data_dir = get_arg(args, "datadir")?;
+
+    let lfs = match LocalFileSystem::initialize(data_dir) {
+        Ok(lfs) => lfs,
+        Err(e) => {
+            logger().error(&format!("Error initializing data directory: {}", e));
+            return None;
+        }
+    };
+
+    // Resolve actor to DID
+    let did = if actor.starts_with("did:") {
+        // Already a DID
+        actor.to_string()
+    } else {
+        // Try to resolve handle from cached actor info (falls back to online)
+        match lfs.resolve_actor_info(actor, None, DEFAULT_APP_VIEW_HOST_NAME).await {
+            Ok(info) => {
+                match info.did {
+                    Some(d) => d,
+                    None => {
+                        logger().error("Resolved actor info does not contain a DID");
+                        return None;
+                    }
+                }
+            }
+            Err(e) => {
+                logger().error(&format!("Could not resolve actor: {}", e));
+                return None;
+            }
+        }
+    };
+    
+    match lfs.get_path_repo_file(&did) {
+        Ok(path) => {
+            if path.exists() {
+                Some(path)
+            } else {
+                logger().error(&format!("Repo file does not exist: {}", path.display()));
+                None
+            }
+        }
+        Err(e) => {
+            logger().error(&format!("Error getting repo file path: {}", e));
+            None
+        }
+    }
+}
+

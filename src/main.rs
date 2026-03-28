@@ -8,7 +8,7 @@ use rustproto::log::{init_logger, logger, FileDestination, LogLevel};
 use rustproto::repo::{Repo, RepoRecord, AtProtoType};
 use rustproto::ws::{BlueskyClient, DEFAULT_APP_VIEW_HOST_NAME};
 
-use rustproto::cli::{get_arg, parse_arguments};
+use rustproto::cli::{get_arg, parse_arguments, resolve_repo_file};
 
 use rustproto::cli::backup_account::cmd_backup_account;
 use rustproto::cli::create_session::cmd_create_session;
@@ -261,71 +261,6 @@ async fn cmd_get_repo(args: &HashMap<String, String>) {
     }
 }
 
-/// Resolves the repo file path from arguments.
-/// Supports either /repoFile directly or /actor + /dataDir combination.
-/// If actor is not cached, resolves online via BlueskyClient.
-async fn resolve_repo_file(args: &HashMap<String, String>) -> Option<std::path::PathBuf> {
-    // Check for direct repoFile argument
-    if let Some(repo_file) = get_arg(args, "repofile") {
-        let path = std::path::PathBuf::from(repo_file);
-        if path.exists() {
-            return Some(path);
-        } else {
-            logger().error(&format!("Repo file does not exist: {}", repo_file));
-            return None;
-        }
-    }
-
-    // Try to resolve from actor + dataDir
-    let actor = get_arg(args, "actor")?;
-    let data_dir = get_arg(args, "datadir")?;
-
-    let lfs = match LocalFileSystem::initialize(data_dir) {
-        Ok(lfs) => lfs,
-        Err(e) => {
-            logger().error(&format!("Error initializing data directory: {}", e));
-            return None;
-        }
-    };
-
-    // Resolve actor to DID
-    let did = if actor.starts_with("did:") {
-        // Already a DID
-        actor.to_string()
-    } else {
-        // Try to resolve handle from cached actor info (falls back to online)
-        match lfs.resolve_actor_info(actor, None, DEFAULT_APP_VIEW_HOST_NAME).await {
-            Ok(info) => {
-                match info.did {
-                    Some(d) => d,
-                    None => {
-                        logger().error("Resolved actor info does not contain a DID");
-                        return None;
-                    }
-                }
-            }
-            Err(e) => {
-                logger().error(&format!("Could not resolve actor: {}", e));
-                return None;
-            }
-        }
-    };
-    
-    match lfs.get_path_repo_file(&did) {
-        Ok(path) => {
-            if path.exists() {
-                Some(path)
-            } else {
-                logger().error(&format!("Repo file does not exist: {}", path.display()));
-                None
-            }
-        }
-        Err(e) => {
-            logger().error(&format!("Error getting repo file path: {}", e));
-            None
-        }
-    }
-}
 
 async fn cmd_print_repo_stats(args: &HashMap<String, String>) {
     let log = logger();
