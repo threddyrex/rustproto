@@ -16,7 +16,6 @@ use serde::{Deserialize, Serialize};
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
 use crate::pds::xrpc::auth_helpers::get_caller_info;
-use crate::pds::xrpc::is_valid_outbound_host;
 use crate::repo::DagCborObject;
 use crate::ws::{ActorQueryOptions, BlueskyClient, DEFAULT_APP_VIEW_HOST_NAME};
 
@@ -124,10 +123,9 @@ pub async fn get_record(
     let is_local = repo == user_did || repo == user_handle;
 
     if !is_local {
-        // Proxy request to the target PDS
+        // Proxy request to the AppView
         state.log.info(&format!("Proxying getRecord request for repo: {}", repo));
 
-        // Resolve the repo
         let app_view_host_name = state.db.get_config_property("AppViewHostName")
             .unwrap_or_else(|_| DEFAULT_APP_VIEW_HOST_NAME.to_string());
         let client = BlueskyClient::new(&app_view_host_name);
@@ -151,39 +149,12 @@ pub async fn get_record(
             }
         };
 
-        let pds = match actor_info.pds {
-            Some(pds) if !pds.is_empty() => pds,
-            _ => {
-                return (
-                    StatusCode::NOT_FOUND,
-                    Json(GetRecordError {
-                        error: "NotFound".to_string(),
-                        message: "Unable to resolve repository PDS".to_string(),
-                    }),
-                )
-                    .into_response();
-            }
-        };
-
-        // Validate PDS hostname (SSRF protection)
-        if !is_valid_outbound_host(&pds) {
-            state.log.error(&format!("[SECURITY] Blocked invalid or internal PDS hostname: {}", pds));
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(GetRecordError {
-                    error: "InvalidRequest".to_string(),
-                    message: "Invalid PDS hostname".to_string(),
-                }),
-            )
-                .into_response();
-        }
-
         let actor_did = actor_info.did.unwrap_or_default();
 
-        // Make proxy request using reqwest
+        // Make proxy request to AppView
         let target_url = format!(
             "https://{}/xrpc/com.atproto.repo.getRecord?repo={}&collection={}&rkey={}",
-            pds, actor_did, collection, rkey
+            app_view_host_name, actor_did, collection, rkey
         );
 
         state.log.info(&format!("Proxying to: {}", target_url));
