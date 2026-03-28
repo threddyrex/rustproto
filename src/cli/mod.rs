@@ -8,6 +8,7 @@ pub mod inspect_firehose_event;
 pub mod install_config;
 pub mod install_db;
 pub mod print_db_mst;
+pub mod print_repo_records;
 pub mod repair_commit;
 pub mod resolve_actor;
 pub mod run_pds;
