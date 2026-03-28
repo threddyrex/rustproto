@@ -6,6 +6,7 @@ pub mod run_pds;
 pub mod resolve_actor;
 pub mod walk_mst;
 pub mod print_db_mst;
+pub mod start_firehose_consumer;
 
 use std::collections::HashMap;
 
