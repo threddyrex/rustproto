@@ -3,6 +3,7 @@ pub mod backup_account;
 pub mod create_session;
 pub mod get_pds_info;
 pub mod get_plc_history;
+pub mod get_post;
 pub mod inspect_firehose_event;
 pub mod install_config;
 pub mod install_db;
@@ -88,3 +89,22 @@ pub fn build_commit_dag_cbor_local(db: &crate::pds::db::PdsDb, commit: &crate::p
     Ok(DagCborObject::new_map(commit_map))
 }
 
+
+/// Convert an AT URI to a bsky.app URL.
+pub fn at_uri_to_bsky_url(at_uri: &str) -> Option<String> {
+    // Format: at://did:plc:xxx/app.bsky.feed.post/rkey
+    if !at_uri.starts_with("at://") {
+        return None;
+    }
+
+    let rest = at_uri.strip_prefix("at://")?;
+    let parts: Vec<&str> = rest.split('/').collect();
+
+    if parts.len() >= 3 && parts[1] == "app.bsky.feed.post" {
+        let did = parts[0];
+        let rkey = parts[2];
+        Some(format!("https://bsky.app/profile/{}/post/{}", did, rkey))
+    } else {
+        None
+    }
+}
