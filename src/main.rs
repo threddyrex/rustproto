@@ -1,30 +1,38 @@
 //! rustproto CLI - AT Protocol / Bluesky tools
 
 use std::sync::Arc;
-use rustproto::log::{init_logger, logger, FileDestination, LogLevel};
 
-use rustproto::cli::{get_arg, parse_arguments};
+use rustproto::log::{
+    init_logger, 
+    logger, 
+    FileDestination, 
+    LogLevel
+};
 
-use rustproto::cli::backup_account::cmd_backup_account;
-use rustproto::cli::create_session::cmd_create_session;
-use rustproto::cli::get_pds_info::cmd_get_pds_info;
-use rustproto::cli::get_plc_history::cmd_get_plc_history;
-use rustproto::cli::get_post::cmd_get_post;
-use rustproto::cli::get_repo::cmd_get_repo;
-use rustproto::cli::inspect_firehose_event::cmd_inspect_firehose_event;
-use rustproto::cli::install_config::cmd_install_config;
-use rustproto::cli::install_db::cmd_install_db;
-use rustproto::cli::print_db_mst::cmd_print_db_mst;
-use rustproto::cli::print_repo_stats::cmd_print_repo_stats;
-use rustproto::cli::print_repo_records::cmd_print_repo_records;
-use rustproto::cli::repair_commit::cmd_repair_commit;
-use rustproto::cli::resolve_actor::cmd_resolve_actor;
-use rustproto::cli::run_pds::cmd_run_pds;
-use rustproto::cli::start_firehose_consumer::cmd_start_firehose_consumer;
-use rustproto::cli::sync_get_record_local::cmd_sync_get_record_local;
-use rustproto::cli::sync_repo::cmd_sync_repo;
-use rustproto::cli::test_apply_writes_and_log_firehose::cmd_test_apply_writes_and_log_firehose;
-use rustproto::cli::walk_mst::cmd_walk_mst;
+use rustproto::cli::{
+    get_arg,
+    parse_arguments,
+    backup_account::cmd_backup_account,
+    create_session::cmd_create_session,
+    get_pds_info::cmd_get_pds_info,
+    get_plc_history::cmd_get_plc_history,
+    get_post::cmd_get_post,
+    get_repo::cmd_get_repo,
+    inspect_firehose_event::cmd_inspect_firehose_event,
+    install_config::cmd_install_config,
+    install_db::cmd_install_db,
+    print_db_mst::cmd_print_db_mst,
+    print_repo_stats::cmd_print_repo_stats,
+    print_repo_records::cmd_print_repo_records,
+    repair_commit::cmd_repair_commit,
+    resolve_actor::cmd_resolve_actor,
+    run_pds::cmd_run_pds,
+    start_firehose_consumer::cmd_start_firehose_consumer,
+    sync_get_record_local::cmd_sync_get_record_local,
+    sync_repo::cmd_sync_repo,
+    test_apply_writes_and_log_firehose::cmd_test_apply_writes_and_log_firehose,
+    walk_mst::cmd_walk_mst
+};
 
 
 #[tokio::main]
@@ -68,27 +76,27 @@ async fn main() {
         .unwrap_or("help");
 
     match command.to_lowercase().as_str() {
-        "resolve" | "resolveactorinfo" => cmd_resolve_actor(&arguments).await,
-        "getrepo" => cmd_get_repo(&arguments).await,
-        "printrepostats" => cmd_print_repo_stats(&arguments).await,
-        "printreporecords" => cmd_print_repo_records(&arguments).await,
-        "walkmst" => cmd_walk_mst(&arguments).await,
-        "printdbmst" => cmd_print_db_mst(&arguments),
-        "startfirehoseconsumer" => cmd_start_firehose_consumer(&arguments).await,
-        "installdb" => cmd_install_db(&arguments),
-        "installconfig" => cmd_install_config(&arguments),
-        "repaircommit" => cmd_repair_commit(&arguments),
-        "runpds" => cmd_run_pds(&arguments).await,
-        "inspectfirehoseevent" => cmd_inspect_firehose_event(&arguments),
-        "getplchistory" => cmd_get_plc_history(&arguments).await,
+        "backupaccount" => cmd_backup_account(&arguments).await,
+        "createsession" => cmd_create_session(&arguments).await,
         "getpdsinfo" => cmd_get_pds_info(&arguments).await,
+        "getplchistory" => cmd_get_plc_history(&arguments).await,
         "getpost" => cmd_get_post(&arguments).await,
+        "getrepo" => cmd_get_repo(&arguments).await,
+        "help" => print_usage(),
+        "inspectfirehoseevent" => cmd_inspect_firehose_event(&arguments),
+        "installconfig" => cmd_install_config(&arguments),
+        "installdb" => cmd_install_db(&arguments),
+        "printdbmst" => cmd_print_db_mst(&arguments),
+        "printreporecords" => cmd_print_repo_records(&arguments).await,
+        "printrepostats" => cmd_print_repo_stats(&arguments).await,
+        "repaircommit" => cmd_repair_commit(&arguments),
+        "resolveactorinfo" => cmd_resolve_actor(&arguments).await,
+        "runpds" => cmd_run_pds(&arguments).await,
+        "startfirehoseconsumer" => cmd_start_firehose_consumer(&arguments).await,
         "syncgetrecordlocal" => cmd_sync_get_record_local(&arguments),
         "syncrepo" => cmd_sync_repo(&arguments),
         "testapplywritesandlogfirehose" => cmd_test_apply_writes_and_log_firehose(&arguments),
-        "backupaccount" => cmd_backup_account(&arguments).await,
-        "createsession" => cmd_create_session(&arguments).await,
-        "help" => print_usage(),
+        "walkmst" => cmd_walk_mst(&arguments).await,
         _ => {
             logger().error(&format!("Unknown command: {}", command));
             print_usage();
