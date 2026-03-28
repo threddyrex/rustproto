@@ -4,6 +4,7 @@ pub mod install_db;
 pub mod install_config;
 pub mod run_pds;
 pub mod resolve_actor;
+pub mod walk_mst;
 
 use std::collections::HashMap;
 
