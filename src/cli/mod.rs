@@ -5,6 +5,7 @@ pub mod install_config;
 pub mod run_pds;
 pub mod resolve_actor;
 pub mod walk_mst;
+pub mod print_db_mst;
 
 use std::collections::HashMap;
 
@@ -40,3 +41,7 @@ pub fn parse_arguments(args: &[String]) -> Result<HashMap<String, String>, Strin
     Ok(arguments)
 }
 
+/// Convert bytes to hex string for debugging.
+pub fn hex_encode(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
+}
