@@ -9,13 +9,14 @@ use rustproto::firehose::Firehose;
 use rustproto::fs::LocalFileSystem;
 use rustproto::log::{init_logger, logger, FileDestination, LogLevel};
 use rustproto::mst::Mst;
-use rustproto::pds::{Installer, PdsDb};
+use rustproto::pds::{PdsDb};
 use rustproto::repo::{CidV1, DagCborObject, DagCborValue, Repo, RepoMst, RepoRecord, AtProtoType, MstNodeKey};
 use rustproto::ws::{ActorQueryOptions, BlueskyClient, DEFAULT_APP_VIEW_HOST_NAME};
 use rustproto::cli::get_arg;
 use rustproto::cli::parse_arguments;
 use rustproto::cli::repair_commit::cmd_repair_commit;
 use rustproto::cli::install_db::cmd_install_db;
+use rustproto::cli::install_config::cmd_install_config;
 
 #[tokio::main]
 async fn main() {
@@ -161,61 +162,6 @@ fn print_usage() {
     println!("  rustproto /command SyncRepo /sourceDataDir ./source-data /destDataDir ./dest-data");
     println!("  rustproto /command BackupAccount /actor alice.bsky.social /dataDir ./data");
     println!("  rustproto /command CreateSession /actor alice.bsky.social /dataDir ./data /password mypass");
-}
-
-fn cmd_install_config(args: &HashMap<String, String>) {
-    let log = logger();
-
-    let data_dir = match get_arg(args, "datadir") {
-        Some(d) => d,
-        None => {
-            log.error("missing /dataDir argument");
-            log.error("Usage: rustproto /command InstallConfig /dataDir <path> /listenScheme <http|https> /listenHost <host> /listenPort <port>");
-            return;
-        }
-    };
-
-    let listen_scheme = match get_arg(args, "listenscheme") {
-        Some(s) => s,
-        None => {
-            log.error("missing /listenScheme argument");
-            return;
-        }
-    };
-
-    let listen_host = match get_arg(args, "listenhost") {
-        Some(h) => h,
-        None => {
-            log.error("missing /listenHost argument");
-            return;
-        }
-    };
-
-    let listen_port: i32 = match get_arg(args, "listenport") {
-        Some(p) => match p.parse() {
-            Ok(port) => port,
-            Err(_) => {
-                log.error("Invalid /listenPort value - must be an integer");
-                return;
-            }
-        },
-        None => {
-            log.error("missing /listenPort argument");
-            return;
-        }
-    };
-
-    let lfs = match LocalFileSystem::initialize(data_dir) {
-        Ok(lfs) => lfs,
-        Err(e) => {
-            log.error(&format!("Failed to initialize file system: {}", e));
-            return;
-        }
-    };
-
-    if let Err(e) = Installer::install_config(&lfs, &log, listen_scheme, listen_host, listen_port) {
-        log.error(&format!("Failed to install config: {}", e));
-    }
 }
 
 async fn cmd_run_pds(args: &HashMap<String, String>) {
