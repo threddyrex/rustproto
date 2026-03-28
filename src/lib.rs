@@ -3,6 +3,7 @@
 //! This crate provides utilities for working with the AT Protocol and Bluesky,
 //! including actor resolution, identity lookup, repository parsing, and related functionality.
 //!
+pub mod cli;
 pub mod firehose;
 pub mod fs;
 pub mod log;
