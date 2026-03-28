@@ -36,8 +36,8 @@ impl LogDestination for ConsoleDestination {
                     println!("\x1b[33m{}\x1b[0m", message);
                 }
                 LogLevel::Error => {
-                    // Red for errors
-                    eprintln!("\x1b[31m{}\x1b[0m", message);
+                    // Bright red for errors (stands out in screenshots)
+                    eprintln!("\x1b[91m{}\x1b[0m", message);
                 }
             }
         } else {
