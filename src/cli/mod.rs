@@ -1,5 +1,6 @@
 
 pub mod repair_commit;
+pub mod install_db;
 
 use std::collections::HashMap;
 

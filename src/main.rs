@@ -12,9 +12,10 @@ use rustproto::mst::Mst;
 use rustproto::pds::{Installer, PdsDb};
 use rustproto::repo::{CidV1, DagCborObject, DagCborValue, Repo, RepoMst, RepoRecord, AtProtoType, MstNodeKey};
 use rustproto::ws::{ActorQueryOptions, BlueskyClient, DEFAULT_APP_VIEW_HOST_NAME};
-use rustproto::cli::repair_commit::cmd_repair_commit;
 use rustproto::cli::get_arg;
 use rustproto::cli::parse_arguments;
+use rustproto::cli::repair_commit::cmd_repair_commit;
+use rustproto::cli::install_db::cmd_install_db;
 
 #[tokio::main]
 async fn main() {
@@ -160,35 +161,6 @@ fn print_usage() {
     println!("  rustproto /command SyncRepo /sourceDataDir ./source-data /destDataDir ./dest-data");
     println!("  rustproto /command BackupAccount /actor alice.bsky.social /dataDir ./data");
     println!("  rustproto /command CreateSession /actor alice.bsky.social /dataDir ./data /password mypass");
-}
-
-fn cmd_install_db(args: &HashMap<String, String>) {
-    let log = logger();
-
-    let data_dir = match get_arg(args, "datadir") {
-        Some(d) => d,
-        None => {
-            log.error("missing /dataDir argument");
-            log.error("Usage: rustproto /command InstallDb /dataDir <path> [/deleteExistingDb true]");
-            return;
-        }
-    };
-
-    let delete_existing_db = get_arg(args, "deleteexistingdb")
-        .map(|v| v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
-
-    let lfs = match LocalFileSystem::initialize(data_dir) {
-        Ok(lfs) => lfs,
-        Err(e) => {
-            log.error(&format!("Failed to initialize file system: {}", e));
-            return;
-        }
-    };
-
-    if let Err(e) = Installer::install_db(&lfs, &log, delete_existing_db) {
-        log.error(&format!("Failed to install database: {}", e));
-    }
 }
 
 fn cmd_install_config(args: &HashMap<String, String>) {
