@@ -17,6 +17,7 @@ use rustproto::cli::parse_arguments;
 use rustproto::cli::repair_commit::cmd_repair_commit;
 use rustproto::cli::install_db::cmd_install_db;
 use rustproto::cli::install_config::cmd_install_config;
+use rustproto::cli::run_pds::cmd_run_pds;
 
 #[tokio::main]
 async fn main() {
@@ -162,39 +163,6 @@ fn print_usage() {
     println!("  rustproto /command SyncRepo /sourceDataDir ./source-data /destDataDir ./dest-data");
     println!("  rustproto /command BackupAccount /actor alice.bsky.social /dataDir ./data");
     println!("  rustproto /command CreateSession /actor alice.bsky.social /dataDir ./data /password mypass");
-}
-
-async fn cmd_run_pds(args: &HashMap<String, String>) {
-    let log = logger();
-
-    let data_dir = match get_arg(args, "datadir") {
-        Some(d) => d,
-        None => {
-            log.error("missing /dataDir argument");
-            log.error("Usage: rustproto /command RunPds /dataDir <path>");
-            return;
-        }
-    };
-
-    let lfs = match LocalFileSystem::initialize(data_dir) {
-        Ok(lfs) => lfs,
-        Err(e) => {
-            log.error(&format!("Failed to initialize file system: {}", e));
-            return;
-        }
-    };
-
-    let server = match rustproto::pds::PdsServer::initialize(lfs, log) {
-        Ok(s) => s,
-        Err(e) => {
-            log.error(&format!("Failed to initialize PDS server: {}", e));
-            return;
-        }
-    };
-
-    if let Err(e) = server.run().await {
-        log.error(&format!("PDS server error: {}", e));
-    }
 }
 
 async fn cmd_resolve_actor(args: &HashMap<String, String>) {

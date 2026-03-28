@@ -2,6 +2,7 @@
 pub mod repair_commit;
 pub mod install_db;
 pub mod install_config;
+pub mod run_pds;
 
 use std::collections::HashMap;
 
