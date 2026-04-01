@@ -14,6 +14,7 @@ use rustproto::cli::{
     parse_arguments,
     backup_account::cmd_backup_account,
     create_session::cmd_create_session,
+    get_blob::cmd_get_blob,
     get_pds_info::cmd_get_pds_info,
     get_plc_history::cmd_get_plc_history,
     get_post::cmd_get_post,
@@ -78,6 +79,7 @@ async fn main() {
     match command.to_lowercase().as_str() {
         "backupaccount" => cmd_backup_account(&arguments).await,
         "createsession" => cmd_create_session(&arguments).await,
+        "getblob" => cmd_get_blob(&arguments).await,
         "getpdsinfo" => cmd_get_pds_info(&arguments).await,
         "getplchistory" => cmd_get_plc_history(&arguments).await,
         "getpost" => cmd_get_post(&arguments).await,
@@ -121,6 +123,7 @@ fn print_usage() {
     println!("  InspectFirehoseEvent   Inspect a stored firehose event (for debugging)");
     println!("  GetPlcHistory          Get PLC history for an actor and check repo status");
     println!("  GetPdsInfo             Get PDS info (health, description, repos)");
+    println!("  GetBlob                Download a blob by CID for an actor");
     println!("  GetPost                Get a post and print all URIs found");
     println!("  SyncGetRecordLocal     Get a record from local pds.db and print details");
     println!("  BackupAccount          Backup an account (repo, blobs, prefs) to local directory");
@@ -150,6 +153,7 @@ fn print_usage() {
     println!("  /getRepo <bool>       Backup repository (true/false, default: true)");
     println!("  /getBlobs <bool>      Backup blobs (true/false, default: true)");
     println!("  /blobSleepSeconds <n> Seconds to sleep between blob downloads (default: 1)");
+    println!("  /blobCid <string>     CID of a blob to download (for GetBlob)");
     println!("  /password <string>    Password for CreateSession");
     println!("  /authFactorToken <s>  Auth factor token for CreateSession (optional)");
     println!("  /logLevel <level>     Log level: trace, info, warning, error");
@@ -178,6 +182,7 @@ fn print_usage() {
     println!("  rustproto /command SyncGetRecordLocal /dataDir ./data /collection app.bsky.feed.post /rkey 3abc123");
     println!("  rustproto /command SyncRepo /sourceDataDir ./source-data /destDataDir ./dest-data");
     println!("  rustproto /command BackupAccount /actor alice.bsky.social /dataDir ./data");
+    println!("  rustproto /command GetBlob /actor alice.bsky.social /blobCid bafkrei... /dataDir ./data");
     println!("  rustproto /command CreateSession /actor alice.bsky.social /dataDir ./data /password mypass");
 }
 

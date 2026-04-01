@@ -34,6 +34,7 @@ pub enum LocalFileSystemError {
 const SUBDIRS: &[&str] = &[
     "actors",
     "backups",
+    "blobs",
     "repos",
     "preferences",
     "sessions",
@@ -166,6 +167,21 @@ impl LocalFileSystem {
         let safe_did = Self::get_safe_string(did);
         let backup_dir = self.data_dir.join("backups").join(safe_did);
         Ok(backup_dir)
+    }
+
+    /// Gets the path to the blob directory for the given DID.
+    ///
+    /// Returns a path like `{data_dir}/blobs/{safe_did}/`
+    pub fn get_path_blob_dir(&self, did: &str) -> Result<PathBuf, LocalFileSystemError> {
+        if did.is_empty() {
+            return Err(LocalFileSystemError::InvalidArgument(
+                "did is null or empty".to_string(),
+            ));
+        }
+
+        let safe_did = Self::get_safe_string(did);
+        let blob_dir = self.data_dir.join("blobs").join(safe_did);
+        Ok(blob_dir)
     }
 
     /// Gets the path to the preferences file for the given DID.
