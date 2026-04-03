@@ -6,7 +6,7 @@
 use std::net::IpAddr;
 use std::time::Instant;
 
-use crate::log::logger;
+use crate::log::{logger};
 use crate::ws::{ActorInfo, ActorQueryOptions};
 use reqwest::Client;
 use serde_json::Value;
@@ -791,6 +791,7 @@ impl BlueskyClient {
     /// Calls `_health` on the PDS.
     pub async fn pds_health(&self, pds: &str) -> Result<Value, BlueskyClientError> {
         let url = format!("https://{}/xrpc/_health", pds);
+        logger().trace(&format!("[SEND REQUEST] {}", url));
         let response = self.client.get(&url).send().await?;
         let json: Value = response.json().await?;
         Ok(json)
@@ -801,6 +802,7 @@ impl BlueskyClient {
     /// Calls `com.atproto.server.describeServer` on the PDS.
     pub async fn pds_describe_server(&self, pds: &str) -> Result<Value, BlueskyClientError> {
         let url = format!("https://{}/xrpc/com.atproto.server.describeServer", pds);
+        logger().trace(&format!("[SEND REQUEST] {}", url));
         let response = self.client.get(&url).send().await?;
         let json: Value = response.json().await?;
         Ok(json)
@@ -824,6 +826,9 @@ impl BlueskyClient {
                     pds, limit
                 ),
             };
+
+            logger().trace(&format!("[SEND REQUEST] {}", url));
+
 
             let response = self.client.get(&url).send().await?;
             let json: Value = response.json().await?;
@@ -855,6 +860,7 @@ impl BlueskyClient {
             "https://{}/xrpc/app.bsky.feed.getPosts?uris={}",
             self.app_view_host_name, uris_param
         );
+        logger().trace(&format!("[SEND REQUEST] {}", url));
         let response = self.client.get(&url).send().await?;
         let json: Value = response.json().await?;
         Ok(json)
@@ -889,6 +895,7 @@ impl BlueskyClient {
             pds, did
         );
 
+        logger().trace(&format!("[SEND REQUEST] {}", url));
         let response = self.client.get(&url).send().await?;
 
         if !response.status().is_success() {
@@ -921,7 +928,6 @@ impl BlueskyClient {
         pds: &str,
         did: &str,
     ) -> Result<Vec<String>, BlueskyClientError> {
-        let log = logger();
         let mut blobs = Vec::new();
         let mut cursor: Option<String> = None;
         let limit = 100;
@@ -938,7 +944,7 @@ impl BlueskyClient {
                 ),
             };
 
-            log.trace(&format!("ListBlobs: url: {}", url));
+            logger().trace(&format!("[SEND REQUEST] {}", url));
 
             let response = self.client.get(&url).send().await?;
             let json: Value = response.json().await?;
@@ -955,7 +961,7 @@ impl BlueskyClient {
             }
 
             cursor = json["cursor"].as_str().map(|s| s.to_string());
-            log.trace(&format!("ListBlobs: count={}, cursor={:?}", cid_count, cursor));
+            logger().trace(&format!("[SEND REQUEST] {}", url));
 
             if cid_count < limit || cursor.is_none() {
                 break;
