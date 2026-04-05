@@ -189,6 +189,7 @@ impl PdsServer {
             // Catch-all for app.bsky.* and chat.bsky.* routes - proxy to AppView
             .fallback(xrpc::app_bsky_fallback)
             // Static file endpoints
+            .route("/", axum::routing::get(xrpc::root))
             .route("/favicon.ico", axum::routing::get(xrpc::favicon))
             // .well-known endpoints
             .route("/.well-known/did.json", axum::routing::get(xrpc::well_known_did))
