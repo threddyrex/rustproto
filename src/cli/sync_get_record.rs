@@ -129,9 +129,13 @@ pub async fn cmd_sync_get_record(args: &HashMap<String, String>) {
             log.info(&format!("  Key:   {}", result.record_key));
             log.info(&format!("  Depth: {} (SHA-256 leading zeros / 2-bit chunks)", result.record_key_depth));
             for (i, node_info) in result.proof_nodes.iter().enumerate() {
+                let layer_str = match node_info.layer {
+                    Some(d) => format!(" layer={}", d),
+                    None => String::new(),
+                };
                 log.info(&format!(
-                    "  Node {}: CID={} entries={}",
-                    i, node_info.cid, node_info.entry_count
+                    "  Node {}: CID={} entries={}{}",
+                    i, node_info.cid, node_info.entry_count, layer_str
                 ));
             }
             log.info("");
@@ -238,6 +242,7 @@ struct VerificationResult {
 struct ProofNodeInfo {
     cid: String,
     entry_count: usize,
+    layer: Option<i32>,
 }
 
 struct Check {
@@ -480,15 +485,21 @@ fn verify_record_car(
     for (i, mst_block) in mst_blocks.iter().enumerate() {
         verify_block_cid(mst_block, &mut checks, &format!("MST node {}", i));
 
-        let entry_count = mst_block
-            .data_block
-            .select_array(&["e"])
-            .map(|arr| arr.len())
-            .unwrap_or(0);
+        let entries = mst_block.data_block.select_array(&["e"]);
+        let entry_count = entries.map(|arr| arr.len()).unwrap_or(0);
+
+        // Compute node layer from the depth of its first entry's key
+        let layer = entries.and_then(|arr| {
+            let first = arr.first()?;
+            let key_bytes = first.select_bytes(&["k"])?;
+            let key = String::from_utf8_lossy(key_bytes);
+            Some(Mst::get_key_depth_str(&key))
+        });
 
         proof_nodes_info.push(ProofNodeInfo {
             cid: mst_block.cid.base32.clone(),
             entry_count,
+            layer,
         });
     }
 
