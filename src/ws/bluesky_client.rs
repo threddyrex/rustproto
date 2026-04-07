@@ -920,6 +920,51 @@ impl BlueskyClient {
         Ok(bytes_written)
     }
 
+    /// Gets a single record with its proof chain as a CAR file from a PDS.
+    ///
+    /// Calls `com.atproto.sync.getRecord` on the PDS and returns the raw CAR bytes.
+    ///
+    /// # Arguments
+    ///
+    /// * `pds` - The PDS hostname (e.g., "bsky.social")
+    /// * `did` - The repository DID
+    /// * `collection` - The collection NSID (e.g., "app.bsky.feed.post")
+    /// * `rkey` - The record key
+    ///
+    pub async fn sync_get_record(
+        &self,
+        pds: &str,
+        did: &str,
+        collection: &str,
+        rkey: &str,
+    ) -> Result<Vec<u8>, BlueskyClientError> {
+        if pds.is_empty() || did.is_empty() {
+            return Err(BlueskyClientError::InvalidActor(
+                "PDS and DID are required".to_string(),
+            ));
+        }
+
+        let url = format!(
+            "https://{}/xrpc/com.atproto.sync.getRecord?did={}&collection={}&rkey={}",
+            pds, did, collection, rkey
+        );
+
+        logger().trace(&format!("[SEND REQUEST] {}", url));
+        let response = self.client.get(&url).send().await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(BlueskyClientError::ResolutionFailed(format!(
+                "HTTP {} from PDS: {}",
+                status, body
+            )));
+        }
+
+        let bytes = response.bytes().await?;
+        Ok(bytes.to_vec())
+    }
+
     /// Lists all blob CIDs for the given DID from a PDS.
     ///
     /// Calls `com.atproto.sync.listBlobs` on the PDS, paging through results.

@@ -29,6 +29,7 @@ use rustproto::cli::{
     resolve_actor::cmd_resolve_actor,
     run_pds::cmd_run_pds,
     start_firehose_consumer::cmd_start_firehose_consumer,
+    sync_get_record::cmd_sync_get_record,
     sync_get_record_local::cmd_sync_get_record_local,
     sync_repo::cmd_sync_repo,
     test_apply_writes_and_log_firehose::cmd_test_apply_writes_and_log_firehose,
@@ -95,6 +96,7 @@ async fn main() {
         "resolveactorinfo" => cmd_resolve_actor(&arguments).await,
         "runpds" => cmd_run_pds(&arguments).await,
         "startfirehoseconsumer" => cmd_start_firehose_consumer(&arguments).await,
+        "syncgetrecord" => cmd_sync_get_record(&arguments).await,
         "syncgetrecordlocal" => cmd_sync_get_record_local(&arguments),
         "syncrepo" => cmd_sync_repo(&arguments),
         "testapplywritesandlogfirehose" => cmd_test_apply_writes_and_log_firehose(&arguments),
@@ -125,6 +127,7 @@ fn print_usage() {
     println!("  GetPdsInfo             Get PDS info (health, description, repos)");
     println!("  GetBlob                Download a blob by CID for an actor");
     println!("  GetPost                Get a post and print all URIs found");
+    println!("  SyncGetRecord         Get a record from a remote PDS and verify the proof chain");
     println!("  SyncGetRecordLocal     Get a record from local pds.db and print details");
     println!("  BackupAccount          Backup an account (repo, blobs, prefs) to local directory");
     println!("  CreateSession          Create a session (log in) for an actor");
@@ -179,6 +182,7 @@ fn print_usage() {
     println!("  rustproto /command InstallDb /dataDir ./data");
     println!("  rustproto /command InstallConfig /dataDir ./data /listenScheme https /listenHost example.com /listenPort 443");
     println!("  rustproto /command RunPds /dataDir ./data");
+    println!("  rustproto /command SyncGetRecord /actor alice.bsky.social /collection app.bsky.feed.post /rkey 3abc123");
     println!("  rustproto /command SyncGetRecordLocal /dataDir ./data /collection app.bsky.feed.post /rkey 3abc123");
     println!("  rustproto /command SyncRepo /sourceDataDir ./source-data /destDataDir ./dest-data");
     println!("  rustproto /command BackupAccount /actor alice.bsky.social /dataDir ./data");

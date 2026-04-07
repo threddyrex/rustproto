@@ -188,6 +188,41 @@ impl CidV1 {
         })
     }
 
+    /// Computes a CIDv1 for already-serialized DAG-CBOR bytes.
+    ///
+    /// Like `compute_cid_for_dag_cbor` but accepts pre-serialized bytes,
+    /// avoiding a redundant serialization round-trip.
+    pub fn compute_cid_for_dag_cbor_bytes(bytes: &[u8]) -> io::Result<Self> {
+        let mut hasher = Sha256::new();
+        hasher.update(bytes);
+        let hash = hasher.finalize();
+
+        let version = VarInt::from_long(1);
+        let multicodec = VarInt::from_long(0x71);
+        let hash_function = VarInt::from_long(0x12);
+        let digest_size = VarInt::from_long(32);
+        let digest_bytes: Vec<u8> = hash.to_vec();
+
+        let mut all_bytes = Vec::new();
+        version.write_varint(&mut all_bytes)?;
+        multicodec.write_varint(&mut all_bytes)?;
+        hash_function.write_varint(&mut all_bytes)?;
+        digest_size.write_varint(&mut all_bytes)?;
+        all_bytes.extend(&digest_bytes);
+
+        let base32 = format!("b{}", Base32Encoding::bytes_to_base32(&all_bytes));
+
+        Ok(CidV1 {
+            version,
+            multicodec,
+            hash_function,
+            digest_size,
+            digest_bytes,
+            all_bytes,
+            base32,
+        })
+    }
+
     /// Computes a CIDv1 for raw blob bytes.
     ///
     /// This hashes the bytes with SHA-256 and creates a CIDv1 with
