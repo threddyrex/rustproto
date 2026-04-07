@@ -15,6 +15,7 @@ use std::io::Cursor;
 
 use crate::cli::get_arg;
 use crate::log::{logger, LogLevel};
+use crate::mst::Mst;
 use crate::repo::{CidV1, RepoRecord, Repo};
 use crate::ws::{BlueskyClient, DEFAULT_APP_VIEW_HOST_NAME};
 
@@ -122,9 +123,11 @@ pub async fn cmd_sync_get_record(args: &HashMap<String, String>) {
             log.info("");
 
             log.info(&format!(
-                "--- MST PROOF CHAIN ({} nodes) ---",
-                result.proof_node_count
+                "--- MST PROOF CHAIN ({} nodes, key depth {}) ---",
+                result.proof_node_count, result.record_key_depth
             ));
+            log.info(&format!("  Key:   {}", result.record_key));
+            log.info(&format!("  Depth: {} (SHA-256 leading zeros / 2-bit chunks)", result.record_key_depth));
             for (i, node_info) in result.proof_nodes.iter().enumerate() {
                 log.info(&format!(
                     "  Node {}: CID={} entries={}",
@@ -225,6 +228,8 @@ struct VerificationResult {
     commit_data_cid: String,
     proof_node_count: usize,
     proof_nodes: Vec<ProofNodeInfo>,
+    record_key: String,
+    record_key_depth: i32,
     record_cid: String,
     record_type: String,
     checks: Vec<Check>,
@@ -521,13 +526,51 @@ fn verify_record_car(
     }
 
     // --- CHECK: MST proof chain links are valid (each node points to next via subtree) ---
-    // Order the MST blocks into a chain starting from the commit's data CID
-    let ordered_mst = order_proof_chain(commit_data_cid, &mst_blocks);
+    // Order the MST blocks into a chain starting from the commit's data CID,
+    // using the record's key to route through the correct subtrees
+    let full_key = format!("{}/{}", expected_collection, expected_rkey);
+    let key_depth = Mst::get_key_depth_str(&full_key);
+    let ordered_mst = order_proof_chain(commit_data_cid, &mst_blocks, &full_key);
     verify_proof_chain_links(&ordered_mst, &mut checks);
 
-    // --- CHECK: Final MST node contains entry with record CID ---
+    // --- CHECK: Proof chain depth matches key depth ---
+    // The proof chain should contain (root_depth - key_depth + 1) nodes,
+    // i.e. one node per layer from the root down to the layer at key_depth.
+    // We can verify that the ordered chain length is at least key_depth + 1
+    // (root at some depth >= key_depth, descending to key_depth).
+    // More precisely: the record entry lives at the node whose layer == key_depth.
+    // The chain must reach that depth, so it needs at least (root_depth - key_depth + 1) nodes.
+    // Since we don't know root_depth from the CAR alone, we check that the chain
+    // has at least 1 node (root) and that the entry is found (checked next).
+    {
+        let chain_len = ordered_mst.len();
+        let total_mst = mst_blocks.len();
+        if chain_len == total_mst {
+            checks.push(Check::pass(format!(
+                "MST proof chain depth: {} nodes (key depth={}, all MST blocks on path)",
+                chain_len, key_depth
+            )));
+        } else if chain_len > 0 {
+            checks.push(Check::fail(
+                format!(
+                    "MST proof chain depth: routed through {} of {} MST blocks (key depth={})",
+                    chain_len, total_mst, key_depth
+                ),
+                format!(
+                    "{} MST block(s) not reachable via key routing — may indicate incorrect proof nodes",
+                    total_mst - chain_len
+                ),
+            ));
+        } else {
+            checks.push(Check::fail(
+                "MST proof chain depth",
+                "Could not route from root — commit data CID may not match any MST node",
+            ));
+        }
+    }
+
+    // --- CHECK: MST proof contains entry with record CID ---
     let record_cid_base32 = record_block.cid.base32.clone();
-    let full_key = format!("{}/{}", expected_collection, expected_rkey);
     verify_record_in_mst_proof(
         &ordered_mst,
         &record_cid_base32,
@@ -549,6 +592,8 @@ fn verify_record_car(
         commit_data_cid: commit_data_str,
         proof_node_count: mst_blocks.len(),
         proof_nodes: proof_nodes_info,
+        record_key: full_key,
+        record_key_depth: key_depth,
         record_cid: record_cid_base32,
         record_type,
         checks,
@@ -556,49 +601,88 @@ fn verify_record_car(
 }
 
 
-/// Order MST proof blocks into a chain by following subtree links.
+/// Order MST proof blocks into a chain by routing through the tree using
+/// the record's key and lexicographic position.
 ///
 /// Starts from the block whose CID matches `root_cid` (the commit's "data" field)
-/// and walks through each node's "l" and "t" links to find the next block
-/// in the chain whose CID appears among the remaining MST blocks.
+/// and walks down the tree the same way the MST routes a key:
+///   1. At each node, reconstruct compressed keys and find the lexicographic
+///      insertion point for the target key
+///   2. If insertion point is 0 → follow "l" (left subtree)
+///      Otherwise → follow entries[insertion_point - 1]'s "t" (right subtree)
+///   3. Stop when no more proof nodes match the next CID
 fn order_proof_chain<'a>(
     root_cid: Option<&CidV1>,
     mst_blocks: &[&'a RepoRecord],
+    target_key: &str,
 ) -> Vec<&'a RepoRecord> {
     let root_cid = match root_cid {
         Some(c) => c,
         None => return mst_blocks.to_vec(),
     };
 
-    // Build a lookup from CID → block
-    let mut by_cid: std::collections::HashMap<&str, &'a RepoRecord> = std::collections::HashMap::new();
+    // Build a lookup from CID (owned String) → block
+    let mut by_cid: HashMap<String, &'a RepoRecord> = HashMap::new();
     for block in mst_blocks {
-        by_cid.insert(&block.cid.base32, *block);
+        by_cid.insert(block.cid.base32.clone(), *block);
     }
 
     let mut ordered = Vec::new();
-    let mut current_cid = root_cid.base32.as_str();
+    let mut current_cid = root_cid.base32.clone();
 
-    while let Some(block) = by_cid.remove(current_cid) {
+    while let Some(block) = by_cid.remove(&current_cid) {
         ordered.push(block);
 
-        // Collect all subtree CIDs from this node ("l" and entry "t" fields)
-        let mut child_cids: Vec<&str> = Vec::new();
-        if let Some(left_cid) = block.data_block.select_cid(&["l"]) {
-            child_cids.push(&left_cid.base32);
-        }
-        if let Some(entries) = block.data_block.select_array(&["e"]) {
-            for entry in entries {
-                if let Some(tree_cid) = entry.select_cid(&["t"]) {
-                    child_cids.push(&tree_cid.base32);
-                }
-            }
+        // Reconstruct full keys from prefix-compressed entries
+        let entries = block.data_block.select_array(&["e"]);
+        let empty_entries = Vec::new();
+        let entries = entries.unwrap_or(&empty_entries);
+        let mut node_keys: Vec<String> = Vec::new();
+        for (i, entry) in entries.iter().enumerate() {
+            let prefix_length = entry.select_int(&["p"]).unwrap_or(0) as usize;
+            let key_suffix = match entry.select_bytes(&["k"]) {
+                Some(bytes) => String::from_utf8_lossy(bytes).to_string(),
+                None => String::new(),
+            };
+            let reconstructed = if i == 0 {
+                key_suffix
+            } else if let Some(prev) = node_keys.last() {
+                let prefix = &prev[..prefix_length.min(prev.len())];
+                format!("{}{}", prefix, key_suffix)
+            } else {
+                key_suffix
+            };
+            node_keys.push(reconstructed);
         }
 
-        // The next node in the chain is the child whose CID is still in our set
-        match child_cids.iter().find(|cid| by_cid.contains_key(*cid)) {
-            Some(next) => current_cid = next,
-            None => break,
+        // Find the lexicographic insertion point for the target key.
+        // This mirrors Mst::assemble_item: scan entries until we find one
+        // where target_key < entry_key.
+        let mut insert_index = 0;
+        for key in &node_keys {
+            if target_key < key.as_str() {
+                break;
+            }
+            insert_index += 1;
+        }
+
+        // Route to the correct subtree
+        let next_cid = if insert_index == 0 {
+            // Target key is before all entries → go left ("l")
+            block.data_block.select_cid(&["l"])
+                .map(|c| c.base32.clone())
+        } else {
+            // Target key is after entries[insert_index - 1] → follow its "t" subtree
+            entries.get(insert_index - 1)
+                .and_then(|e| e.select_cid(&["t"]))
+                .map(|c| c.base32.clone())
+        };
+
+        match next_cid {
+            Some(cid) if by_cid.contains_key(&cid) => {
+                current_cid = cid;
+            }
+            _ => break,
         }
     }
 
