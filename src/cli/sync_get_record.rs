@@ -226,11 +226,12 @@ impl Check {
 
 /// Verify a CAR file returned by com.atproto.sync.getRecord.
 ///
-/// The expected structure (per the XRPC implementation) is:
-///   - CAR header: { version: 1, roots: [commit_cid] }
-///   - Block 0: commit (has did, version, data, rev, sig)
-///   - Blocks 1..N-1: MST proof chain nodes
-///   - Block N: the record itself
+/// Blocks are classified using the same detection logic as `RepoRecord`:
+///   - `is_repo_commit()` → commit block (has did, data, rev, version)
+///   - `is_mst_node()` → MST proof chain node (has "e" or "l")
+///   - `is_at_proto_record()` → the record itself (has "$type")
+///
+/// The root CID in the CAR header identifies the commit block.
 fn verify_record_car(
     car_bytes: &[u8],
     expected_did: &str,
@@ -273,8 +274,77 @@ fn verify_record_car(
         return Err("CAR contains no blocks".to_string());
     }
 
-    // ---- COMMIT BLOCK (first block) ----
-    let commit_record = &records[0];
+    // ---- CLASSIFY BLOCKS by type, not position ----
+    let mut commit_blocks: Vec<&RepoRecord> = Vec::new();
+    let mut mst_blocks: Vec<&RepoRecord> = Vec::new();
+    let mut record_blocks: Vec<&RepoRecord> = Vec::new();
+    let mut unclassified_blocks: Vec<&RepoRecord> = Vec::new();
+
+    for record in &records {
+        if record.is_repo_commit() {
+            commit_blocks.push(record);
+        } else if record.is_mst_node() {
+            mst_blocks.push(record);
+        } else if record.is_at_proto_record() {
+            record_blocks.push(record);
+        } else {
+            unclassified_blocks.push(record);
+        }
+    }
+
+    // --- CHECK: Exactly one commit block ---
+    if commit_blocks.len() == 1 {
+        checks.push(Check::pass("CAR contains exactly 1 commit block"));
+    } else {
+        checks.push(Check::fail(
+            "CAR contains exactly 1 commit block",
+            format!("Found {} commit blocks", commit_blocks.len()),
+        ));
+    }
+
+    // --- CHECK: At least one MST node ---
+    if !mst_blocks.is_empty() {
+        checks.push(Check::pass(format!(
+            "CAR contains MST proof nodes (got {})",
+            mst_blocks.len()
+        )));
+    } else {
+        checks.push(Check::fail(
+            "CAR contains MST proof nodes",
+            "No MST nodes found",
+        ));
+    }
+
+    // --- CHECK: Exactly one record block ---
+    if record_blocks.len() == 1 {
+        checks.push(Check::pass("CAR contains exactly 1 record block"));
+    } else {
+        checks.push(Check::fail(
+            "CAR contains exactly 1 record block",
+            format!("Found {} record blocks", record_blocks.len()),
+        ));
+    }
+
+    // --- CHECK: No unclassified blocks ---
+    if unclassified_blocks.is_empty() {
+        checks.push(Check::pass("All blocks are classifiable (commit, MST, or record)"));
+    } else {
+        checks.push(Check::fail(
+            "All blocks are classifiable (commit, MST, or record)",
+            format!("{} unclassified blocks", unclassified_blocks.len()),
+        ));
+    }
+
+    // Use first found of each type (gracefully handle missing)
+    let commit_record = match commit_blocks.first() {
+        Some(c) => *c,
+        None => return Err("No commit block found in CAR".to_string()),
+    };
+    let record_block = match record_blocks.first() {
+        Some(r) => *r,
+        None => return Err("No record block found in CAR".to_string()),
+    };
+
     let commit_cid_base32 = commit_record.cid.base32.clone();
 
     // --- CHECK: Root CID matches commit CID ---
@@ -291,7 +361,7 @@ fn verify_record_car(
     }
 
     // --- CHECK: Commit CID integrity (recompute from DAG-CBOR) ---
-    verify_block_cid(&commit_record, &mut checks, "Commit");
+    verify_block_cid(commit_record, &mut checks, "Commit");
 
     // --- CHECK: Commit has required fields ---
     let commit = &commit_record.data_block;
@@ -343,12 +413,6 @@ fn verify_record_car(
         ));
     }
 
-    // ---- MST PROOF CHAIN + RECORD (remaining blocks) ----
-    // Last block should be the record, blocks in between are MST proof nodes
-    let last_idx = records.len() - 1;
-    let record_block = &records[last_idx];
-    let mst_proof_blocks: Vec<&RepoRecord> = records[1..last_idx].iter().collect();
-
     // --- CHECK: Record CID integrity ---
     verify_block_cid(record_block, &mut checks, "Record");
 
@@ -368,7 +432,7 @@ fn verify_record_car(
 
     // --- CHECK: MST proof node CID integrity ---
     let mut proof_nodes_info = Vec::new();
-    for (i, mst_block) in mst_proof_blocks.iter().enumerate() {
+    for (i, mst_block) in mst_blocks.iter().enumerate() {
         verify_block_cid(mst_block, &mut checks, &format!("MST node {}", i));
 
         let entry_count = mst_block
@@ -384,7 +448,7 @@ fn verify_record_car(
     }
 
     // --- CHECK: MST proof nodes are valid MST nodes (have "e" array) ---
-    let all_valid_mst = mst_proof_blocks.iter().all(|b| {
+    let all_valid_mst = mst_blocks.iter().all(|b| {
         b.data_block.select_array(&["e"]).is_some()
     });
     if all_valid_mst {
@@ -396,34 +460,36 @@ fn verify_record_car(
         ));
     }
 
-    // --- CHECK: Commit data CID points to first MST node ---
+    // --- CHECK: Commit data CID points to an MST node ---
+    // The commit's "data" field is the root MST node CID. It should match
+    // one of the MST proof nodes (specifically the root of the proof chain).
     if let Some(data_cid) = commit_data_cid {
-        if !mst_proof_blocks.is_empty() {
-            let first_mst_cid = &mst_proof_blocks[0].cid.base32;
-            if data_cid.base32 == *first_mst_cid {
-                checks.push(Check::pass(
-                    "Commit 'data' CID matches first MST proof node CID",
-                ));
-            } else {
-                checks.push(Check::fail(
-                    "Commit 'data' CID matches first MST proof node CID",
-                    format!(
-                        "data={}, first MST={}",
-                        data_cid.base32, first_mst_cid
-                    ),
-                ));
-            }
+        let root_mst_match = mst_blocks.iter().any(|b| b.cid.base32 == data_cid.base32);
+        if root_mst_match {
+            checks.push(Check::pass(
+                "Commit 'data' CID matches an MST proof node CID (root of proof chain)",
+            ));
+        } else {
+            checks.push(Check::fail(
+                "Commit 'data' CID matches an MST proof node CID (root of proof chain)",
+                format!(
+                    "data={}, not found among {} MST nodes",
+                    data_cid.base32, mst_blocks.len()
+                ),
+            ));
         }
     }
 
     // --- CHECK: MST proof chain links are valid (each node points to next via subtree) ---
-    verify_proof_chain_links(&mst_proof_blocks, &mut checks);
+    // Order the MST blocks into a chain starting from the commit's data CID
+    let ordered_mst = order_proof_chain(commit_data_cid, &mst_blocks);
+    verify_proof_chain_links(&ordered_mst, &mut checks);
 
     // --- CHECK: Final MST node contains entry with record CID ---
     let record_cid_base32 = record_block.cid.base32.clone();
     let full_key = format!("{}/{}", expected_collection, expected_rkey);
     verify_record_in_mst_leaf(
-        &mst_proof_blocks,
+        &ordered_mst,
         &record_cid_base32,
         &full_key,
         &mut checks,
@@ -441,12 +507,62 @@ fn verify_record_car(
         commit_version,
         commit_rev,
         commit_data_cid: commit_data_str,
-        proof_node_count: mst_proof_blocks.len(),
+        proof_node_count: mst_blocks.len(),
         proof_nodes: proof_nodes_info,
         record_cid: record_cid_base32,
         record_type,
         checks,
     })
+}
+
+
+/// Order MST proof blocks into a chain by following subtree links.
+///
+/// Starts from the block whose CID matches `root_cid` (the commit's "data" field)
+/// and walks through each node's "l" and "t" links to find the next block
+/// in the chain whose CID appears among the remaining MST blocks.
+fn order_proof_chain<'a>(
+    root_cid: Option<&CidV1>,
+    mst_blocks: &[&'a RepoRecord],
+) -> Vec<&'a RepoRecord> {
+    let root_cid = match root_cid {
+        Some(c) => c,
+        None => return mst_blocks.to_vec(),
+    };
+
+    // Build a lookup from CID → block
+    let mut by_cid: std::collections::HashMap<&str, &'a RepoRecord> = std::collections::HashMap::new();
+    for block in mst_blocks {
+        by_cid.insert(&block.cid.base32, *block);
+    }
+
+    let mut ordered = Vec::new();
+    let mut current_cid = root_cid.base32.as_str();
+
+    while let Some(block) = by_cid.remove(current_cid) {
+        ordered.push(block);
+
+        // Collect all subtree CIDs from this node ("l" and entry "t" fields)
+        let mut child_cids: Vec<&str> = Vec::new();
+        if let Some(left_cid) = block.data_block.select_cid(&["l"]) {
+            child_cids.push(&left_cid.base32);
+        }
+        if let Some(entries) = block.data_block.select_array(&["e"]) {
+            for entry in entries {
+                if let Some(tree_cid) = entry.select_cid(&["t"]) {
+                    child_cids.push(&tree_cid.base32);
+                }
+            }
+        }
+
+        // The next node in the chain is the child whose CID is still in our set
+        match child_cids.iter().find(|cid| by_cid.contains_key(*cid)) {
+            Some(next) => current_cid = next,
+            None => break,
+        }
+    }
+
+    ordered
 }
 
 
