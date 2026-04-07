@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::io::Cursor;
 
 use crate::cli::get_arg;
-use crate::log::logger;
+use crate::log::{logger, LogLevel};
 use crate::repo::{CidV1, RepoRecord, Repo};
 use crate::ws::{BlueskyClient, DEFAULT_APP_VIEW_HOST_NAME};
 
@@ -98,6 +98,9 @@ pub async fn cmd_sync_get_record(args: &HashMap<String, String>) {
 
     log.info(&format!("Received {} bytes", car_bytes.len()));
 
+    // At trace level, dump every block in the CAR the same way PrintRepoRecords does
+    trace_dump_car(&car_bytes);
+
     // Parse and verify the CAR
     log.info("");
     log.info("=== VERIFYING CAR RESPONSE ===");
@@ -167,6 +170,43 @@ pub async fn cmd_sync_get_record(args: &HashMap<String, String>) {
         Err(e) => {
             log.error(&format!("CAR verification failed: {}", e));
         }
+    }
+}
+
+
+// =====================================================================
+// Trace-level CAR dump (same format as PrintRepoRecords)
+// =====================================================================
+
+/// If the log level is trace, parse and print every block in the CAR.
+fn trace_dump_car(car_bytes: &[u8]) {
+    let log = logger();
+    if log.level() > LogLevel::Trace {
+        return;
+    }
+
+    let cursor = Cursor::new(car_bytes);
+    let result = Repo::walk_repo(
+        cursor,
+        |header| {
+            log.trace("");
+            log.trace("REPO HEADER:");
+            log.trace(&format!("   roots: {}", header.repo_commit_cid.get_base32()));
+            log.trace(&format!("   version: {}", header.version));
+            true
+        },
+        |record: &RepoRecord| {
+            let record_type_str = record.get_record_type_string();
+            log.trace("");
+            log.trace(&format!("{}:", record_type_str));
+            log.trace(&format!("  cid: {}", record.cid.get_base32()));
+            log.trace(&format!("  blockJson:\n {}", record.json_string));
+            true
+        },
+    );
+
+    if let Err(e) = result {
+        log.trace(&format!("Error walking CAR for trace dump: {}", e));
     }
 }
 
@@ -488,7 +528,7 @@ fn verify_record_car(
     // --- CHECK: Final MST node contains entry with record CID ---
     let record_cid_base32 = record_block.cid.base32.clone();
     let full_key = format!("{}/{}", expected_collection, expected_rkey);
-    verify_record_in_mst_leaf(
+    verify_record_in_mst_proof(
         &ordered_mst,
         &record_cid_base32,
         &full_key,
@@ -662,9 +702,12 @@ fn verify_proof_chain_links(mst_blocks: &[&RepoRecord], checks: &mut Vec<Check>)
 }
 
 
-/// Verify that the last MST proof node contains an entry whose value CID
+/// Verify that one of the MST proof nodes contains an entry whose value CID
 /// matches the record CID and whose key matches the expected collection/rkey.
-fn verify_record_in_mst_leaf(
+///
+/// The record's entry lives at whichever MST depth its key hashes to,
+/// which may be any node in the proof chain — not necessarily the last.
+fn verify_record_in_mst_proof(
     mst_blocks: &[&RepoRecord],
     record_cid: &str,
     full_key: &str,
@@ -672,82 +715,85 @@ fn verify_record_in_mst_leaf(
 ) {
     if mst_blocks.is_empty() {
         checks.push(Check::fail(
-            "MST leaf contains record entry",
+            "MST proof contains record entry",
             "No MST proof nodes present",
         ));
         return;
     }
 
-    let leaf = mst_blocks.last().unwrap();
-    let entries = match leaf.data_block.select_array(&["e"]) {
-        Some(e) => e,
-        None => {
-            checks.push(Check::fail(
-                "MST leaf contains record entry",
-                "Leaf node has no 'e' array",
-            ));
-            return;
-        }
-    };
-
-    // Reconstruct full keys from prefix-compressed entries (same logic as repo_mst.rs)
-    let mut full_keys: Vec<String> = Vec::new();
+    let mut all_found_keys: Vec<String> = Vec::new();
     let mut found_record = false;
 
-    for (i, entry) in entries.iter().enumerate() {
-        let prefix_length = entry.select_int(&["p"]).unwrap_or(0) as usize;
-        let key_suffix = match entry.select_bytes(&["k"]) {
-            Some(bytes) => String::from_utf8_lossy(bytes).to_string(),
+    for block in mst_blocks {
+        let entries = match block.data_block.select_array(&["e"]) {
+            Some(e) => e,
             None => continue,
         };
 
-        let reconstructed_key = if i == 0 {
-            key_suffix.clone()
-        } else {
-            let prev_key = &full_keys[i - 1];
-            let prefix = &prev_key[..prefix_length.min(prev_key.len())];
-            format!("{}{}", prefix, key_suffix)
-        };
+        // Reconstruct full keys from prefix-compressed entries (same logic as repo_mst.rs)
+        let mut node_keys: Vec<String> = Vec::new();
 
-        full_keys.push(reconstructed_key.clone());
+        for (i, entry) in entries.iter().enumerate() {
+            let prefix_length = entry.select_int(&["p"]).unwrap_or(0) as usize;
+            let key_suffix = match entry.select_bytes(&["k"]) {
+                Some(bytes) => String::from_utf8_lossy(bytes).to_string(),
+                None => continue,
+            };
 
-        // Check if this entry matches our record
-        if let Some(value_cid) = entry.select_cid(&["v"]) {
-            if value_cid.base32 == record_cid && reconstructed_key == full_key {
-                found_record = true;
+            let reconstructed_key = if i == 0 {
+                key_suffix.clone()
+            } else if let Some(prev_key) = node_keys.last() {
+                let prefix = &prev_key[..prefix_length.min(prev_key.len())];
+                format!("{}{}", prefix, key_suffix)
+            } else {
+                key_suffix.clone()
+            };
+
+            node_keys.push(reconstructed_key.clone());
+
+            // Check if this entry matches our record
+            if let Some(value_cid) = entry.select_cid(&["v"]) {
+                if value_cid.base32 == record_cid && reconstructed_key == full_key {
+                    found_record = true;
+                }
             }
         }
+
+        all_found_keys.extend(node_keys);
     }
 
     if found_record {
         checks.push(Check::pass(format!(
-            "MST leaf contains entry for '{}' pointing to record CID",
+            "MST proof contains entry for '{}' pointing to record CID",
             full_key
         )));
     } else {
         // Provide more detail about what we did find
-        let found_keys: Vec<String> = full_keys.clone();
-        let found_cid_match = entries.iter().any(|e| {
-            e.select_cid(&["v"])
-                .map(|c| c.base32 == record_cid)
-                .unwrap_or(false)
+        let found_cid_match = mst_blocks.iter().any(|block| {
+            block.data_block.select_array(&["e"]).map_or(false, |entries| {
+                entries.iter().any(|e| {
+                    e.select_cid(&["v"])
+                        .map(|c| c.base32 == record_cid)
+                        .unwrap_or(false)
+                })
+            })
         });
 
         let detail = if found_cid_match {
             format!(
                 "CID match found but key mismatch. Expected key '{}'. Found keys: {:?}",
-                full_key, found_keys
+                full_key, all_found_keys
             )
         } else {
             format!(
-                "No entry with matching CID. Expected key='{}', CID={}. Found keys: {:?}",
-                full_key, record_cid, found_keys
+                "No entry with matching CID across {} proof nodes. Expected key='{}', CID={}. Found keys: {:?}",
+                mst_blocks.len(), full_key, record_cid, all_found_keys
             )
         };
 
         checks.push(Check::fail(
             format!(
-                "MST leaf contains entry for '{}' pointing to record CID",
+                "MST proof contains entry for '{}' pointing to record CID",
                 full_key
             ),
             detail,
