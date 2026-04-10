@@ -1,0 +1,561 @@
+[2026-04-10 10:26:48.665] [INFO] Resolving actor: threddyrex.org
+[2026-04-10 10:26:48.666] [TRACE] [ACTOR] [BSKY] Resolving handle via Bluesky API: handle=threddyrex.org url=https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=threddyrex.org
+[2026-04-10 10:26:48.835] [TRACE] [ACTOR] [BSKY] Resolving did:web to DID document: did=did:web:threddyrex.org url=https://threddyrex.org/.well-known/did.json
+[2026-04-10 10:26:49.040] [TRACE] [ACTOR] [BSKY] Resolved did:web to DID document: did=did:web:threddyrex.org didDocLength=515
+[2026-04-10 10:26:49.041] [INFO] [ACTOR] [BSKY] actor=threddyrex.org all=false bsky=true dns=false http=false didDoc=true did=did:web:threddyrex.org didDocLength=515 pds=pds06.rustproto.com appview=public.api.bsky.app [374.54ms]
+[2026-04-10 10:26:49.044] [INFO] Connecting to firehose at: wss://pds06.rustproto.com/xrpc/com.atproto.sync.subscribeRepos
+[2026-04-10 10:27:15.509] [INFO]  -----------------------------------------------------------------------------------------------------------
+[2026-04-10 10:27:15.509] [INFO]  NEW FIREHOSE FRAME
+[2026-04-10 10:27:15.509] [INFO]  -----------------------------------------------------------------------------------------------------------
+[2026-04-10 10:27:15.509] [INFO] DAG CBOR OBJECT 1 (HEADER):
+{
+  "op": 1,
+  "t": "#commit"
+}
+[2026-04-10 10:27:15.510] [INFO] DAG CBOR OBJECT 2 (MESSAGE):
+{
+  "blobs": [],
+  "blocks": "base64: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",
+  "commit": {
+    "$link": "bafyreihvr4cphar3err6f2pcqy7b3wbekfckefwf6kgjjjtlimtk6g3qmi"
+  },
+  "ops": [
+    {
+      "action": "update",
+      "cid": {
+        "$link": "bafyreif2bgwlhwdyojw7j4c3lj6h3y4ohydltcouqfpvs2daoylk5zqoam"
+      },
+      "path": "app.bsky.actor.profile/self"
+    }
+  ],
+  "prevData": {
+    "$link": "bafyreicmf3mfnjpbugefs7n44dh43raelsirjjgsowldz6sr57y7au74ui"
+  },
+  "rebase": false,
+  "repo": "did:web:threddyrex.org",
+  "rev": "3mj5tsvhajru5",
+  "seq": 5225,
+  "since": "3mj5oycgbqqxv",
+  "time": "2026-04-10T17:27:15.696Z",
+  "tooBig": false
+}
+[2026-04-10 10:27:15.511] [TRACE] 
+DAG CBOR OBJECT 1 TYPES (HEADER):
+Type: TYPE_MAP, Value: "<map with 2 entries>"
+Key: t
+  Type: TYPE_TEXT, Value: "\"#commit\""
+Key: op
+  Type: TYPE_UNSIGNED_INT, Value: "1"
+
+[2026-04-10 10:27:15.511] [TRACE] 
+DAG CBOR OBJECT 2 TYPES (MESSAGE):
+Type: TYPE_MAP, Value: "<map with 12 entries>"
+Key: time
+  Type: TYPE_TEXT, Value: "\"2026-04-10T17:27:15.696Z\""
+Key: prevData
+  Type: TYPE_TAG, Value: "bafyreicmf3mfnjpbugefs7n44dh43raelsirjjgsowldz6sr57y7au74ui"
+Key: since
+  Type: TYPE_TEXT, Value: "\"3mj5oycgbqqxv\""
+Key: ops
+  Type: TYPE_ARRAY, Value: "<array with 1 items>"
+  Index: 0
+    Type: TYPE_MAP, Value: "<map with 3 entries>"
+    Key: action
+      Type: TYPE_TEXT, Value: "\"update\""
+    Key: cid
+      Type: TYPE_TAG, Value: "bafyreif2bgwlhwdyojw7j4c3lj6h3y4ohydltcouqfpvs2daoylk5zqoam"
+    Key: path
+      Type: TYPE_TEXT, Value: "\"app.bsky.actor.profile/self\""
+Key: rev
+  Type: TYPE_TEXT, Value: "\"3mj5tsvhajru5\""
+Key: repo
+  Type: TYPE_TEXT, Value: "\"did:web:threddyrex.org\""
+Key: blocks
+  Type: TYPE_BYTE_STRING, Value: "<2789 bytes>"
+Key: rebase
+  Type: TYPE_SIMPLE_VALUE, Value: "false"
+Key: commit
+  Type: TYPE_TAG, Value: "bafyreihvr4cphar3err6f2pcqy7b3wbekfckefwf6kgjjjtlimtk6g3qmi"
+Key: seq
+  Type: TYPE_UNSIGNED_INT, Value: "5225"
+Key: tooBig
+  Type: TYPE_SIMPLE_VALUE, Value: "false"
+Key: blobs
+  Type: TYPE_ARRAY, Value: "<array with 0 items>"
+
+[2026-04-10 10:27:15.512] [INFO]  PARSING BLOCKS
+[2026-04-10 10:27:15.512] [INFO] REPO HEADER:
+[2026-04-10 10:27:15.512] [INFO]    roots: bafyreihvr4cphar3err6f2pcqy7b3wbekfckefwf6kgjjjtlimtk6g3qmi
+[2026-04-10 10:27:15.512] [INFO]    version: 1
+[2026-04-10 10:27:15.513] [INFO] cid: bafyreiedysgtbrhe3otlycxn563cviuaftfrmyqnlj6xd6wkkizx4p2ubm
+[2026-04-10 10:27:15.513] [INFO] BLOCK JSON:
+[2026-04-10 10:27:15.513] [INFO] 
+{
+  "e": [
+    {
+      "k": "base64:YXBwLmJza3kuZmVlZC5saWtlLzNtZGNqNDZ6anNjN3c=",
+      "p": 0,
+      "t": {
+        "$link": "bafyreidr6jt3ehs3fc2bbca3ldlmzhstt7epi5snmiuemxcbjlhdar47ea"
+      },
+      "v": {
+        "$link": "bafyreiaog5ze6u4y4h5yjcaps5nqsgbtyogxzhkruy7beuaei57dd7iklq"
+      }
+    }
+  ],
+  "l": {
+    "$link": "bafyreifj6vwh62nl2qgothvhba6rq6noowtrg2shruxqlqbmfqdtndd7cu"
+  }
+}
+[2026-04-10 10:27:15.514] [TRACE] 
+Type: TYPE_MAP, Value: "<map with 2 entries>"
+Key: e
+  Type: TYPE_ARRAY, Value: "<array with 1 items>"
+  Index: 0
+    Type: TYPE_MAP, Value: "<map with 4 entries>"
+    Key: t
+      Type: TYPE_TAG, Value: "bafyreidr6jt3ehs3fc2bbca3ldlmzhstt7epi5snmiuemxcbjlhdar47ea"
+    Key: k
+      Type: TYPE_BYTE_STRING, Value: "<32 bytes>"
+    Key: v
+      Type: TYPE_TAG, Value: "bafyreiaog5ze6u4y4h5yjcaps5nqsgbtyogxzhkruy7beuaei57dd7iklq"
+    Key: p
+      Type: TYPE_UNSIGNED_INT, Value: "0"
+Key: l
+  Type: TYPE_TAG, Value: "bafyreifj6vwh62nl2qgothvhba6rq6noowtrg2shruxqlqbmfqdtndd7cu"
+
+[2026-04-10 10:27:15.514] [INFO] cid: bafyreifj6vwh62nl2qgothvhba6rq6noowtrg2shruxqlqbmfqdtndd7cu
+[2026-04-10 10:27:15.515] [INFO] BLOCK JSON:
+[2026-04-10 10:27:15.515] [INFO] 
+{
+  "e": [
+    {
+      "k": "base64:YXBwLmJza3kuZmVlZC5saWtlLzNsZGYyNjJzanBjMnM=",
+      "p": 0,
+      "t": {
+        "$link": "bafyreib2dhf6dms7kpfeawk43vciuowzycsens4u2lk26bun3bq7tff3ee"
+      },
+      "v": {
+        "$link": "bafyreiaxpr6tun4fc24e463sijbeoqixny6vd4tikp2h2i5szt3uxzdmza"
+      }
+    },
+    {
+      "k": "base64:bTQ3dHBibzJ4azJn",
+      "p": 20,
+      "t": {
+        "$link": "bafyreifb2zwj2hzazdt3wpqsqaplj4p3peoq44c3ltipcb55sgvmuyva7q"
+      },
+      "v": {
+        "$link": "bafyreia7c7pvshevt5gsueu6dvyu2mfbivcw6qj27m544ikftryvvaunka"
+      }
+    },
+    {
+      "k": "base64:ZTZkN2hkd2MyZw==",
+      "p": 22,
+      "t": {
+        "$link": "bafyreifrcgw4ps7rxjep5v2vlaq4kbcoozhkoluff3d4swimslitnaw5nm"
+      },
+      "v": {
+        "$link": "bafyreigg36iinxklia6losftdnrxiw5p2oc4dcxwltilmisv3jckjjwihi"
+      }
+    },
+    {
+      "k": "base64:cWpvczNtYzJn",
+      "p": 23,
+      "t": {
+        "$link": "bafyreiaynvpooxy4hp7wv74rbcezwwolkul7losctim633wy5rhqjidwmy"
+      },
+      "v": {
+        "$link": "bafyreigtibck7npaz33uf4o7luxtwa5ruoqbnpid7gfdqpae7qhlbom2nu"
+      }
+    },
+    {
+      "k": "base64:Y3FpZmV4aGlrN3Y=",
+      "p": 21,
+      "t": {
+        "$link": "bafyreicjl7idztcqitvp574p5s6kiwhhvqrehbrnjgl4x6trhtim7zt6uu"
+      },
+      "v": {
+        "$link": "bafyreidudgkujrattkxlfxhof66oqgl6bzbhld74ezoyo5wslk7vjfznne"
+      }
+    }
+  ],
+  "l": {
+    "$link": "bafyreicdu62c26grjzqx5w6sugje6bwr7f3amryfz3xkwcoaihio24asom"
+  }
+}
+[2026-04-10 10:27:15.515] [TRACE] 
+Type: TYPE_MAP, Value: "<map with 2 entries>"
+Key: e
+  Type: TYPE_ARRAY, Value: "<array with 5 items>"
+  Index: 0
+    Type: TYPE_MAP, Value: "<map with 4 entries>"
+    Key: p
+      Type: TYPE_UNSIGNED_INT, Value: "0"
+    Key: v
+      Type: TYPE_TAG, Value: "bafyreiaxpr6tun4fc24e463sijbeoqixny6vd4tikp2h2i5szt3uxzdmza"
+    Key: k
+      Type: TYPE_BYTE_STRING, Value: "<32 bytes>"
+    Key: t
+      Type: TYPE_TAG, Value: "bafyreib2dhf6dms7kpfeawk43vciuowzycsens4u2lk26bun3bq7tff3ee"
+  Index: 1
+    Type: TYPE_MAP, Value: "<map with 4 entries>"
+    Key: t
+      Type: TYPE_TAG, Value: "bafyreifb2zwj2hzazdt3wpqsqaplj4p3peoq44c3ltipcb55sgvmuyva7q"
+    Key: p
+      Type: TYPE_UNSIGNED_INT, Value: "20"
+    Key: v
+      Type: TYPE_TAG, Value: "bafyreia7c7pvshevt5gsueu6dvyu2mfbivcw6qj27m544ikftryvvaunka"
+    Key: k
+      Type: TYPE_BYTE_STRING, Value: "<12 bytes>"
+  Index: 2
+    Type: TYPE_MAP, Value: "<map with 4 entries>"
+    Key: t
+      Type: TYPE_TAG, Value: "bafyreifrcgw4ps7rxjep5v2vlaq4kbcoozhkoluff3d4swimslitnaw5nm"
+    Key: p
+      Type: TYPE_UNSIGNED_INT, Value: "22"
+    Key: k
+      Type: TYPE_BYTE_STRING, Value: "<10 bytes>"
+    Key: v
+      Type: TYPE_TAG, Value: "bafyreigg36iinxklia6losftdnrxiw5p2oc4dcxwltilmisv3jckjjwihi"
+  Index: 3
+    Type: TYPE_MAP, Value: "<map with 4 entries>"
+    Key: p
+      Type: TYPE_UNSIGNED_INT, Value: "23"
+    Key: v
+      Type: TYPE_TAG, Value: "bafyreigtibck7npaz33uf4o7luxtwa5ruoqbnpid7gfdqpae7qhlbom2nu"
+    Key: t
+      Type: TYPE_TAG, Value: "bafyreiaynvpooxy4hp7wv74rbcezwwolkul7losctim633wy5rhqjidwmy"
+    Key: k
+      Type: TYPE_BYTE_STRING, Value: "<9 bytes>"
+  Index: 4
+    Type: TYPE_MAP, Value: "<map with 4 entries>"
+    Key: t
+      Type: TYPE_TAG, Value: "bafyreicjl7idztcqitvp574p5s6kiwhhvqrehbrnjgl4x6trhtim7zt6uu"
+    Key: p
+      Type: TYPE_UNSIGNED_INT, Value: "21"
+    Key: k
+      Type: TYPE_BYTE_STRING, Value: "<11 bytes>"
+    Key: v
+      Type: TYPE_TAG, Value: "bafyreidudgkujrattkxlfxhof66oqgl6bzbhld74ezoyo5wslk7vjfznne"
+Key: l
+  Type: TYPE_TAG, Value: "bafyreicdu62c26grjzqx5w6sugje6bwr7f3amryfz3xkwcoaihio24asom"
+
+[2026-04-10 10:27:15.516] [INFO] cid: bafyreicdu62c26grjzqx5w6sugje6bwr7f3amryfz3xkwcoaihio24asom
+[2026-04-10 10:27:15.516] [INFO] BLOCK JSON:
+[2026-04-10 10:27:15.516] [INFO] 
+{
+  "e": [
+    {
+      "k": "base64:YXBwLmJza3kuZmVlZC5saWtlLzNsZDVoZTZtaW9jMnM=",
+      "p": 0,
+      "t": {
+        "$link": "bafyreic56wrpdbstamdmgsjgxs6v2bco2vzpdvfqizsnjv5rx3hozpmy4e"
+      },
+      "v": {
+        "$link": "bafyreihjp7i3exhf3kvjdct35tuetkgnnwvx4rnklb22dvmi3f6oiwrzvq"
+      }
+    },
+    {
+      "k": "base64:YWM0ZTRlM2sycw==",
+      "p": 22,
+      "t": {
+        "$link": "bafyreignemcj2sdva6ngg5k24j3735bv7t2ebdh6lvaox7pagvpgrh2m3e"
+      },
+      "v": {
+        "$link": "bafyreib2qk5amshg5xuprsczbxven2hee32vfzid4ep42jggmhsmkxozca"
+      }
+    }
+  ],
+  "l": {
+    "$link": "bafyreiacw6fyelbe2yh7kwtuiotnwv53fdm4f5givblwh5e5mpcr4e5574"
+  }
+}
+[2026-04-10 10:27:15.517] [TRACE] 
+Type: TYPE_MAP, Value: "<map with 2 entries>"
+Key: l
+  Type: TYPE_TAG, Value: "bafyreiacw6fyelbe2yh7kwtuiotnwv53fdm4f5givblwh5e5mpcr4e5574"
+Key: e
+  Type: TYPE_ARRAY, Value: "<array with 2 items>"
+  Index: 0
+    Type: TYPE_MAP, Value: "<map with 4 entries>"
+    Key: v
+      Type: TYPE_TAG, Value: "bafyreihjp7i3exhf3kvjdct35tuetkgnnwvx4rnklb22dvmi3f6oiwrzvq"
+    Key: p
+      Type: TYPE_UNSIGNED_INT, Value: "0"
+    Key: k
+      Type: TYPE_BYTE_STRING, Value: "<32 bytes>"
+    Key: t
+      Type: TYPE_TAG, Value: "bafyreic56wrpdbstamdmgsjgxs6v2bco2vzpdvfqizsnjv5rx3hozpmy4e"
+  Index: 1
+    Type: TYPE_MAP, Value: "<map with 4 entries>"
+    Key: v
+      Type: TYPE_TAG, Value: "bafyreib2qk5amshg5xuprsczbxven2hee32vfzid4ep42jggmhsmkxozca"
+    Key: k
+      Type: TYPE_BYTE_STRING, Value: "<10 bytes>"
+    Key: t
+      Type: TYPE_TAG, Value: "bafyreignemcj2sdva6ngg5k24j3735bv7t2ebdh6lvaox7pagvpgrh2m3e"
+    Key: p
+      Type: TYPE_UNSIGNED_INT, Value: "22"
+
+[2026-04-10 10:27:15.518] [INFO] cid: bafyreiacw6fyelbe2yh7kwtuiotnwv53fdm4f5givblwh5e5mpcr4e5574
+[2026-04-10 10:27:15.518] [INFO] BLOCK JSON:
+[2026-04-10 10:27:15.518] [INFO] 
+{
+  "e": [
+    {
+      "k": "base64:YXBwLmJza3kuZmVlZC5saWtlLzNsY3lxaHF4Z3prMnk=",
+      "p": 0,
+      "t": {
+        "$link": "bafyreifd7uui6s4pl2ia53v4w324oxkhlhq3h52twoaduswhjrnqunktjy"
+      },
+      "v": {
+        "$link": "bafyreickpyzop2n54o2f33pot4ibcn5knnzin6fiywebh3cluiyb47kqom"
+      }
+    },
+    {
+      "k": "base64:ZDNlZDVjd2FrMnM=",
+      "p": 21,
+      "t": {
+        "$link": "bafyreidnetjssdifo2mg7fsn7fxr5e2vfpbzlzqf6c3skfshbpoa5tjc3m"
+      },
+      "v": {
+        "$link": "bafyreictmj4ewbpplaou3ss4utoblmdshx6e76otvzb7sifc6m2ng2276i"
+      }
+    }
+  ],
+  "l": {
+    "$link": "bafyreihmbaa24m3pb27ge4payiueqc46el4kefclsezxhbmvadfwuw67ra"
+  }
+}
+[2026-04-10 10:27:15.519] [TRACE] 
+Type: TYPE_MAP, Value: "<map with 2 entries>"
+Key: l
+  Type: TYPE_TAG, Value: "bafyreihmbaa24m3pb27ge4payiueqc46el4kefclsezxhbmvadfwuw67ra"
+Key: e
+  Type: TYPE_ARRAY, Value: "<array with 2 items>"
+  Index: 0
+    Type: TYPE_MAP, Value: "<map with 4 entries>"
+    Key: v
+      Type: TYPE_TAG, Value: "bafyreickpyzop2n54o2f33pot4ibcn5knnzin6fiywebh3cluiyb47kqom"
+    Key: p
+      Type: TYPE_UNSIGNED_INT, Value: "0"
+    Key: k
+      Type: TYPE_BYTE_STRING, Value: "<32 bytes>"
+    Key: t
+      Type: TYPE_TAG, Value: "bafyreifd7uui6s4pl2ia53v4w324oxkhlhq3h52twoaduswhjrnqunktjy"
+  Index: 1
+    Type: TYPE_MAP, Value: "<map with 4 entries>"
+    Key: k
+      Type: TYPE_BYTE_STRING, Value: "<11 bytes>"
+    Key: v
+      Type: TYPE_TAG, Value: "bafyreictmj4ewbpplaou3ss4utoblmdshx6e76otvzb7sifc6m2ng2276i"
+    Key: p
+      Type: TYPE_UNSIGNED_INT, Value: "21"
+    Key: t
+      Type: TYPE_TAG, Value: "bafyreidnetjssdifo2mg7fsn7fxr5e2vfpbzlzqf6c3skfshbpoa5tjc3m"
+
+[2026-04-10 10:27:15.519] [INFO] cid: bafyreihmbaa24m3pb27ge4payiueqc46el4kefclsezxhbmvadfwuw67ra
+[2026-04-10 10:27:15.519] [INFO] BLOCK JSON:
+[2026-04-10 10:27:15.520] [INFO] 
+{
+  "e": [
+    {
+      "k": "base64:YXBwLmJza3kuYWN0b3IucHJvZmlsZS9zZWxm",
+      "p": 0,
+      "t": null,
+      "v": {
+        "$link": "bafyreif2bgwlhwdyojw7j4c3lj6h3y4ohydltcouqfpvs2daoylk5zqoam"
+      }
+    },
+    {
+      "k": "base64:ZmVlZC5saWtlLzNsY3lubHN6dXFzMnk=",
+      "p": 9,
+      "t": {
+        "$link": "bafyreievvrok6edetuxei5iloj7xxoess2f3qthkh6tva5cshxsrrddmhu"
+      },
+      "v": {
+        "$link": "bafyreibqhcorefufuj272vdndhfsau5m2a7zatnui3ridv2widhvtx3o4e"
+      }
+    },
+    {
+      "k": "base64:bzd5YXF4MjJ5",
+      "p": 23,
+      "t": {
+        "$link": "bafyreidrwd2orxawvkp2y3colh4g66d3lshynha5fk7lrln77tovm7czgy"
+      },
+      "v": {
+        "$link": "bafyreiekqqy2zevbi4lltltet5ytncqmcng5nlwdvkq5zyixyxebq2jjru"
+      }
+    },
+    {
+      "k": "base64:dWNuN3hzMnk=",
+      "p": 24,
+      "t": {
+        "$link": "bafyreidbw7nazywjvizupxkmvg7bc6fefvdwokz2monwknxvy3hloez2ea"
+      },
+      "v": {
+        "$link": "bafyreifbmsgigrqpbpu7kxkksbo4ztnbftraqlb44yhev2aqgssxxs5she"
+      }
+    },
+    {
+      "k": "base64:cHJyaWNsYzJ5",
+      "p": 23,
+      "t": {
+        "$link": "bafyreidc7hbk7zdl6ufk6cxhlbmm3haoaslp6wrfala4h2esznhl3sdhxq"
+      },
+      "v": {
+        "$link": "bafyreicmfiujmmf53m3lqxwzx2gsognxg75ipvgwm6v56fhtx43fbpbohi"
+      }
+    }
+  ],
+  "l": null
+}
+[2026-04-10 10:27:15.520] [TRACE] 
+Type: TYPE_MAP, Value: "<map with 2 entries>"
+Key: e
+  Type: TYPE_ARRAY, Value: "<array with 5 items>"
+  Index: 0
+    Type: TYPE_MAP, Value: "<map with 4 entries>"
+    Key: p
+      Type: TYPE_UNSIGNED_INT, Value: "0"
+    Key: k
+      Type: TYPE_BYTE_STRING, Value: "<27 bytes>"
+    Key: t
+      Type: TYPE_SIMPLE_VALUE, Value: "null"
+    Key: v
+      Type: TYPE_TAG, Value: "bafyreif2bgwlhwdyojw7j4c3lj6h3y4ohydltcouqfpvs2daoylk5zqoam"
+  Index: 1
+    Type: TYPE_MAP, Value: "<map with 4 entries>"
+    Key: v
+      Type: TYPE_TAG, Value: "bafyreibqhcorefufuj272vdndhfsau5m2a7zatnui3ridv2widhvtx3o4e"
+    Key: k
+      Type: TYPE_BYTE_STRING, Value: "<23 bytes>"
+    Key: p
+      Type: TYPE_UNSIGNED_INT, Value: "9"
+    Key: t
+      Type: TYPE_TAG, Value: "bafyreievvrok6edetuxei5iloj7xxoess2f3qthkh6tva5cshxsrrddmhu"
+  Index: 2
+    Type: TYPE_MAP, Value: "<map with 4 entries>"
+    Key: k
+      Type: TYPE_BYTE_STRING, Value: "<9 bytes>"
+    Key: t
+      Type: TYPE_TAG, Value: "bafyreidrwd2orxawvkp2y3colh4g66d3lshynha5fk7lrln77tovm7czgy"
+    Key: p
+      Type: TYPE_UNSIGNED_INT, Value: "23"
+    Key: v
+      Type: TYPE_TAG, Value: "bafyreiekqqy2zevbi4lltltet5ytncqmcng5nlwdvkq5zyixyxebq2jjru"
+  Index: 3
+    Type: TYPE_MAP, Value: "<map with 4 entries>"
+    Key: p
+      Type: TYPE_UNSIGNED_INT, Value: "24"
+    Key: v
+      Type: TYPE_TAG, Value: "bafyreifbmsgigrqpbpu7kxkksbo4ztnbftraqlb44yhev2aqgssxxs5she"
+    Key: t
+      Type: TYPE_TAG, Value: "bafyreidbw7nazywjvizupxkmvg7bc6fefvdwokz2monwknxvy3hloez2ea"
+    Key: k
+      Type: TYPE_BYTE_STRING, Value: "<8 bytes>"
+  Index: 4
+    Type: TYPE_MAP, Value: "<map with 4 entries>"
+    Key: k
+      Type: TYPE_BYTE_STRING, Value: "<9 bytes>"
+    Key: v
+      Type: TYPE_TAG, Value: "bafyreicmfiujmmf53m3lqxwzx2gsognxg75ipvgwm6v56fhtx43fbpbohi"
+    Key: t
+      Type: TYPE_TAG, Value: "bafyreidc7hbk7zdl6ufk6cxhlbmm3haoaslp6wrfala4h2esznhl3sdhxq"
+    Key: p
+      Type: TYPE_UNSIGNED_INT, Value: "23"
+Key: l
+  Type: TYPE_SIMPLE_VALUE, Value: "null"
+
+[2026-04-10 10:27:15.520] [INFO] cid: bafyreif2bgwlhwdyojw7j4c3lj6h3y4ohydltcouqfpvs2daoylk5zqoam
+[2026-04-10 10:27:15.520] [INFO] BLOCK JSON:
+[2026-04-10 10:27:15.521] [INFO] 
+{
+  "$type": "app.bsky.actor.profile",
+  "avatar": {
+    "$type": "blob",
+    "mimeType": "image/jpeg",
+    "ref": {
+      "$link": "bafkreif6lfowx5kqzt7k4r56ca3cai2mal4qvmvbfaejhxenkjx6gdfb7i"
+    },
+    "size": 114831
+  },
+  "banner": {
+    "$type": "blob",
+    "mimeType": "image/jpeg",
+    "ref": {
+      "$link": "bafkreigmhen6n2qbh3vtsmegag7ooimdakc4tfavhevkw2775qynyrkbbe"
+    },
+    "size": 301734
+  },
+  "description": "tech • atproto • pnw • swe @ msft\n\n🔗: https://threddyrex.org",
+  "displayName": "threddy",
+  "pinnedPost": {
+    "cid": "bafyreierulfm5pzgohmwig6x7kvzsax47sbhlxbcepefgaqlnptwu62cji",
+    "uri": "at://did:web:threddyrex.org/app.bsky.feed.post/3mhwazsqtf22d"
+  }
+}
+[2026-04-10 10:27:15.521] [TRACE] 
+Type: TYPE_MAP, Value: "<map with 6 entries>"
+Key: displayName
+  Type: TYPE_TEXT, Value: "\"threddy\""
+Key: banner
+  Type: TYPE_MAP, Value: "<map with 4 entries>"
+  Key: $type
+    Type: TYPE_TEXT, Value: "\"blob\""
+  Key: ref
+    Type: TYPE_TAG, Value: "bafkreigmhen6n2qbh3vtsmegag7ooimdakc4tfavhevkw2775qynyrkbbe"
+  Key: mimeType
+    Type: TYPE_TEXT, Value: "\"image/jpeg\""
+  Key: size
+    Type: TYPE_UNSIGNED_INT, Value: "301734"
+Key: $type
+  Type: TYPE_TEXT, Value: "\"app.bsky.actor.profile\""
+Key: pinnedPost
+  Type: TYPE_MAP, Value: "<map with 2 entries>"
+  Key: cid
+    Type: TYPE_TEXT, Value: "\"bafyreierulfm5pzgohmwig6x7kvzsax47sbhlxbcepefgaqln...\""
+  Key: uri
+    Type: TYPE_TEXT, Value: "\"at://did:web:threddyrex.org/app.bsky.feed.post/3mh...\""
+Key: description
+  Type: TYPE_TEXT, Value: "\"tech • atproto • pnw • swe @ msft\n\n🔗: htt...\""
+Key: avatar
+  Type: TYPE_MAP, Value: "<map with 4 entries>"
+  Key: ref
+    Type: TYPE_TAG, Value: "bafkreif6lfowx5kqzt7k4r56ca3cai2mal4qvmvbfaejhxenkjx6gdfb7i"
+  Key: $type
+    Type: TYPE_TEXT, Value: "\"blob\""
+  Key: mimeType
+    Type: TYPE_TEXT, Value: "\"image/jpeg\""
+  Key: size
+    Type: TYPE_UNSIGNED_INT, Value: "114831"
+
+[2026-04-10 10:27:15.521] [INFO] cid: bafyreihvr4cphar3err6f2pcqy7b3wbekfckefwf6kgjjjtlimtk6g3qmi
+[2026-04-10 10:27:15.521] [INFO] BLOCK JSON:
+[2026-04-10 10:27:15.521] [INFO] 
+{
+  "data": {
+    "$link": "bafyreiedysgtbrhe3otlycxn563cviuaftfrmyqnlj6xd6wkkizx4p2ubm"
+  },
+  "did": "did:web:threddyrex.org",
+  "prev": null,
+  "rev": "3mj5tsvhajru5",
+  "sig": "base64:T/BL5Cuo0hRRhdQxMGVtk1spsxk133WBZ7QaGMoXjMJ1SyiXajD9+ouvvmGDgy3tBCX7+rHQUEQUCm0jDn0yWg==",
+  "version": 3
+}
+[2026-04-10 10:27:15.522] [TRACE] 
+Type: TYPE_MAP, Value: "<map with 6 entries>"
+Key: version
+  Type: TYPE_UNSIGNED_INT, Value: "3"
+Key: did
+  Type: TYPE_TEXT, Value: "\"did:web:threddyrex.org\""
+Key: rev
+  Type: TYPE_TEXT, Value: "\"3mj5tsvhajru5\""
+Key: data
+  Type: TYPE_TAG, Value: "bafyreiedysgtbrhe3otlycxn563cviuaftfrmyqnlj6xd6wkkizx4p2ubm"
+Key: prev
+  Type: TYPE_SIMPLE_VALUE, Value: "null"
+Key: sig
+  Type: TYPE_BYTE_STRING, Value: "<64 bytes>"
+
