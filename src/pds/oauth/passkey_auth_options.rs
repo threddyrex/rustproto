@@ -164,7 +164,7 @@ pub async fn passkey_authentication_options(
 
     // Generate challenge (32 random bytes)
     let mut challenge_bytes = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut challenge_bytes);
+    rand::rng().fill_bytes(&mut challenge_bytes);
     let challenge = URL_SAFE_NO_PAD.encode(challenge_bytes);
 
     // Store challenge in database

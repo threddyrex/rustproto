@@ -549,7 +549,7 @@ impl Installer {
     /// - Final 10 bits: random clock identifier
     pub fn generate_tid() -> String {
         // Get clock identifier (random 10-bit value)
-        let clock_id: u16 = rand::thread_rng().gen_range(0..1024);
+        let clock_id: u16 = rand::rng().random_range(0..1024);
 
         // Get current timestamp in microseconds
         let mut ts = SystemTime::now()
@@ -700,7 +700,7 @@ impl Installer {
 
         // Generate random salt
         let mut salt = [0u8; SALT_SIZE];
-        rand::thread_rng().fill_bytes(&mut salt);
+        rand::rng().fill_bytes(&mut salt);
 
         // Compute PBKDF2 hash
         let mut hash = [0u8; HASH_SIZE];

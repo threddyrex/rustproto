@@ -15,7 +15,6 @@ use axum::{
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use p256::ecdsa::SigningKey;
 use pbkdf2::pbkdf2_hmac;
-use rand::rngs::OsRng;
 use rand::Rng;
 use serde::Deserialize;
 use sha2::Sha256;
@@ -543,14 +542,14 @@ fn create_new_admin_password() -> String {
     const NUMBER_CHARS: &[u8] = b"0123456789";
     const SPECIAL_CHARS: &[u8] = b"!@#$%^&*()-_=+[]{}|;:,.<>?";
 
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let mut password = Vec::with_capacity(PASSWORD_LENGTH);
 
     // Ensure at least one character from each category
-    password.push(UPPERCASE_CHARS[rng.gen_range(0..UPPERCASE_CHARS.len())]);
-    password.push(LOWERCASE_CHARS[rng.gen_range(0..LOWERCASE_CHARS.len())]);
-    password.push(NUMBER_CHARS[rng.gen_range(0..NUMBER_CHARS.len())]);
-    password.push(SPECIAL_CHARS[rng.gen_range(0..SPECIAL_CHARS.len())]);
+    password.push(UPPERCASE_CHARS[rng.random_range(0..UPPERCASE_CHARS.len())]);
+    password.push(LOWERCASE_CHARS[rng.random_range(0..LOWERCASE_CHARS.len())]);
+    password.push(NUMBER_CHARS[rng.random_range(0..NUMBER_CHARS.len())]);
+    password.push(SPECIAL_CHARS[rng.random_range(0..SPECIAL_CHARS.len())]);
 
     // Combine all characters
     let all_chars: Vec<u8> = [UPPERCASE_CHARS, LOWERCASE_CHARS, NUMBER_CHARS, SPECIAL_CHARS]
@@ -558,12 +557,12 @@ fn create_new_admin_password() -> String {
 
     // Fill the rest with random characters from all categories
     for _ in 4..PASSWORD_LENGTH {
-        password.push(all_chars[rng.gen_range(0..all_chars.len())]);
+        password.push(all_chars[rng.random_range(0..all_chars.len())]);
     }
 
     // Shuffle the password to randomize position of guaranteed characters
     for i in (1..PASSWORD_LENGTH).rev() {
-        let j = rng.gen_range(0..=i);
+        let j = rng.random_range(0..=i);
         password.swap(i, j);
     }
 
@@ -577,7 +576,7 @@ fn hash_password(password: &str) -> String {
 
     // Generate random salt
     let mut salt = [0u8; SALT_SIZE];
-    rand::thread_rng().fill_bytes(&mut salt);
+    rand::rng().fill_bytes(&mut salt);
 
     // Compute PBKDF2 hash
     let mut hash = [0u8; HASH_SIZE];
@@ -609,7 +608,7 @@ struct KeyPair {
 /// Returns public and private keys in multibase format (base58btc with 'z' prefix).
 fn generate_p256_key_pair() -> KeyPair {
     // Generate a new P-256 signing key
-    let signing_key = SigningKey::random(&mut OsRng);
+    let signing_key = SigningKey::random(&mut p256::elliptic_curve::rand_core::OsRng);
     
     // Get private key bytes (32 bytes)
     let private_key_bytes = signing_key.to_bytes();

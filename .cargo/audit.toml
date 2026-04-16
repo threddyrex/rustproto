@@ -1,0 +1,9 @@
+[advisories]
+# RUSTSEC-2023-0071: Marvin Attack on rsa crate (timing side-channel in RSA decryption).
+# Our usage is signature verification only (pkcs1v15::VerifyingKey), which is not affected.
+# No upstream fix is available as of 2026-04.
+#
+# RUSTSEC-2026-0097: rand 0.8 unsoundness with custom logger using rand::rng().
+# Only remains as a transitive dep (tungstenite, num-bigint-dig via rsa).
+# Our direct dep is rand 0.9.3+. The transitive deps don't use the vulnerable pattern.
+ignore = ["RUSTSEC-2023-0071", "RUSTSEC-2026-0097"]

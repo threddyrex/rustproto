@@ -1631,7 +1631,7 @@ dependencies = [
  "k256",
  "p256",
  "pbkdf2",
- "rand 0.8.5",
+ "rand 0.9.4",
  "reqwest",
  "rsa",
  "rusqlite",
