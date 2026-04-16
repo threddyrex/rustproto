@@ -523,7 +523,7 @@ fn validate_authenticator_data(data: &[u8], expected_rp_id: &str) -> Result<(), 
     hasher.update(expected_rp_id.as_bytes());
     let expected_rp_id_hash = hasher.finalize();
 
-    if &data[..32] != expected_rp_id_hash.as_slice() {
+    if &data[..32] != &*expected_rp_id_hash {
         return Err("RP ID hash mismatch".to_string());
     }
 
