@@ -90,16 +90,17 @@ pub fn routes() -> Router<Arc<PdsState>> {
 /// These match the dnproto admin dashboard styling.
 pub fn get_navbar_css() -> &'static str {
     r#"
-        .navbar { display: flex; align-items: center; gap: 8px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #2f3336; }
-        .nav-btn { background-color: #4caf50; color: white; border: none; padding: 6px 12px; border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: 500; text-decoration: none; }
+        .navbar { position: fixed; top: 0; left: 0; bottom: 0; width: 180px; display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 24px 16px; border-right: 1px solid #2f3336; background-color: #1a1c20; box-sizing: border-box; overflow-y: auto; }
+        .nav-btn { background-color: #4caf50; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: 500; text-decoration: none; display: block; text-align: left; }
         .nav-btn:hover { background-color: #388e3c; }
         .nav-btn.active { background-color: #388e3c; }
-        .nav-btn-destructive { background-color: #f44336; color: white; border: none; padding: 6px 12px; border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: 500; text-decoration: none; }
+        .nav-btn-destructive { background-color: #f44336; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: 500; text-decoration: none; display: block; text-align: left; }
         .nav-btn-destructive:hover { background-color: #d32f2f; }
         .nav-btn-destructive.active { background-color: #d32f2f; }
         .nav-spacer { flex-grow: 1; }
-        .logout-btn { background-color: #1d9bf0; color: white; border: none; padding: 6px 12px; border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: 500; font-family: inherit; }
+        .logout-btn { background-color: #1d9bf0; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: 500; font-family: inherit; width: 100%; text-align: left; }
         .logout-btn:hover { background-color: #1a8cd8; }
+        @media (max-width: 700px) { .navbar { position: static; width: auto; flex-direction: row; flex-wrap: wrap; border-right: none; border-bottom: 1px solid #2f3336; margin-bottom: 24px; } .nav-btn, .nav-btn-destructive, .logout-btn { display: inline-block; width: auto; text-align: center; } }
     "#
 }
 
@@ -136,8 +137,9 @@ pub fn get_navbar_html(active_page: &str) -> String {
 /// Base styles for admin pages.
 pub fn get_base_styles() -> &'static str {
     r#"
-        body { background-color: #16181c; color: #e7e9ea; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 40px 20px; }
+        body { background-color: #16181c; color: #e7e9ea; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 40px 20px 40px 220px; }
         .container { max-width: 800px; margin: 0 0 0 40px; }
+        @media (max-width: 700px) { body { padding: 40px 20px; } }
         h1 { color: #8899a6; margin-bottom: 24px; }
         h2 { color: #8899a6; margin-top: 32px; margin-bottom: 16px; font-size: 18px; }
         p { margin-bottom: 16px; line-height: 1.5; }
