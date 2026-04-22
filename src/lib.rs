@@ -4,6 +4,7 @@
 //! including actor resolution, identity lookup, repository parsing, and related functionality.
 //!
 pub mod cli;
+pub mod ap;
 pub mod firehose;
 pub mod fs;
 pub mod log;

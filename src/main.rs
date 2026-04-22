@@ -13,6 +13,7 @@ use rustproto::cli::{
     get_arg,
     parse_arguments,
     backup_account::cmd_backup_account,
+    ap_resolve_actor::cmd_ap_resolve_actor,
     create_session::cmd_create_session,
     get_blob::cmd_get_blob,
     get_pds_info::cmd_get_pds_info,
@@ -79,6 +80,7 @@ async fn main() {
 
     match command.to_lowercase().as_str() {
         "backupaccount" => cmd_backup_account(&arguments).await,
+        "apresolveactor" => cmd_ap_resolve_actor(&arguments).await,
         "createsession" => cmd_create_session(&arguments).await,
         "getblob" => cmd_get_blob(&arguments).await,
         "getpdsinfo" => cmd_get_pds_info(&arguments).await,
