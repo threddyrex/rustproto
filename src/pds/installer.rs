@@ -188,6 +188,7 @@ impl Installer {
         db.set_config_property_bool("FeatureEnabled_Oauth", false)?;
         db.set_config_property_bool("FeatureEnabled_RequestCrawl", false)?;
         db.set_config_property_bool("FeatureEnabled_Passkeys", false)?;
+        db.set_config_property_bool("FeatureEnabled_ActivityPub", false)?;
         db.set_config_property_int("LogRetentionDays", 10)?;
         db.set_config_property("PdsCrawlers", "bsky.network")?;
 

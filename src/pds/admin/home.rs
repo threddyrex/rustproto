@@ -146,6 +146,7 @@ fn build_config_table(db: &PdsDb) -> String {
     rows.push(row("FeatureEnabled_Oauth", get_bool_value("FeatureEnabled_Oauth"), "Is OAuth enabled? This is a global flag that turns it off/on."));
     rows.push(row("FeatureEnabled_Passkeys", get_bool_value("FeatureEnabled_Passkeys"), "Are passkeys enabled?"));
     rows.push(row("FeatureEnabled_RequestCrawl", get_bool_value("FeatureEnabled_RequestCrawl"), "If enabled, will periodically request a crawl from the crawlers."));
+    rows.push(row("FeatureEnabled_ActivityPub", get_bool_value("FeatureEnabled_ActivityPub"), "Is ActivityPub federation enabled? (Not yet implemented.)"));
 
     // PDS section
     rows.push(section("PDS"));

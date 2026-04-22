@@ -39,6 +39,7 @@ const ALLOWED_CONFIG_KEYS: &[&str] = &[
     "SystemctlServiceName",
     "CaddyAccessLogFilePath",
     "FeatureEnabled_RequestCrawl",
+    "FeatureEnabled_ActivityPub",
     "AtprotoProxyAllowedDids",
     "OauthAllowedRedirectUris",
     "AppViewHostName",
@@ -221,6 +222,12 @@ fn render_config_page(db: &PdsDb) -> Html<String> {
         <td><button class="enable-btn" onclick="setBoolConfig('FeatureEnabled_RequestCrawl', '1')">Enable</button><button class="disable-btn" onclick="setBoolConfig('FeatureEnabled_RequestCrawl', '0')">Disable</button></td>
         <td>If enabled, will periodically request a crawl from the crawlers. Enable this last - things need to be configured correctly before connecting with the larger network.</td>
     </tr>
+    <tr>
+        <td class="key-name">FeatureEnabled_ActivityPub</td>
+        <td>{feature_activitypub}</td>
+        <td><button class="enable-btn" onclick="setBoolConfig('FeatureEnabled_ActivityPub', '1')">Enable</button><button class="disable-btn" onclick="setBoolConfig('FeatureEnabled_ActivityPub', '0')">Disable</button></td>
+        <td>Is ActivityPub federation enabled? (Not yet implemented.)</td>
+    </tr>
     <tr class="section-header"><td colspan="4">PDS</td></tr>
     <tr>
         <td class="key-name">PdsCrawlers</td>
@@ -370,6 +377,7 @@ function setBoolConfig(key, value) {{
         feature_oauth = get_bool_config_value(db, "FeatureEnabled_Oauth"),
         feature_passkeys = get_bool_config_value(db, "FeatureEnabled_Passkeys"),
         feature_request_crawl = get_bool_config_value(db, "FeatureEnabled_RequestCrawl"),
+        feature_activitypub = get_bool_config_value(db, "FeatureEnabled_ActivityPub"),
         // PDS section
         pds_crawlers = get_config_value(db, "PdsCrawlers"),
         pds_crawlers_js = get_config_value_for_js(db, "PdsCrawlers"),
