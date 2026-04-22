@@ -14,16 +14,9 @@ mod sessions;
 mod ipstats;
 mod stats;
 
-use std::sync::Arc;
-
-use axum::{
-    Router,
-    routing::get,
-};
 use tower_cookies::Cookies;
 
 use super::db::PdsDb;
-use super::server::PdsState;
 
 pub use config::{admin_config_get, admin_config_post};
 pub use home::admin_home;
@@ -43,47 +36,16 @@ pub use passkeys::{admin_passkeys, admin_delete_passkey, admin_delete_passkey_ch
 pub use register_passkey::{admin_register_passkey_get, admin_passkey_registration_options, admin_register_passkey_post};
 
 // =============================================================================
-// IMPORTANT: Routes are NOT registered here!
-// =============================================================================
-// The routes() function below is NOT USED. All admin routes are registered
-// directly in src/pds/server.rs in the build_router() method.
+// NOTE: Admin routes are registered directly in src/pds/server.rs in the
+// build_router() method, not here.
 //
 // When adding a new admin page:
 // 1. Create the handler in a new module file (e.g., actions.rs)
 // 2. Add `mod actions;` at the top of this file
 // 3. Add `pub use actions::{...};` to export the handlers
-// 4. Register the routes in src/pds/server.rs (NOT here)
+// 4. Register the routes in src/pds/server.rs
 // 5. Update get_navbar_html() below to add navbar link if needed
 // =============================================================================
-
-/// Build admin routes.
-/// 
-/// NOTE: This function is currently NOT USED. Routes are registered in server.rs.
-/// This exists for potential future refactoring to use nested routers.
-#[allow(dead_code)]
-pub fn routes() -> Router<Arc<PdsState>> {
-    Router::new()
-        .route("/", get(admin_home))
-        .route("/login", get(admin_login_get).post(admin_login_post))
-        .route("/login/", get(admin_login_get).post(admin_login_post))
-        .route("/logout", axum::routing::post(admin_logout))
-        .route("/sessions", get(admin_sessions))
-        .route("/sessions/", get(admin_sessions))
-        .route("/deletelegacysession", axum::routing::post(admin_delete_legacy_session))
-        .route("/deleteoauthsession", axum::routing::post(admin_delete_oauth_session))
-        .route("/deleteadminsession", axum::routing::post(admin_delete_admin_session))
-        .route("/stats", get(admin_stats))
-        .route("/stats/", get(admin_stats))
-        .route("/ipstats", get(admin_ipstats))
-        .route("/ipstats/", get(admin_ipstats))
-        .route("/deletestatistic", axum::routing::post(admin_delete_statistic))
-        .route("/deleteallstatistics", axum::routing::post(admin_delete_all_statistics))
-        .route("/deleteoldstatistics", axum::routing::post(admin_delete_old_statistics))
-        .route("/config", get(admin_config_get).post(admin_config_post))
-        .route("/config/", get(admin_config_get).post(admin_config_post))
-        .route("/actions", get(admin_actions_get).post(admin_actions_post))
-        .route("/actions/", get(admin_actions_get).post(admin_actions_post))
-}
 
 /// CSS styles for the admin interface.
 /// 
