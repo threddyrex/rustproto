@@ -88,10 +88,7 @@ impl ApClient {
 
         // If a URL was passed in, skip WebFinger and fetch the actor object directly.
         if actor.starts_with("http://") || actor.starts_with("https://") {
-            logger().info(&format!(
-                "[AP] No WebFinger needed; treating actor as direct URL: {}",
-                actor
-            ));
+        logger().info(&format!("[AP] [step 2] WebFinger skipped; treating actor as direct URL: {}", actor));
             let (raw, parsed) = self.fetch_actor_object(actor).await?;
             return Ok(ApActor {
                 webfinger_subject: None,
@@ -132,7 +129,7 @@ impl ApClient {
             urlencode(subject)
         );
 
-        logger().info(&format!("[AP] WebFinger GET {}", url));
+        logger().info(&format!("[AP] [step 1] WebFinger GET {}", url));
 
         let resp = self
             .client
@@ -143,7 +140,7 @@ impl ApClient {
 
         let status = resp.status();
         if !status.is_success() {
-            logger().warning(&format!("[AP] WebFinger GET {} -> HTTP {}", url, status));
+            logger().warning(&format!("[AP] [step 1] WebFinger GET {} -> HTTP {}", url, status));
             return Err(ApClientError::ResolutionFailed(format!(
                 "WebFinger request to {} failed with status {}",
                 url, status
@@ -152,7 +149,7 @@ impl ApClient {
 
         let body_text = resp.text().await?;
         logger().info(&format!(
-            "[AP] WebFinger GET {} -> HTTP {} ({} bytes)",
+            "[AP] [step 1] WebFinger GET {} -> HTTP {} ({} bytes)",
             url,
             status,
             body_text.len()
@@ -160,7 +157,7 @@ impl ApClient {
 
         let parsed: WebFingerResponse = serde_json::from_str(&body_text)?;
         logger().trace(&format!(
-            "[AP] WebFinger response body:\n{}",
+            "[AP] [step 1] WebFinger response body:\n{}",
             serde_json::to_string_pretty(&parsed).unwrap_or_else(|_| body_text.clone())
         ));
 
@@ -170,7 +167,7 @@ impl ApClient {
             )
         })?;
 
-        logger().info(&format!("[AP] WebFinger picked self href: {}", self_href));
+        logger().info(&format!("[AP] [step 1] WebFinger picked self href: {}", self_href));
 
         Ok((url, parsed, self_href))
     }
@@ -180,7 +177,7 @@ impl ApClient {
         &self,
         url: &str,
     ) -> Result<(Value, ActivityPubActor), ApClientError> {
-        logger().info(&format!("[AP] Actor GET {}", url));
+        logger().info(&format!("[AP] [step 2] Actor GET {}", url));
 
         let resp = self
             .client
@@ -191,7 +188,7 @@ impl ApClient {
 
         let status = resp.status();
         if !status.is_success() {
-            logger().warning(&format!("[AP] Actor GET {} -> HTTP {}", url, status));
+            logger().warning(&format!("[AP] [step 2] Actor GET {} -> HTTP {}", url, status));
             return Err(ApClientError::ResolutionFailed(format!(
                 "Actor fetch from {} failed with status {}",
                 url, status
@@ -200,7 +197,7 @@ impl ApClient {
 
         let body_text = resp.text().await?;
         logger().info(&format!(
-            "[AP] Actor GET {} -> HTTP {} ({} bytes)",
+            "[AP] [step 2] Actor GET {} -> HTTP {} ({} bytes)",
             url,
             status,
             body_text.len()
@@ -209,7 +206,7 @@ impl ApClient {
         let raw: Value = serde_json::from_str(&body_text)?;
         let parsed: ActivityPubActor = serde_json::from_value(raw.clone())?;
         logger().trace(&format!(
-            "[AP] Actor response body:\n{}",
+            "[AP] [step 2] Actor response body:\n{}",
             serde_json::to_string_pretty(&raw).unwrap_or_else(|_| body_text.clone())
         ));
         Ok((raw, parsed))
