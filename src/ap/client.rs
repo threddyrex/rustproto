@@ -9,7 +9,7 @@ use reqwest::Client;
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::ap::models::{ActivityPubActor, WebFingerResponse, WebFingerLink};
+use crate::ap::models::{ActivityPubActor, MastodonAccount, WebFingerResponse, WebFingerLink};
 use crate::log::logger;
 
 #[derive(Error, Debug)]
@@ -117,6 +117,93 @@ impl ApClient {
         })
     }
 
+    /// Resolves an actor handle (or URL) to its ActivityPub account ID URL.
+    ///
+    /// If `actor` is already an `http(s)://` URL, it is returned as-is. Otherwise
+    /// a WebFinger lookup is performed and the `self` link's `href` is returned.
+    pub async fn resolve_actor_id(&self, actor: &str) -> Result<String, ApClientError> {
+        let actor = actor.trim();
+        if actor.is_empty() {
+            return Err(ApClientError::InvalidActor("Actor is empty".to_string()));
+        }
+
+        if actor.starts_with("http://") || actor.starts_with("https://") {
+            logger().info(&format!(
+                "[AP] WebFinger skipped; treating actor as direct account ID URL: {}",
+                actor
+            ));
+            return Ok(actor.to_string());
+        }
+
+        let (user, host) = parse_acct(actor)?;
+        let subject = format!("acct:{}@{}", user, host);
+        let (_url, _wf, self_href) = self.webfinger_lookup(&host, &subject).await?;
+        Ok(self_href)
+    }
+
+    /// Performs `GET https://{host}/api/v1/accounts/lookup?acct={user}` against
+    /// the Mastodon REST API and returns the parsed account together with the
+    /// raw JSON for full-fidelity inspection.
+    pub async fn lookup_mastodon_account(
+        &self,
+        host: &str,
+        acct: &str,
+    ) -> Result<(Value, MastodonAccount), ApClientError> {
+        let url = format!(
+            "https://{}/api/v1/accounts/lookup?acct={}",
+            host,
+            urlencode(acct)
+        );
+        self.fetch_mastodon_account(&url).await
+    }
+
+    /// Performs `GET https://{host}/api/v1/accounts/{id}` against the Mastodon
+    /// REST API and returns the parsed account together with the raw JSON.
+    pub async fn get_mastodon_account(
+        &self,
+        host: &str,
+        id: &str,
+    ) -> Result<(Value, MastodonAccount), ApClientError> {
+        let url = format!("https://{}/api/v1/accounts/{}", host, id);
+        self.fetch_mastodon_account(&url).await
+    }
+
+    /// Shared GET + JSON-parse helper for Mastodon account endpoints.
+    async fn fetch_mastodon_account(
+        &self,
+        url: &str,
+    ) -> Result<(Value, MastodonAccount), ApClientError> {
+        logger().info(&format!("[AP] [mastodon] GET {}", url));
+
+        let resp = self
+            .client
+            .get(url)
+            .header("Accept", "application/json")
+            .send()
+            .await?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            logger().warning(&format!("[AP] [mastodon] GET {} -> HTTP {}", url, status));
+            return Err(ApClientError::ResolutionFailed(format!(
+                "Mastodon account request to {} failed with status {}",
+                url, status
+            )));
+        }
+
+        let body_text = resp.text().await?;
+        logger().info(&format!(
+            "[AP] [mastodon] GET {} -> HTTP {} ({} bytes)",
+            url,
+            status,
+            body_text.len()
+        ));
+
+        let raw: Value = serde_json::from_str(&body_text)?;
+        let parsed: MastodonAccount = serde_json::from_value(raw.clone())?;
+        Ok((raw, parsed))
+    }
+
     /// Performs a WebFinger lookup. Returns `(webfinger_url, parsed_response, self_href)`.
     async fn webfinger_lookup(
         &self,
@@ -213,6 +300,26 @@ impl ApClient {
     }
 }
 
+/// Extracts the account id and host from an actor URL of the form
+/// `https://{host}/users/{id}[/...]`.
+///
+/// The id may be numeric (e.g. on many Mastodon instances) or a handle
+/// (e.g. `https://mastodon.social/users/Gargron` -> `Gargron`).
+pub fn parse_account_id_from_actor_url(url: &str) -> Option<(String, String)> {
+    let rest = url.strip_prefix("https://").or_else(|| url.strip_prefix("http://"))?;
+    let mut parts = rest.splitn(2, '/');
+    let host = parts.next()?.to_string();
+    let path = parts.next()?;
+    let segs: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    // Find "users" and take the next segment as the id.
+    let pos = segs.iter().position(|s| *s == "users")?;
+    let id = segs.get(pos + 1)?;
+    if id.is_empty() {
+        return None;
+    }
+    Some((host, (*id).to_string()))
+}
+
 /// Picks the best `self` link from a WebFinger response, preferring
 /// `application/activity+json` (or any activitystreams type), falling back to
 /// the first `self` link with an `href`.
@@ -235,6 +342,11 @@ fn pick_self_href(links: &[WebFingerLink]) -> Option<String> {
         }
     }
     fallback
+}
+
+/// Parses an `acct:`-style identifier into `(user, host)`.
+pub fn parse_actor_handle(input: &str) -> Result<(String, String), ApClientError> {
+    parse_acct(input)
 }
 
 /// Parses an `acct:`-style identifier into `(user, host)`.
@@ -309,6 +421,26 @@ mod tests {
     #[test]
     fn urlencode_acct() {
         assert_eq!(urlencode("acct:alice@example.com"), "acct%3Aalice%40example.com");
+    }
+
+    #[test]
+    fn parse_account_id_handle() {
+        let (h, id) = parse_account_id_from_actor_url("https://mastodon.social/users/Gargron").unwrap();
+        assert_eq!(h, "mastodon.social");
+        assert_eq!(id, "Gargron");
+    }
+
+    #[test]
+    fn parse_account_id_numeric_with_trailing_path() {
+        let (h, id) = parse_account_id_from_actor_url("https://example.com/users/12345/inbox").unwrap();
+        assert_eq!(h, "example.com");
+        assert_eq!(id, "12345");
+    }
+
+    #[test]
+    fn parse_account_id_invalid() {
+        assert!(parse_account_id_from_actor_url("https://example.com/@alice").is_none());
+        assert!(parse_account_id_from_actor_url("not a url").is_none());
     }
 
     #[test]

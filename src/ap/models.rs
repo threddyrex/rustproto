@@ -145,6 +145,103 @@ pub struct WebFingerResponse {
     pub extra: HashMap<String, Value>,
 }
 
+/// Typed model of a Mastodon REST API account object
+/// (`GET /api/v1/accounts/:id` and `GET /api/v1/accounts/lookup`).
+///
+/// Only the most commonly used fields are typed explicitly; anything else
+/// from the JSON body is preserved in `extra`.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MastodonAccount {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acct: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locked: Option<bool>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bot: Option<bool>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub discoverable: Option<bool>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<bool>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_status_at: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uri: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avatar_static: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub header: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub header_static: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub followers_count: Option<u64>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub following_count: Option<u64>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statuses_count: Option<u64>,
+
+    #[serde(flatten)]
+    pub extra: HashMap<String, Value>,
+}
+
+#[cfg(test)]
+mod mastodon_tests {
+    use super::*;
+
+    #[test]
+    fn deserialize_minimal_mastodon_account() {
+        let json = r#"{
+            "id": "1",
+            "username": "Gargron",
+            "acct": "Gargron",
+            "display_name": "Eugen Rochko",
+            "url": "https://mastodon.social/@Gargron",
+            "uri": "https://mastodon.social/users/Gargron",
+            "followers_count": 379378,
+            "following_count": 709,
+            "statuses_count": 81227,
+            "weirdCustomField": true
+        }"#;
+        let acc: MastodonAccount = serde_json::from_str(json).unwrap();
+        assert_eq!(acc.id.as_deref(), Some("1"));
+        assert_eq!(acc.username.as_deref(), Some("Gargron"));
+        assert_eq!(acc.followers_count, Some(379378));
+        assert!(acc.extra.contains_key("weirdCustomField"));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

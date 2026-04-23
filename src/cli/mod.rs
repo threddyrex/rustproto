@@ -1,6 +1,7 @@
 //! Command line interface module
 
 pub mod backup_account;
+pub mod ap_get_account;
 pub mod ap_resolve_actor;
 pub mod create_session;
 pub mod get_blob;
