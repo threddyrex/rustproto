@@ -77,6 +77,8 @@ pub async fn admin_actions_get(
     let generated_user_password = get_and_remove_cookie(&cookies, "generated_user_password");
     let install_repo_error = get_and_remove_cookie(&cookies, "install_repo_error");
     let install_repo_success = get_and_remove_cookie(&cookies, "install_repo_success");
+    let rotate_jwt_secret_error = get_and_remove_cookie(&cookies, "rotate_jwt_secret_error");
+    let rotate_jwt_secret_success = get_and_remove_cookie(&cookies, "rotate_jwt_secret_success");
 
     render_actions_page(
         &state.db,
@@ -84,6 +86,8 @@ pub async fn admin_actions_get(
         generated_user_password.as_deref(),
         install_repo_error.as_deref(),
         install_repo_success.as_deref(),
+        rotate_jwt_secret_error.as_deref(),
+        rotate_jwt_secret_success.as_deref(),
     ).into_response()
 }
 
@@ -155,6 +159,54 @@ pub async fn admin_actions_post(
                 .path("/")
                 .build();
             cookies.add(cookie);
+        }
+        "rotatejwtsecret" => {
+            // Highly destructive: invalidates every existing user JWT and OAuth access token.
+            // Require typed confirmation, matching the installuserrepo pattern.
+            let confirm_text = form.confirm_text.as_deref().unwrap_or("");
+            if !confirm_text.eq_ignore_ascii_case("rotate jwt secret") {
+                let cookie = Cookie::build((
+                    "rotate_jwt_secret_error",
+                    "You must type 'rotate jwt secret' to confirm this action.".to_string(),
+                ))
+                    .http_only(true)
+                    .secure(true)
+                    .same_site(tower_cookies::cookie::SameSite::Strict)
+                    .max_age(tower_cookies::cookie::time::Duration::minutes(1))
+                    .path("/")
+                    .build();
+                cookies.add(cookie);
+            } else {
+                let new_secret = create_new_jwt_secret();
+                match state.db.set_config_property("JwtSecret", &new_secret) {
+                    Ok(()) => {
+                        let cookie = Cookie::build((
+                            "rotate_jwt_secret_success",
+                            "JWT secret rotated. All existing user sessions and OAuth access tokens are now invalid; users must sign in again.".to_string(),
+                        ))
+                            .http_only(true)
+                            .secure(true)
+                            .same_site(tower_cookies::cookie::SameSite::Strict)
+                            .max_age(tower_cookies::cookie::time::Duration::minutes(1))
+                            .path("/")
+                            .build();
+                        cookies.add(cookie);
+                    }
+                    Err(e) => {
+                        let cookie = Cookie::build((
+                            "rotate_jwt_secret_error",
+                            format!("Failed to rotate JWT secret: {}", e),
+                        ))
+                            .http_only(true)
+                            .secure(true)
+                            .same_site(tower_cookies::cookie::SameSite::Strict)
+                            .max_age(tower_cookies::cookie::time::Duration::minutes(1))
+                            .path("/")
+                            .build();
+                        cookies.add(cookie);
+                    }
+                }
+            }
         }
         "generatekeypair" => {
             // Generate a new P-256 key pair
@@ -300,6 +352,8 @@ fn render_actions_page(
     generated_user_password: Option<&str>,
     install_repo_error: Option<&str>,
     install_repo_success: Option<&str>,
+    rotate_jwt_secret_error: Option<&str>,
+    rotate_jwt_secret_success: Option<&str>,
 ) -> Html<String> {
     let hostname = db
         .get_config_property("PdsHostname")
@@ -307,6 +361,7 @@ fn render_actions_page(
 
     let admin_password_status = get_password_status(db, "AdminHashedPassword");
     let user_password_status = get_password_status(db, "UserHashedPassword");
+    let jwt_secret_status = get_password_status(db, "JwtSecret");
     let user_public_key_value = get_key_value_status(db, "UserPublicKeyMultibase");
 
     // Get repo commit exists status (note: the function returns true if repo is EMPTY)
@@ -375,6 +430,28 @@ fn render_actions_page(
         String::new()
     };
 
+    let rotate_jwt_secret_error_display = if let Some(error) = rotate_jwt_secret_error {
+        format!(r#"
+        <div class="error-display">
+            <div class="label">Error</div>
+            <div class="value">{}</div>
+        </div>
+        "#, html_encode(error))
+    } else {
+        String::new()
+    };
+
+    let rotate_jwt_secret_success_display = if let Some(success) = rotate_jwt_secret_success {
+        format!(r#"
+        <div class="success-display">
+            <div class="label">Success</div>
+            <div class="value">{}</div>
+        </div>
+        "#, html_encode(success))
+    } else {
+        String::new()
+    };
+
     let html = format!(
         r#"<!DOCTYPE html>
 <html>
@@ -430,6 +507,22 @@ fn render_actions_page(
     <button type="submit" class="action-btn-destructive">Generate User Password</button>
 </form>
 
+<h2>JWT Secret</h2>
+{rotate_jwt_secret_error_display}
+{rotate_jwt_secret_success_display}
+<div class="info-card">
+    <div class="label">JwtSecret (used to sign user access and refresh JWTs)</div>
+    <div class="value">{jwt_secret_status}</div>
+</div>
+<form method="post" action="/admin/actions" style="margin-top: 16px;" onsubmit="return confirm('Are you sure you want to rotate the JWT secret? Every existing user session and OAuth access token will be invalidated and users will have to sign in again.');">
+    <input type="hidden" name="action" value="rotatejwtsecret" />
+    <div style="margin-bottom: 12px;">
+        <label for="confirm_text_jwt" style="color: #f0a81d; font-size: 14px;">Type &quot;rotate jwt secret&quot; to confirm:</label>
+        <input type="text" id="confirm_text_jwt" name="confirm_text" autocomplete="off" style="display: block; margin-top: 8px; padding: 8px 12px; border-radius: 4px; border: 1px solid #2f3336; background-color: #16181c; color: #e7e9ea; font-size: 14px; width: 200px;" />
+    </div>
+    <button type="submit" class="action-btn-destructive">Rotate JWT Secret</button>
+</form>
+
 <h2>User Key Pair</h2>
 <div class="info-card">
     <div class="label">UserPublicKeyMultibase</div>
@@ -483,6 +576,9 @@ fn render_actions_page(
         admin_password_status = admin_password_status,
         user_password_display = user_password_display,
         user_password_status = user_password_status,
+        jwt_secret_status = jwt_secret_status,
+        rotate_jwt_secret_error_display = rotate_jwt_secret_error_display,
+        rotate_jwt_secret_success_display = rotate_jwt_secret_success_display,
         user_public_key_value = user_public_key_value,
         install_repo_error_display = install_repo_error_display,
         install_repo_success_display = install_repo_success_display,
@@ -567,6 +663,17 @@ fn create_new_admin_password() -> String {
     }
 
     String::from_utf8(password).expect("Password should be valid UTF-8")
+}
+
+/// Generate a new JWT signing secret: 32 cryptographically random bytes,
+/// base64 (standard alphabet) encoded. Uses `OsRng` via `rand::rng()`'s
+/// thread-local CSPRNG — NOT the time-seeded generator in the installer.
+fn create_new_jwt_secret() -> String {
+    use rand::RngCore;
+
+    let mut bytes = [0u8; 32];
+    rand::rng().fill_bytes(&mut bytes);
+    BASE64.encode(bytes)
 }
 
 /// Hash a password using PBKDF2-SHA256 (matches dnproto's PasswordHasher).
