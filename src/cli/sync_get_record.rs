@@ -14,6 +14,10 @@ use std::collections::HashMap;
 use std::io::Cursor;
 
 use crate::cli::get_arg;
+use crate::cli::verify_common::{
+    check_block_classification, check_car_header_version, classify_blocks,
+    verify_block_cid, verify_commit_block, Check,
+};
 use crate::log::{logger, LogLevel};
 use crate::mst::Mst;
 use crate::repo::{CidV1, RepoRecord, Repo};
@@ -245,30 +249,6 @@ struct ProofNodeInfo {
     layer: Option<i32>,
 }
 
-struct Check {
-    passed: bool,
-    description: String,
-    detail: Option<String>,
-}
-
-impl Check {
-    fn pass(description: impl Into<String>) -> Self {
-        Check {
-            passed: true,
-            description: description.into(),
-            detail: None,
-        }
-    }
-
-    fn fail(description: impl Into<String>, detail: impl Into<String>) -> Self {
-        Check {
-            passed: false,
-            description: description.into(),
-            detail: Some(detail.into()),
-        }
-    }
-}
-
 
 // =====================================================================
 // Verification logic
@@ -296,14 +276,7 @@ fn verify_record_car(
         .map_err(|e| format!("Failed to parse CAR: {}", e))?;
 
     // --- CHECK: CAR header version ---
-    if header.version == 1 {
-        checks.push(Check::pass("CAR header version is 1"));
-    } else {
-        checks.push(Check::fail(
-            "CAR header version is 1",
-            format!("Got version {}", header.version),
-        ));
-    }
+    check_car_header_version(&header, &mut checks);
 
     let root_cid_base32 = header.repo_commit_cid.base32.clone();
 
@@ -325,32 +298,13 @@ fn verify_record_car(
     }
 
     // ---- CLASSIFY BLOCKS by type, not position ----
-    let mut commit_blocks: Vec<&RepoRecord> = Vec::new();
-    let mut mst_blocks: Vec<&RepoRecord> = Vec::new();
-    let mut record_blocks: Vec<&RepoRecord> = Vec::new();
-    let mut unclassified_blocks: Vec<&RepoRecord> = Vec::new();
+    let classified = classify_blocks(&records);
+    let commit_blocks = &classified.commit;
+    let mst_blocks = &classified.mst;
+    let record_blocks = &classified.record;
 
-    for record in &records {
-        if record.is_repo_commit() {
-            commit_blocks.push(record);
-        } else if record.is_mst_node() {
-            mst_blocks.push(record);
-        } else if record.is_at_proto_record() {
-            record_blocks.push(record);
-        } else {
-            unclassified_blocks.push(record);
-        }
-    }
-
-    // --- CHECK: Exactly one commit block ---
-    if commit_blocks.len() == 1 {
-        checks.push(Check::pass("CAR contains exactly 1 commit block"));
-    } else {
-        checks.push(Check::fail(
-            "CAR contains exactly 1 commit block",
-            format!("Found {} commit blocks", commit_blocks.len()),
-        ));
-    }
+    // --- CHECKS: exactly 1 commit + all classifiable ---
+    check_block_classification(&classified, &mut checks);
 
     // --- CHECK: At least one MST node ---
     if !mst_blocks.is_empty() {
@@ -375,16 +329,6 @@ fn verify_record_car(
         ));
     }
 
-    // --- CHECK: No unclassified blocks ---
-    if unclassified_blocks.is_empty() {
-        checks.push(Check::pass("All blocks are classifiable (commit, MST, or record)"));
-    } else {
-        checks.push(Check::fail(
-            "All blocks are classifiable (commit, MST, or record)",
-            format!("{} unclassified blocks", unclassified_blocks.len()),
-        ));
-    }
-
     // Use first found of each type (gracefully handle missing)
     let commit_record = match commit_blocks.first() {
         Some(c) => *c,
@@ -395,73 +339,19 @@ fn verify_record_car(
         None => return Err("No record block found in CAR".to_string()),
     };
 
-    let commit_cid_base32 = commit_record.cid.base32.clone();
-
-    // --- CHECK: Root CID matches commit CID ---
-    if root_cid_base32 == commit_cid_base32 {
-        checks.push(Check::pass("CAR root CID matches commit block CID"));
-    } else {
-        checks.push(Check::fail(
-            "CAR root CID matches commit block CID",
-            format!(
-                "Root={}, Commit={}",
-                root_cid_base32, commit_cid_base32
-            ),
-        ));
-    }
-
-    // --- CHECK: Commit CID integrity (recompute from DAG-CBOR) ---
-    verify_block_cid(commit_record, &mut checks, "Commit");
-
-    // --- CHECK: Commit has required fields ---
-    let commit = &commit_record.data_block;
-    let commit_did = commit.select_string(&["did"]).unwrap_or_default();
-    let commit_version = commit.select_int(&["version"]).unwrap_or(-1);
-    let commit_rev = commit.select_string(&["rev"]).unwrap_or_default();
-    let commit_data_cid = commit.select_cid(&["data"]);
-
-    let has_did = !commit_did.is_empty();
-    let has_version = commit_version > 0;
-    let has_rev = !commit_rev.is_empty();
-    let has_data = commit_data_cid.is_some();
-    let has_sig = commit.select_bytes(&["sig"]).is_some();
-
-    if has_did && has_version && has_rev && has_data && has_sig {
-        checks.push(Check::pass(
-            "Commit block has required fields (did, version, rev, data, sig)",
-        ));
-    } else {
-        let mut missing = Vec::new();
-        if !has_did { missing.push("did"); }
-        if !has_version { missing.push("version"); }
-        if !has_rev { missing.push("rev"); }
-        if !has_data { missing.push("data"); }
-        if !has_sig { missing.push("sig"); }
-        checks.push(Check::fail(
-            "Commit block has required fields (did, version, rev, data, sig)",
-            format!("Missing: {}", missing.join(", ")),
-        ));
-    }
-
-    // --- CHECK: Commit DID matches expected DID ---
-    if commit_did == expected_did {
-        checks.push(Check::pass("Commit DID matches expected actor DID"));
-    } else {
-        checks.push(Check::fail(
-            "Commit DID matches expected actor DID",
-            format!("Expected={}, Got={}", expected_did, commit_did),
-        ));
-    }
-
-    // --- CHECK: Commit version is 3 ---
-    if commit_version == 3 {
-        checks.push(Check::pass("Commit version is 3"));
-    } else {
-        checks.push(Check::fail(
-            "Commit version is 3",
-            format!("Got {}", commit_version),
-        ));
-    }
+    // --- CHECKS: root↔commit CID, commit CID integrity, required fields,
+    //             version=3, DID matches expected ---
+    let commit_info = verify_commit_block(
+        commit_record,
+        &root_cid_base32,
+        Some(expected_did),
+        &mut checks,
+    );
+    let commit_cid_base32 = commit_info.cid.clone();
+    let commit_did = commit_info.did.clone();
+    let commit_version = commit_info.version;
+    let commit_rev = commit_info.rev.clone();
+    let commit_data_cid = commit_info.data_cid.as_ref();
 
     // --- CHECK: Record CID integrity ---
     verify_block_cid(record_block, &mut checks, "Record");
@@ -698,43 +588,6 @@ fn order_proof_chain<'a>(
     }
 
     ordered
-}
-
-
-/// Verify that a block's CID matches the SHA-256 hash of its DAG-CBOR serialization.
-fn verify_block_cid(record: &RepoRecord, checks: &mut Vec<Check>, label: &str) {
-    match record.data_block.to_bytes() {
-        Ok(serialized) => match CidV1::compute_cid_for_dag_cbor_bytes(&serialized) {
-            Ok(computed_cid) => {
-                if computed_cid.base32 == record.cid.base32 {
-                    checks.push(Check::pass(format!(
-                        "{} block CID integrity (SHA-256 matches)",
-                        label
-                    )));
-                } else {
-                    checks.push(Check::fail(
-                        format!("{} block CID integrity (SHA-256 matches)", label),
-                        format!(
-                            "Claimed={}, Computed={}",
-                            record.cid.base32, computed_cid.base32
-                        ),
-                    ));
-                }
-            }
-            Err(e) => {
-                checks.push(Check::fail(
-                    format!("{} block CID integrity", label),
-                    format!("Failed to compute CID: {}", e),
-                ));
-            }
-        },
-        Err(e) => {
-            checks.push(Check::fail(
-                format!("{} block CID integrity", label),
-                format!("Failed to serialize DAG-CBOR: {}", e),
-            ));
-        }
-    }
 }
 
 

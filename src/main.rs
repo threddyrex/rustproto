@@ -35,6 +35,7 @@ use rustproto::cli::{
     sync_get_record_local::cmd_sync_get_record_local,
     sync_repo::cmd_sync_repo,
     test_apply_writes_and_log_firehose::cmd_test_apply_writes_and_log_firehose,
+    verify_repo::cmd_verify_repo,
     walk_mst::cmd_walk_mst
 };
 
@@ -104,6 +105,7 @@ async fn main() {
         "syncgetrecordlocal" => cmd_sync_get_record_local(&arguments),
         "syncrepo" => cmd_sync_repo(&arguments),
         "testapplywritesandlogfirehose" => cmd_test_apply_writes_and_log_firehose(&arguments),
+        "verifyrepo" => cmd_verify_repo(&arguments).await,
         "walkmst" => cmd_walk_mst(&arguments).await,
         _ => {
             logger().error(&format!("Unknown command: {}", command));
@@ -136,6 +138,7 @@ fn print_usage() {
     println!("  BackupAccount          Backup an account (repo, blobs, prefs) to local directory");
     println!("  CreateSession          Create a session (log in) for an actor");
     println!("  SyncRepo               Sync user repo data from one PDS data dir to another");
+    println!("  VerifyRepo             Verify the on-disk repo CAR file for an actor");
     println!("  InstallDb              Create PDS database schema");
     println!("  InstallConfig          Configure PDS server settings");
     println!("  RepairCommit           Re-sign repo commit after migration or format change");
@@ -189,6 +192,7 @@ fn print_usage() {
     println!("  rustproto /command SyncGetRecord /actor alice.bsky.social /collection app.bsky.feed.post /rkey 3abc123");
     println!("  rustproto /command SyncGetRecordLocal /dataDir ./data /collection app.bsky.feed.post /rkey 3abc123");
     println!("  rustproto /command SyncRepo /sourceDataDir ./source-data /destDataDir ./dest-data");
+    println!("  rustproto /command VerifyRepo /actor alice.bsky.social /dataDir ./data");
     println!("  rustproto /command BackupAccount /actor alice.bsky.social /dataDir ./data");
     println!("  rustproto /command GetBlob /actor alice.bsky.social /blobCid bafkrei... /dataDir ./data");
     println!("  rustproto /command CreateSession /actor alice.bsky.social /dataDir ./data /password mypass");

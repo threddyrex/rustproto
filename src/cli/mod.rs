@@ -23,6 +23,8 @@ pub mod sync_get_record;
 pub mod sync_get_record_local;
 pub mod sync_repo;
 pub mod test_apply_writes_and_log_firehose;
+pub mod verify_common;
+pub mod verify_repo;
 pub mod walk_mst;
 
 use std::collections::HashMap;
