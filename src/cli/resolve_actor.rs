@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use crate::cli::get_arg;
-use crate::log::{logger};
+use crate::log::{logger, LogLevel};
 use crate::ws::ActorQueryOptions;
 use crate::ws::BlueskyClient;
 use crate::ws::DEFAULT_APP_VIEW_HOST_NAME;
@@ -56,6 +56,21 @@ pub async fn cmd_resolve_actor(args: &HashMap<String, String>) {
                 log.info("");
                 log.info("=== JSON ===");
                 log.info(&json);
+            }
+
+            // At trace level, also dump the raw DID document pretty-printed
+            if log.level() <= LogLevel::Trace {
+                if let Some(ref did_doc) = info.did_doc {
+                    log.trace("");
+                    log.trace("=== DID Document (pretty) ===");
+                    match serde_json::from_str::<serde_json::Value>(did_doc) {
+                        Ok(value) => match serde_json::to_string_pretty(&value) {
+                            Ok(pretty) => log.trace(&pretty),
+                            Err(_) => log.trace(did_doc),
+                        },
+                        Err(_) => log.trace(did_doc),
+                    }
+                }
             }
         }
         Err(e) => {
