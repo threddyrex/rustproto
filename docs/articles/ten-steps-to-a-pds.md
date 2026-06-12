@@ -84,7 +84,7 @@ A user's data is stored in a repo. This repo can be downloaded directly from the
 
 **Reading:**
 
-- [com.atproto.sync.getRepo](https://docs.bsky.app/docs/api/com-atproto-sync-get-repo) — the HTTP reference doc for the `getRepo` endpoint.
+- [com.atproto.sync.getRepo](https://endpoints.bsky.app/#bluesky-app/tag/comatprotosync/GET/xrpc/com.atproto.sync.getRepo) — the HTTP reference doc for the `getRepo` endpoint.
 
 **Coding concepts:**
 
@@ -306,7 +306,7 @@ in the following order, grouped by category. See the [XRPC Reference](/docs/xrpc
 **Reading:**
 
 - [AT Protocol XRPC](https://atproto.com/specs/xrpc) — the XRPC spec
-- [Bluesky HTTP API Reference](https://docs.bsky.app/docs/category/http-reference) — detailed endpoint documentation
+- [Bluesky HTTP API Reference](https://endpoints.bsky.app/) — detailed endpoint documentation
 
 **Coding concepts:**
 
