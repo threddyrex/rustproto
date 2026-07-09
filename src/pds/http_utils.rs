@@ -15,8 +15,12 @@ use axum::http::HeaderMap;
 ///
 /// IP address resolution order:
 /// 1. `X-Forwarded-For` header (set by reverse proxies like Caddy). When the
-///    header contains a comma-separated list, the first (left-most) entry is
-///    used and trimmed of surrounding whitespace.
+///    header contains a comma-separated list, the last (right-most) entry is
+///    used and trimmed of surrounding whitespace. Caddy *appends* the real
+///    connecting IP to the right of any client-supplied value, so the
+///    right-most entry is the trustworthy one and left-most entries may be
+///    spoofed by the client. This assumes the PDS runs directly behind a
+///    single trusted Caddy reverse proxy (its last hop).
 /// 2. The direct connection socket address, when provided.
 /// 3. The literal string `"[_UNKNOWN_]"` when neither is available.
 ///
@@ -46,8 +50,10 @@ pub fn get_caller_info(headers: &HeaderMap, socket_addr: Option<SocketAddr>) -> 
         .get("X-Forwarded-For")
         .and_then(|v| v.to_str().ok())
         .map(|s| {
-            // X-Forwarded-For can contain multiple IPs; take the first one.
-            s.split(',').next().unwrap_or(s).trim().to_string()
+            // X-Forwarded-For can contain multiple IPs. Caddy appends the real
+            // connecting IP to the right, so take the last (right-most) entry;
+            // left-most entries are client-supplied and can be spoofed.
+            s.rsplit(',').next().unwrap_or(s).trim().to_string()
         })
         .unwrap_or_else(|| {
             socket_addr
