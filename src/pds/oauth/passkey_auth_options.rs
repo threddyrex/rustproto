@@ -77,7 +77,7 @@ pub async fn passkey_authentication_options(
     }
 
     // Increment statistics
-    let (ip_address, user_agent) = get_caller_info(&headers);
+    let (ip_address, user_agent) = get_caller_info(&headers, None);
     let stat_key = StatisticKey {
         name: "oauth/passkeyauthenticationoptions".to_string(),
         ip_address,

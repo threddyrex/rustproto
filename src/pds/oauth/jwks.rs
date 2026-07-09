@@ -36,7 +36,7 @@ pub async fn oauth_jwks(
     }
 
     // Increment statistics
-    let (ip_address, user_agent) = get_caller_info(&headers);
+    let (ip_address, user_agent) = get_caller_info(&headers, None);
     let stat_key = StatisticKey {
         name: "oauth/jwks".to_string(),
         ip_address,

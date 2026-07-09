@@ -40,7 +40,7 @@ pub async fn oauth_authorize_post(
     }
 
     // Increment statistics
-    let (ip_address, user_agent) = get_caller_info(&headers);
+    let (ip_address, user_agent) = get_caller_info(&headers, None);
     let stat_key = StatisticKey {
         name: "oauth/authorize POST".to_string(),
         ip_address,

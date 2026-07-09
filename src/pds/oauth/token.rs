@@ -58,7 +58,7 @@ pub async fn oauth_token(
     }
 
     // Increment statistics
-    let (ip_address, user_agent) = get_caller_info(&headers);
+    let (ip_address, user_agent) = get_caller_info(&headers, None);
     let stat_key = StatisticKey {
         name: "oauth/token".to_string(),
         ip_address,
@@ -216,7 +216,7 @@ async fn handle_authorization_code(
     let auth_type = oauth_request.auth_type.clone().unwrap_or_else(|| "Unknown".to_string());
 
     // Get caller info for session
-    let (ip_address, _) = get_caller_info(headers);
+    let (ip_address, _) = get_caller_info(headers, None);
 
     // Create new OAuth session
     let session_id = format!("sessionid-{}", Uuid::new_v4());

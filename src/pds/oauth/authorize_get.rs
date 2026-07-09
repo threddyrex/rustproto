@@ -42,7 +42,7 @@ pub async fn oauth_authorize_get(
     }
 
     // Increment statistics
-    let (ip_address, user_agent) = get_caller_info(&headers);
+    let (ip_address, user_agent) = get_caller_info(&headers, None);
     let stat_key = StatisticKey {
         name: "oauth/authorize GET".to_string(),
         ip_address,

@@ -89,7 +89,7 @@ pub async fn oauth_authorization_server(
     }
 
     // Increment statistics
-    let (ip_address, user_agent) = get_caller_info(&headers);
+    let (ip_address, user_agent) = get_caller_info(&headers, None);
     let stat_key = StatisticKey {
         name: ".well-known/oauth-authorization-server".to_string(),
         ip_address,

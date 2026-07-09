@@ -186,27 +186,8 @@ fn is_admin_enabled(db: &PdsDb) -> bool {
 
 /// Extract caller IP address and User-Agent from request headers.
 ///
-/// Tries X-Forwarded-For header first (for reverse proxy setups like Caddy),
-/// then falls back to direct connection socket address. Returns "unknown" if
-/// neither is available.
-pub fn get_caller_info(headers: &HeaderMap, socket_addr: Option<SocketAddr>) -> (String, String) {
-    // Try X-Forwarded-For header first (set by reverse proxies like Caddy)
-    let ip_address = headers
-        .get("X-Forwarded-For")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string())
-        .or_else(|| socket_addr.map(|addr| addr.ip().to_string()))
-        .unwrap_or_else(|| "unknown".to_string());
-
-    // Get User-Agent header
-    let user_agent = headers
-        .get("User-Agent")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "unknown".to_string());
-
-    (ip_address, user_agent)
-}
+/// Re-exported from the canonical implementation in [`crate::pds::http_utils`].
+pub use crate::pds::http_utils::get_caller_info;
 
 /// Verify a password against a stored PBKDF2 hash.
 ///

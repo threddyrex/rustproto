@@ -19,6 +19,7 @@ use tower_http::cors::{Any, CorsLayer};
 use super::admin;
 use super::background_jobs::BackgroundJobs;
 use super::db::{PdsDb};
+use super::http_utils::get_caller_info;
 use super::oauth;
 use super::xrpc;
 use crate::fs::LocalFileSystem;
@@ -258,7 +259,7 @@ async fn logging_middleware(
     let start = std::time::Instant::now();
 
     // Extract caller info for statistics
-    let (ip_address, user_agent) = get_caller_info(&request, &addr);
+    let (ip_address, user_agent) = get_caller_info(request.headers(), Some(addr));
 
     // Log the connection
     state.log.info(&format!(
@@ -278,38 +279,6 @@ async fn logging_middleware(
     ));
 
     response
-}
-
-/// Extract caller info (IP address and user agent) from request headers.
-///
-/// IP address is extracted from X-Forwarded-For header if present,
-/// otherwise falls back to the socket address.
-fn get_caller_info(request: &Request, socket_addr: &SocketAddr) -> (String, String) {
-    // Get User-Agent
-    let user_agent = request
-        .headers()
-        .get("User-Agent")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "unknown".to_string());
-
-    // Get IP address from X-Forwarded-For, or fall back to socket address
-    let mut ip_address = request
-        .headers()
-        .get("X-Forwarded-For")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| {
-            // X-Forwarded-For can contain multiple IPs, take the first one
-            s.split(',').next().unwrap_or(s).trim().to_string()
-        })
-        .unwrap_or_else(|| socket_addr.ip().to_string());
-
-    // Group uptimerobot requests together (they come from many IPs)
-    if user_agent.contains("www.uptimerobot.com") {
-        ip_address = "[uptimerobot]".to_string();
-    }
-
-    (ip_address, user_agent)
 }
 
 /// Errors that can occur during PDS server operations.

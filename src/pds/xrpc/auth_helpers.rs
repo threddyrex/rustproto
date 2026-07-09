@@ -8,7 +8,6 @@
 //! - OAuth: DPoP-bound OAuth 2.0 tokens with at+jwt type
 //! - Service: Service auth tokens (JWT signed by remote service's signing key)
 
-use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{
@@ -242,38 +241,8 @@ pub fn auth_failure_response(auth_result: &AuthResult) -> Response {
 
 /// Extract caller info (IP address and user agent) from request headers.
 ///
-/// # Arguments
-///
-/// * `headers` - The HTTP headers from the request
-/// * `socket_addr` - The socket address of the connection
-///
-/// # Returns
-///
-/// A tuple of (ip_address, user_agent).
-pub fn get_caller_info(headers: &HeaderMap, socket_addr: Option<SocketAddr>) -> (String, String) {
-    // Get User-Agent
-    let user_agent = headers
-        .get("User-Agent")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "unknown".to_string());
-
-    // Get IP address from X-Forwarded-For, or fall back to socket address
-    let ip_address = headers
-        .get("X-Forwarded-For")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| {
-            // X-Forwarded-For can contain multiple IPs, take the first one
-            s.split(',').next().unwrap_or(s).trim().to_string()
-        })
-        .unwrap_or_else(|| {
-            socket_addr
-                .map(|addr| addr.ip().to_string())
-                .unwrap_or_else(|| "unknown".to_string())
-        });
-
-    (ip_address, user_agent)
-}
+/// Re-exported from the canonical implementation in [`crate::pds::http_utils`].
+pub use crate::pds::http_utils::get_caller_info;
 
 /// Result of OAuth token validation.
 #[allow(dead_code)]

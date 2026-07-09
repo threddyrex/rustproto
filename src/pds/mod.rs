@@ -9,6 +9,7 @@ pub mod background_jobs;
 pub mod blob_db;
 pub mod db;
 pub mod firehose_event_generator;
+pub mod http_utils;
 pub mod installer;
 pub mod oauth;
 pub mod server;

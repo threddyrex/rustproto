@@ -4,30 +4,17 @@
 
 use std::sync::Arc;
 
-use axum::http::HeaderMap;
-
 use crate::pds::db::PdsDb;
 use crate::pds::server::PdsState;
 
 /// Extract caller info (IP address and user agent) from headers.
 ///
-/// IP address is extracted from X-Forwarded-For header (first IP if multiple).
-/// Falls back to "unknown" if not present.
-pub fn get_caller_info(headers: &HeaderMap) -> (String, String) {
-    let ip_address = headers
-        .get("X-Forwarded-For")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.split(',').next().unwrap_or(s).trim().to_string())
-        .unwrap_or_else(|| "unknown".to_string());
-
-    let user_agent = headers
-        .get("User-Agent")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "unknown".to_string());
-
-    (ip_address, user_agent)
-}
+/// Re-exported from the canonical implementation in [`crate::pds::http_utils`].
+///
+/// OAuth handlers do not extract the connection socket address, so callers pass
+/// `None` for `socket_addr`; the IP is resolved from `X-Forwarded-For` or falls
+/// back to `"unknown"`.
+pub use crate::pds::http_utils::get_caller_info;
 
 /// Check if OAuth is enabled in the PDS configuration.
 ///
