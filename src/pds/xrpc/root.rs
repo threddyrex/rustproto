@@ -29,7 +29,7 @@ pub async fn root(
     let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
 
     let stat_key = StatisticKey {
-        name: "[root]".to_string(),
+        name: "[_ROOT_]".to_string(),
         ip_address,
         user_agent,
     };

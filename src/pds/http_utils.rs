@@ -18,12 +18,12 @@ use axum::http::HeaderMap;
 ///    header contains a comma-separated list, the first (left-most) entry is
 ///    used and trimmed of surrounding whitespace.
 /// 2. The direct connection socket address, when provided.
-/// 3. The literal string `"[UNKNOWN]"` when neither is available.
+/// 3. The literal string `"[_UNKNOWN_]"` when neither is available.
 ///
-/// The `User-Agent` header is returned verbatim, or `"[UNKNOWN]"` when absent.
+/// The `User-Agent` header is returned verbatim, or `"[_UNKNOWN_]"` when absent.
 ///
 /// Requests originating from UptimeRobot (identified via the User-Agent) are
-/// grouped under the `"[UPTIME-ROBOT]"` IP so monitoring traffic from its many
+/// grouped under the `[_UPTIME_ROBOT_]` IP so monitoring traffic from its many
 /// source IPs is aggregated in statistics.
 ///
 /// # Security
@@ -39,7 +39,7 @@ pub fn get_caller_info(headers: &HeaderMap, socket_addr: Option<SocketAddr>) -> 
         .get("User-Agent")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string())
-        .unwrap_or_else(|| "[UNKNOWN]".to_string());
+        .unwrap_or_else(|| "[_UNKNOWN_]".to_string());
 
     // Get IP address from X-Forwarded-For, or fall back to the socket address.
     let mut ip_address = headers
@@ -52,12 +52,12 @@ pub fn get_caller_info(headers: &HeaderMap, socket_addr: Option<SocketAddr>) -> 
         .unwrap_or_else(|| {
             socket_addr
                 .map(|addr| addr.ip().to_string())
-                .unwrap_or_else(|| "[UNKNOWN]".to_string())
+                .unwrap_or_else(|| "[_UNKNOWN_]".to_string())
         });
 
     // Group UptimeRobot requests together (they come from many IPs).
     if user_agent.contains("www.uptimerobot.com") {
-        ip_address = "[UPTIME-ROBOT]".to_string();
+        ip_address = "[_UPTIME_ROBOT_]".to_string();
     }
 
     (ip_address, user_agent)
