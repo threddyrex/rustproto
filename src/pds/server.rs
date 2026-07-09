@@ -306,7 +306,7 @@ fn get_caller_info(request: &Request, socket_addr: &SocketAddr) -> (String, Stri
 
     // Group uptimerobot requests together (they come from many IPs)
     if user_agent.contains("www.uptimerobot.com") {
-        ip_address = "uptimerobot.com".to_string();
+        ip_address = "[uptimerobot]".to_string();
     }
 
     (ip_address, user_agent)

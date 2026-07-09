@@ -2000,7 +2000,7 @@ impl PdsDb {
     pub fn increment_statistic(&self, key: &StatisticKey) -> Result<(), PdsDbError> {
         let mut statistic_key = key.clone();
         if statistic_key.user_agent.contains("UptimeRobot") {
-            statistic_key.ip_address = "global".to_string();
+            statistic_key.ip_address = "[uptimerobot]".to_string();
         }
 
         if self.statistic_exists(&statistic_key)? {
