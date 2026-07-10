@@ -1,4 +1,4 @@
-
+//! backup account data like prefs, repo, and blobs to local file system
 
 use std::collections::HashMap;
 use crate::cli::get_arg;

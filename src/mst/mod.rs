@@ -1,4 +1,4 @@
-//! Merkle Search Tree (MST) module for AT Protocol.
+//! Merkle Search Tree (MST) implementation for atproto
 //!
 //! This module provides types and functions for working with Merkle Search Trees,
 //! which are used by the AT Protocol for repositories.

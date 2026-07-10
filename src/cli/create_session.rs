@@ -1,4 +1,4 @@
-
+//! create a login session, needed for authenticated requests
 
 use std::collections::HashMap;
 use crate::cli::get_arg;

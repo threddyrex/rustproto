@@ -1,4 +1,4 @@
-//! Web services module for AT Protocol / Bluesky interactions.
+//! web service client, including actor resolution and PDS lookup
 //!
 //! This module provides functionality to resolve actor information,
 //! including handle-to-DID resolution, DID document retrieval, and PDS lookup.

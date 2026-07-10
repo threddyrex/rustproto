@@ -1,4 +1,4 @@
-//! File system module for local data storage.
+//! file system utilities
 //!
 //! This module provides functionality for managing local file system
 //! operations, including directory structure creation and file path management.

@@ -1,4 +1,4 @@
-//! Firehose module for consuming AT Protocol event streams.
+//! consuming events from an atproto event stream
 //!
 //! This module provides functionality to connect to a PDS firehose
 //! and process repo events in real-time.

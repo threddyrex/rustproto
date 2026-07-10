@@ -1,4 +1,4 @@
-//! Repository parsing module for AT Protocol CAR files.
+//! repository parsing for atproto CAR files
 //! 
 //! ----------------------------------------------------------------------------------------------------
 //! CAR format

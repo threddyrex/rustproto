@@ -1,4 +1,4 @@
-//! Logging module for rustproto.
+//! logging throughout the crate
 //!
 //! This module provides logging functionality with configurable log levels
 //! and multiple destinations (console, file).

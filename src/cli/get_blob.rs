@@ -1,4 +1,4 @@
-
+//! get a blob by CID and save it to the local file system
 
 use std::collections::HashMap;
 

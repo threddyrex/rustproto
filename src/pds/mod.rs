@@ -1,4 +1,4 @@
-//! PDS (Personal Data Server) module.
+//! Personal Data Server (PDS) implementation for atproto
 //!
 //! This module provides functionality for running a personal AT Protocol server,
 //! including database operations, installation, and configuration.

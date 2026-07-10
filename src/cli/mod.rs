@@ -1,4 +1,4 @@
-//! Command line interface module
+//! command line interface, and general entry point for a user
 
 pub mod backup_account;
 pub mod create_session;
