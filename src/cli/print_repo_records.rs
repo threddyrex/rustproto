@@ -1,4 +1,4 @@
-
+//! walk a repo file (CAR) and print all records in a human-readable format, with optional filtering by collection or month. Also prints stats about the records.
 
 use std::collections::HashMap;
 

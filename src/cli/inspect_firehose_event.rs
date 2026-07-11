@@ -1,4 +1,4 @@
-
+//! (run on PDS) inspect a firehose event stored in the PDS database, print header and body DAG-CBOR as JSON and debug string, and if it contains blocks, parse and print those as well.
 use std::collections::HashMap;
 use std::io::Cursor;
 use crate::cli::get_arg;

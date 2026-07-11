@@ -1,4 +1,4 @@
-
+//! resolve actor info by handle or DID, print in human-readable format and as JSON, and at trace level also print the raw DID document pretty-printed if available.
 
 use std::collections::HashMap;
 use crate::cli::get_arg;

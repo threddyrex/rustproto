@@ -1,4 +1,4 @@
-//! sync_get_record client command.
+//! call com.atproto.sync.getRecord on a remote PDS and verify the returned CAR file contains a valid proof chain for the requested record.
 //!
 //! Calls com.atproto.sync.getRecord on a remote PDS and verifies the
 //! returned CAR file contains a valid proof chain for the requested record.

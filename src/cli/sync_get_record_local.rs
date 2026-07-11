@@ -1,4 +1,4 @@
-
+//! (run on PDS) get a record directly from the local pds.db and print its details, including the CAR header, repo commit, MST proof chain, and record content. Useful for debugging and verifying the contents of the local database without going through the full sync process.
 
 use std::collections::HashMap;
 use super::{build_commit_dag_cbor_local, hex_encode};

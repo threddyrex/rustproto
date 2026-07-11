@@ -1,4 +1,4 @@
-
+//! (run on PDS) copies data from one PDS database to another, including repo header, repo commit, repo records, and blob metadata, and also copies blob files on disk. Useful for syncing data between PDS instances or for backup/restore purposes.
 use std::collections::HashMap;
 use crate::cli::get_arg;
 use crate::log::{logger};

@@ -1,4 +1,4 @@
-
+//! connect to an event stream and listen for events, printing them in a human-readable format. For repo commit events, also parse the blocks and print the records in human-readable format.
 
 use std::collections::HashMap;
 use std::io::Cursor;

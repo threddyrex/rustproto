@@ -1,4 +1,4 @@
-
+//! (run on PDS) print the MST stored in the PDS database in a human-readable format, including the DAG-CBOR representation of each node and stats about the MST.
 
 use std::collections::HashMap;
 use crate::cli::get_arg;

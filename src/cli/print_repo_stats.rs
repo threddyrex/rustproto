@@ -1,4 +1,4 @@
-
+//! walk a repo file (CAR) and print stats about the records, including counts by type and by month. Also tracks earliest and latest record dates.
 use std::collections::HashMap;
 use chrono::Datelike;
 

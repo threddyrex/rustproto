@@ -1,4 +1,4 @@
-
+//! walk a local CAR repo MST, print the structure and stats about the MST. Useful for debugging and understanding the MST structure in a repo.
 use std::collections::HashMap;
 use crate::cli::get_arg;
 use crate::log::{logger};

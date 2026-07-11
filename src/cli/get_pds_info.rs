@@ -1,3 +1,4 @@
+//! get PDS info including health, description, and repo list
 
 use std::collections::HashMap;
 use crate::cli::get_arg;

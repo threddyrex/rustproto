@@ -1,4 +1,4 @@
-
+//! get post and print all URIs found in the response
 
 use std::collections::HashMap;
 

@@ -1,4 +1,4 @@
-
+//! (run on PDS) install config file for the PDS
 
 use std::collections::HashMap;
 use crate::cli::get_arg;
