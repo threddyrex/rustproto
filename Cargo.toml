@@ -1,7 +1,10 @@
 [package]
 name = "rustproto"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
+license-file = "LICENSE.txt"
+description = "Utilities for working with AT Protocol (atproto) and Bluesky, including actor resolution, repository parsing, MST, and a PDS implementation."
+repository = "https://github.com/threddyrex/rustproto"
 
 [dependencies]
 reqwest = { version = "0.12", features = ["json"] }
