@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::cli::get_arg;
 use crate::log::{logger};
 use crate::fs::LocalFileSystem;
-use crate::pds::Installer;
+use crate::pds::installer::Installer;
 
 
 pub fn cmd_install_db(args: &HashMap<String, String>) {

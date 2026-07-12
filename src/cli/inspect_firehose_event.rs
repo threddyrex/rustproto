@@ -5,7 +5,7 @@ use crate::cli::get_arg;
 use crate::log::{logger};
 use crate::fs::LocalFileSystem;
 use crate::repo::{DagCborObject, DagCborValue, Repo};
-use crate::pds::PdsDb;
+use crate::pds::db::PdsDb;
 use super::hex_encode;
 
 

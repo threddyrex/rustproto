@@ -24,11 +24,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use rustproto::fs::LocalFileSystem;
 use rustproto::log::Logger;
-use rustproto::pds::{
-    AdminSession, Blob, DbRepoCommit, DbRepoHeader, FirehoseEvent, Installer,
+use rustproto::pds::db::{
+    AdminSession, Blob, DbRepoCommit, DbRepoHeader, FirehoseEvent,
     LegacySession, OauthRequest, OauthSession, Passkey, PasskeyChallenge, PdsDb, PdsDbError,
     StatisticKey,
 };
+use rustproto::pds::installer::{Installer};
 use rustproto::pds::db::{format_datetime_for_db, get_current_datetime_for_db};
 use chrono::{Duration, Utc};
 use uuid::Uuid;

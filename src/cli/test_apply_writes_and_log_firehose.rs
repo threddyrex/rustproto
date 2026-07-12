@@ -33,7 +33,7 @@ pub fn cmd_test_apply_writes_and_log_firehose(args: &HashMap<String, String>) {
             return;
         }
     };
-    let db = match crate::pds::PdsDb::connect(&lfs) {
+    let db = match crate::pds::db::PdsDb::connect(&lfs) {
         Ok(db) => db,
         Err(e) => {
             log.error(&format!("Failed to open database: {}", e));
@@ -98,7 +98,7 @@ pub fn cmd_test_apply_writes_and_log_firehose(args: &HashMap<String, String>) {
     }
 
     // Call ApplyWrites
-    let user_repo = match crate::pds::UserRepo::new(&db) {
+    let user_repo = match crate::pds::user_repo::UserRepo::new(&db) {
         Ok(ur) => ur,
         Err(e) => {
             log.error(&format!("Failed to create UserRepo: {}", e));
@@ -106,7 +106,7 @@ pub fn cmd_test_apply_writes_and_log_firehose(args: &HashMap<String, String>) {
         }
     };
 
-    let operation = crate::pds::ApplyWritesOperation {
+    let operation = crate::pds::user_repo::ApplyWritesOperation {
         op_type: crate::pds::user_repo::write_type::CREATE.to_string(),
         collection: collection.to_string(),
         rkey: rkey.clone(),

@@ -1,8 +1,6 @@
 //! rustproto - Rust AT Protocol / Bluesky SDK
 //!
-//! This crate provides utilities for working with AT Protocol (atproto) and Bluesky.
-//! It includes actor resolution, identity lookup, repository parsing, and related functionality.
-//! It also provides a PDS implementation (several accounts are currently hosted on rustproto).
+//! Utilities for working with AT Protocol (atproto) and Bluesky, including actor resolution, repository parsing, MST, and a PDS implementation.
 //!
 pub mod cli;
 pub mod firehose;

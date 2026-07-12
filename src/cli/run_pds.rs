@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::cli::get_arg;
 use crate::log::{logger};
 use crate::fs::LocalFileSystem;
-use crate::pds::PdsServer;
+use crate::pds::server::PdsServer;
 
 pub async fn cmd_run_pds(args: &HashMap<String, String>) {
     let log = logger();

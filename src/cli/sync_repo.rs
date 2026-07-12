@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::cli::get_arg;
 use crate::log::{logger};
 use crate::fs::LocalFileSystem;
-use crate::pds::PdsDb;
+use crate::pds::db::PdsDb;
 
 
 pub fn cmd_sync_repo(args: &HashMap<String, String>) {
