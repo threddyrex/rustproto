@@ -6,7 +6,7 @@ use crate::cli::get_arg;
 use crate::log::{logger};
 use crate::ws::BlueskyClient;
 use crate::ws::DEFAULT_APP_VIEW_HOST_NAME;
-use crate::firehose::Firehose;
+use crate::firehose::listen;
 use crate::repo::{DagCborValue, Repo};
 
 pub async fn cmd_start_firehose_consumer(args: &HashMap<String, String>) {
@@ -64,7 +64,7 @@ pub async fn cmd_start_firehose_consumer(args: &HashMap<String, String>) {
     log.info(&format!("Connecting to firehose at: {}", url));
 
     // Listen on firehose
-    let result = Firehose::listen(&url, |header, body| {
+    let result = listen(&url, |header, body| {
         // Filter to only our DID
         let did = body.select_string(&["repo"]);
         if did.as_ref() != Some(&target_did) {
