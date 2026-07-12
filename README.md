@@ -1,5 +1,5 @@
 
-# rustproto - software for ATProto and Bluesky
+# rustproto - software for atproto
 
 This is a Rust port of [dnproto](https://github.com/threddyrex/dnproto), which is an atproto PDS.
 

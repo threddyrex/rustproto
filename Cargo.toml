@@ -3,7 +3,7 @@ name = "rustproto"
 version = "0.1.0"
 edition = "2024"
 license-file = "LICENSE.txt"
-description = "Utilities for working with AT Protocol (atproto) and Bluesky, including actor resolution, repository parsing, MST, and a PDS implementation."
+description = "Utilities for working with AT Protocol (atproto). Includes functionality for actor resolution, repository parsing, MST, and a PDS implementation."
 repository = "https://github.com/threddyrex/rustproto"
 
 [dependencies]
