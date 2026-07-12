@@ -1,4 +1,4 @@
-//! Background jobs module for the PDS.
+//! background jobs for the PDS
 //!
 //! This module provides background job scheduling for maintenance tasks such as:
 //! - Updating log levels from the database

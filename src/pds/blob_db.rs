@@ -1,4 +1,4 @@
-//! Blob database operations.
+//! storage implementation for blobs
 //!
 //! This module provides file-based storage for blob bytes.
 //! Blob metadata is stored in SQLite (via PdsDb), while the actual

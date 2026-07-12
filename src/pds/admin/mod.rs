@@ -1,4 +1,4 @@
-//! Admin module for PDS.
+//! PDS administrative dashboard
 //!
 //! Provides the administrative interface for managing the PDS,
 //! including login, configuration viewing, and session management.

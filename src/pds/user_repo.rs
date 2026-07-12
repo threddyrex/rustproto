@@ -1,4 +1,4 @@
-//! User repository operations module.
+//! operations on a user repo
 //!
 //! This module handles all write operations to the user's repository,
 //! including creating, updating, and deleting records. It manages:

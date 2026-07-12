@@ -1,4 +1,4 @@
-//! PDS Installer module.
+//! installing a PDS
 //!
 //! This module provides installation functions for the PDS,
 //! including database schema creation and initial configuration.

@@ -1,4 +1,4 @@
-//! Database module for PDS.
+//! database implementation
 //!
 //! This module provides SQLite database operations for the PDS,
 //! including table creation, configuration storage, and data access.

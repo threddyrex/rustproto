@@ -1,4 +1,4 @@
-//! OAuth module for PDS.
+//! oauth utilities and web handlers
 //!
 //! This module provides handlers for OAuth 2.0 endpoints as specified
 //! in the AT Protocol OAuth specification.

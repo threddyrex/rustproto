@@ -1,4 +1,4 @@
-//! Shared HTTP request utilities for the PDS.
+//! http utils
 //!
 //! This module provides small helpers that operate on incoming HTTP requests
 //! and are shared across the admin, oauth, xrpc, and server layers.

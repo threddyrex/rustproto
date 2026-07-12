@@ -1,4 +1,4 @@
-//! PDS Server module.
+//! server entry point
 //!
 //! This module provides the HTTP/HTTPS server implementation for the PDS,
 //! using Axum as the web framework.

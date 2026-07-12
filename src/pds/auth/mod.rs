@@ -1,4 +1,4 @@
-//! Authentication module for PDS.
+//! auth utilities
 //!
 //! This module provides JWT token generation, validation, and password
 //! verification utilities for AT Protocol authentication.

@@ -1,4 +1,4 @@
-//! XRPC module for PDS.
+//! the full xrpc implementation for an atproto PDS
 //!
 //! This module provides handlers for AT Protocol XRPC endpoints.
 //! Each endpoint is implemented in its own submodule.

@@ -1,4 +1,4 @@
-//! Firehose event generator.
+//! generate events for firehose (event stream)
 //!
 //! Generates AT Protocol firehose events (#account, #identity, #sync, #commit)
 //! and stores them in the database for streaming to subscribers.
