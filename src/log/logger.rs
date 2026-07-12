@@ -114,37 +114,6 @@ pub fn logger() -> &'static Logger {
     GLOBAL_LOGGER.get_or_init(Logger::default_logger)
 }
 
-/// Convenience macro for logging at trace level.
-#[macro_export]
-macro_rules! log_trace {
-    ($($arg:tt)*) => {
-        $crate::log::logger().trace(&format!($($arg)*))
-    };
-}
-
-/// Convenience macro for logging at info level.
-#[macro_export]
-macro_rules! log_info {
-    ($($arg:tt)*) => {
-        $crate::log::logger().info(&format!($($arg)*))
-    };
-}
-
-/// Convenience macro for logging at warning level.
-#[macro_export]
-macro_rules! log_warning {
-    ($($arg:tt)*) => {
-        $crate::log::logger().warning(&format!($($arg)*))
-    };
-}
-
-/// Convenience macro for logging at error level.
-#[macro_export]
-macro_rules! log_error {
-    ($($arg:tt)*) => {
-        $crate::log::logger().error(&format!($($arg)*))
-    };
-}
 
 #[cfg(test)]
 mod tests {
