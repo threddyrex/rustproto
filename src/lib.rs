@@ -1,6 +1,6 @@
-//! rustproto - Rust AT Protocol / Bluesky SDK
+//! rustproto - software for atproto
 //!
-//! Utilities for working with AT Protocol (atproto) and Bluesky, including actor resolution, repository parsing, MST, and a PDS implementation.
+//! Utilities for working with AT Protocol (atproto). Includes functionality for actor resolution, repository parsing, MST, and a PDS implementation.
 //!
 pub mod cli;
 pub mod firehose;
