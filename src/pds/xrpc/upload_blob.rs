@@ -14,7 +14,7 @@ use axum::{
 };
 use serde::Serialize;
 
-use crate::pds::blob_db::BlobDb;
+use crate::pds::blob_db::{BlobDb, create_blob_db};
 use crate::pds::db::{Blob, StatisticKey};
 use crate::pds::server::PdsState;
 use crate::pds::xrpc::auth_helpers::{auth_failure_response, check_user_auth_with_lxm_async, get_caller_info, AuthType};
@@ -154,7 +154,7 @@ pub async fn upload_blob(
         content_length,
     };
 
-    let blob_db = BlobDb::new(&state.lfs, state.log);
+    let blob_db = create_blob_db(&state.lfs, state.log);
 
     // Check if blob exists and update or insert accordingly
     match state.db.blob_exists(&cid) {

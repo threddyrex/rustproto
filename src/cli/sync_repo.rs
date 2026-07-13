@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::cli::get_arg;
 use crate::log::{logger};
 use crate::fs::LocalFileSystem;
+use crate::pds::blob_db::{BlobDb, create_blob_db};
 use crate::pds::db::PdsDb;
 
 
@@ -182,8 +183,8 @@ pub fn cmd_sync_repo(args: &HashMap<String, String>) {
     // =========================================================================
     log.info("");
     log.info("=== SYNC BLOB FILES ===");
-    let source_blob_db = crate::pds::blob_db::BlobDb::new(&source_lfs, log);
-    let dest_blob_db = crate::pds::blob_db::BlobDb::new(&dest_lfs, log);
+    let source_blob_db = create_blob_db(&source_lfs, log);
+    let dest_blob_db = create_blob_db(&dest_lfs, log);
 
     let mut blob_files_synced = 0;
     let mut blob_files_skipped = 0;

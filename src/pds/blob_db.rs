@@ -3,6 +3,9 @@
 //! This module provides file-based storage for blob bytes.
 //! Blob metadata is stored in SQLite (via PdsDb), while the actual
 //! blob bytes are stored as files on disk.
+//! The BlobDb trait defines the interface for blob storage, and BlobFileDb
+//! is a concrete implementation that stores blobs as files in the `pds/blobs` directory.
+//! Later we might provide other implementations (cloud storage, etc.).
 
 use std::fs;
 use std::io;
@@ -11,23 +14,39 @@ use std::path::PathBuf;
 use crate::fs::LocalFileSystem;
 use crate::log::Logger;
 
+
+pub trait BlobDb {
+    fn insert_blob_bytes(&self, cid: &str, bytes: &[u8]) -> io::Result<()>;
+    fn has_blob_bytes(&self, cid: &str) -> bool;
+    fn get_blob_bytes(&self, cid: &str) -> io::Result<Vec<u8>>;
+    fn delete_blob_bytes(&self, cid: &str) -> io::Result<()>;
+    fn update_blob_bytes(&self, cid: &str, bytes: &[u8]) -> io::Result<()>;
+}
+
+
+/// Entry point for callers.
+pub fn create_blob_db<'a>(lfs: &'a LocalFileSystem, log: &'a Logger) -> impl BlobDb + 'a {
+    BlobFileDb::new(lfs, log)
+}
+
+
 /// Blob database for storing and retrieving blob bytes.
 ///
 /// Stores blobs as files in the `pds/blobs` directory, with filenames
 /// derived from the CID (with invalid characters replaced).
-pub struct BlobDb<'a> {
+pub struct BlobFileDb<'a> {
     lfs: &'a LocalFileSystem,
     log: &'a Logger,
 }
 
-impl<'a> BlobDb<'a> {
+impl<'a> BlobFileDb<'a> {
     /// Create a new BlobDb instance.
     ///
     /// # Arguments
     ///
     /// * `lfs` - LocalFileSystem instance
     /// * `log` - Logger instance
-    pub fn new(lfs: &'a LocalFileSystem, log: &'a Logger) -> Self {
+    fn new(lfs: &'a LocalFileSystem, log: &'a Logger) -> Self {
         Self { lfs, log }
     }
 
@@ -40,6 +59,10 @@ impl<'a> BlobDb<'a> {
         let safe_cid = get_safe_filename(cid);
         self.lfs.get_data_dir().join("pds").join("blobs").join(safe_cid)
     }
+}
+
+impl<'a> BlobDb for BlobFileDb<'a> {
+
 
     /// Insert blob bytes.
     ///
@@ -47,7 +70,7 @@ impl<'a> BlobDb<'a> {
     ///
     /// * `cid` - The CID of the blob
     /// * `bytes` - The blob bytes
-    pub fn insert_blob_bytes(&self, cid: &str, bytes: &[u8]) -> io::Result<()> {
+    fn insert_blob_bytes(&self, cid: &str, bytes: &[u8]) -> io::Result<()> {
         let file_path = self.get_blob_file_path(cid);
         self.log.info(&format!("[BLOB] InsertBlobBytes: {:?}", file_path));
         fs::write(&file_path, bytes)
@@ -58,7 +81,7 @@ impl<'a> BlobDb<'a> {
     /// # Arguments
     ///
     /// * `cid` - The CID of the blob
-    pub fn has_blob_bytes(&self, cid: &str) -> bool {
+    fn has_blob_bytes(&self, cid: &str) -> bool {
         let file_path = self.get_blob_file_path(cid);
         file_path.exists()
     }
@@ -72,7 +95,7 @@ impl<'a> BlobDb<'a> {
     /// # Returns
     ///
     /// The blob bytes if found, or an error if not found.
-    pub fn get_blob_bytes(&self, cid: &str) -> io::Result<Vec<u8>> {
+    fn get_blob_bytes(&self, cid: &str) -> io::Result<Vec<u8>> {
         let file_path = self.get_blob_file_path(cid);
         if !file_path.exists() {
             return Err(io::Error::new(
@@ -89,7 +112,7 @@ impl<'a> BlobDb<'a> {
     /// # Arguments
     ///
     /// * `cid` - The CID of the blob
-    pub fn delete_blob_bytes(&self, cid: &str) -> io::Result<()> {
+    fn delete_blob_bytes(&self, cid: &str) -> io::Result<()> {
         let file_path = self.get_blob_file_path(cid);
         if file_path.exists() {
             fs::remove_file(&file_path)?;
@@ -103,7 +126,7 @@ impl<'a> BlobDb<'a> {
     ///
     /// * `cid` - The CID of the blob
     /// * `bytes` - The new blob bytes
-    pub fn update_blob_bytes(&self, cid: &str, bytes: &[u8]) -> io::Result<()> {
+    fn update_blob_bytes(&self, cid: &str, bytes: &[u8]) -> io::Result<()> {
         let file_path = self.get_blob_file_path(cid);
         self.log.info(&format!("[BLOB] UpdateBlobBytes: {:?}", file_path));
         fs::write(&file_path, bytes)

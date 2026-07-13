@@ -14,7 +14,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::pds::blob_db::BlobDb;
+use crate::pds::blob_db::{BlobDb, create_blob_db};
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
 use crate::pds::xrpc::auth_helpers::get_caller_info;
@@ -109,7 +109,7 @@ pub async fn get_blob(
     }
 
     // Check if blob bytes exist on disk
-    let blob_db = BlobDb::new(&state.lfs, state.log);
+    let blob_db = create_blob_db(&state.lfs, state.log);
     if !blob_db.has_blob_bytes(cid) {
         return (
             StatusCode::NOT_FOUND,
