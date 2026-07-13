@@ -110,15 +110,28 @@ pub async fn get_blob(
 
     // Check if blob bytes exist on disk
     let blob_db = create_blob_db(&state.lfs, state.log);
-    if !blob_db.has_blob_bytes(cid) {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(GetBlobError {
-                error: "NotFound".to_string(),
-                message: "Blob not found".to_string(),
-            }),
-        )
-            .into_response();
+    match blob_db.has_blob_bytes(cid) {
+        Ok(true) => {}
+        Ok(false) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(GetBlobError {
+                    error: "NotFound".to_string(),
+                    message: "Blob not found".to_string(),
+                }),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(GetBlobError {
+                    error: "InternalError".to_string(),
+                    message: format!("Failed to check blob existence: {}", e),
+                }),
+            )
+                .into_response();
+        }
     }
 
     // Get blob metadata

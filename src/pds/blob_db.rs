@@ -16,13 +16,20 @@ use crate::log::Logger;
 
 
 pub trait BlobDb {
-    fn insert_blob_bytes(&self, cid: &str, bytes: &[u8]) -> io::Result<()>;
-    fn has_blob_bytes(&self, cid: &str) -> bool;
-    fn get_blob_bytes(&self, cid: &str) -> io::Result<Vec<u8>>;
-    fn delete_blob_bytes(&self, cid: &str) -> io::Result<()>;
-    fn update_blob_bytes(&self, cid: &str, bytes: &[u8]) -> io::Result<()>;
+    fn insert_blob_bytes(&self, cid: &str, bytes: &[u8]) -> Result<(), BlobDbError>;
+    fn has_blob_bytes(&self, cid: &str) -> Result<bool, BlobDbError>;
+    fn get_blob_bytes(&self, cid: &str) -> Result<Vec<u8>, BlobDbError>;
+    fn delete_blob_bytes(&self, cid: &str) -> Result<(), BlobDbError>;
+    fn update_blob_bytes(&self, cid: &str, bytes: &[u8]) -> Result<(), BlobDbError>;
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum BlobDbError {
+    #[error("IO error: {0}")]
+    IoError(#[from] io::Error),
+    #[error("Blob not found: {0}")]
+    NotFound(String),
+}
 
 /// Entry point for callers.
 pub fn create_blob_db<'a>(lfs: &'a LocalFileSystem, log: &'a Logger) -> impl BlobDb + 'a {
@@ -70,10 +77,10 @@ impl<'a> BlobDb for BlobFileDb<'a> {
     ///
     /// * `cid` - The CID of the blob
     /// * `bytes` - The blob bytes
-    fn insert_blob_bytes(&self, cid: &str, bytes: &[u8]) -> io::Result<()> {
+    fn insert_blob_bytes(&self, cid: &str, bytes: &[u8]) -> Result<(), BlobDbError> {
         let file_path = self.get_blob_file_path(cid);
         self.log.info(&format!("[BLOB] InsertBlobBytes: {:?}", file_path));
-        fs::write(&file_path, bytes)
+        fs::write(&file_path, bytes).map_err(BlobDbError::IoError)
     }
 
     /// Check if blob bytes exist.
@@ -81,9 +88,9 @@ impl<'a> BlobDb for BlobFileDb<'a> {
     /// # Arguments
     ///
     /// * `cid` - The CID of the blob
-    fn has_blob_bytes(&self, cid: &str) -> bool {
+    fn has_blob_bytes(&self, cid: &str) -> Result<bool, BlobDbError> {
         let file_path = self.get_blob_file_path(cid);
-        file_path.exists()
+        Ok(file_path.exists())
     }
 
     /// Get blob bytes.
@@ -95,16 +102,13 @@ impl<'a> BlobDb for BlobFileDb<'a> {
     /// # Returns
     ///
     /// The blob bytes if found, or an error if not found.
-    fn get_blob_bytes(&self, cid: &str) -> io::Result<Vec<u8>> {
+    fn get_blob_bytes(&self, cid: &str) -> Result<Vec<u8>, BlobDbError> {
         let file_path = self.get_blob_file_path(cid);
         if !file_path.exists() {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("Blob not found: {}", cid),
-            ));
+            return Err(BlobDbError::NotFound(format!("Blob not found: {}", cid)));
         }
         self.log.info(&format!("[BLOB] GetBlobBytes: {:?}", file_path));
-        fs::read(&file_path)
+        fs::read(&file_path).map_err(BlobDbError::IoError)
     }
 
     /// Delete blob bytes.
@@ -112,10 +116,10 @@ impl<'a> BlobDb for BlobFileDb<'a> {
     /// # Arguments
     ///
     /// * `cid` - The CID of the blob
-    fn delete_blob_bytes(&self, cid: &str) -> io::Result<()> {
+    fn delete_blob_bytes(&self, cid: &str) -> Result<(), BlobDbError> {
         let file_path = self.get_blob_file_path(cid);
         if file_path.exists() {
-            fs::remove_file(&file_path)?;
+            fs::remove_file(&file_path).map_err(BlobDbError::IoError)?;
         }
         Ok(())
     }
@@ -126,10 +130,10 @@ impl<'a> BlobDb for BlobFileDb<'a> {
     ///
     /// * `cid` - The CID of the blob
     /// * `bytes` - The new blob bytes
-    fn update_blob_bytes(&self, cid: &str, bytes: &[u8]) -> io::Result<()> {
+    fn update_blob_bytes(&self, cid: &str, bytes: &[u8]) -> Result<(), BlobDbError> {
         let file_path = self.get_blob_file_path(cid);
         self.log.info(&format!("[BLOB] UpdateBlobBytes: {:?}", file_path));
-        fs::write(&file_path, bytes)
+        fs::write(&file_path, bytes).map_err(BlobDbError::IoError)
     }
 }
 

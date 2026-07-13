@@ -189,10 +189,17 @@ pub fn cmd_sync_repo(args: &HashMap<String, String>) {
     let mut blob_files_synced = 0;
     let mut blob_files_skipped = 0;
     for blob in &source_blobs {
-        if !source_blob_db.has_blob_bytes(&blob.cid) {
-            log.info(&format!("Source blob file missing, skipping: {}", blob.cid));
-            blob_files_skipped += 1;
-            continue;
+        match source_blob_db.has_blob_bytes(&blob.cid) {
+            Ok(true) => {}
+            Ok(false) => {
+                log.info(&format!("Source blob file missing, skipping: {}", blob.cid));
+                blob_files_skipped += 1;
+                continue;
+            }
+            Err(e) => {
+                log.error(&format!("Failed to check source blob file {}: {}", blob.cid, e));
+                return;
+            }
         }
 
         let bytes = match source_blob_db.get_blob_bytes(&blob.cid) {
@@ -204,9 +211,12 @@ pub fn cmd_sync_repo(args: &HashMap<String, String>) {
         };
 
         // Write blob to dest (overwrite if exists)
-        if let Err(e) = dest_blob_db.insert_blob_bytes(&blob.cid, &bytes) {
-            log.error(&format!("Failed to write dest blob file {}: {}", blob.cid, e));
-            return;
+        match dest_blob_db.insert_blob_bytes(&blob.cid, &bytes) {
+            Ok(_) => {}
+            Err(e) => {
+                log.error(&format!("Failed to write dest blob file {}: {}", blob.cid, e));
+                return;
+            }
         }
         blob_files_synced += 1;
     }
