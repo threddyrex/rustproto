@@ -9,4 +9,5 @@ pub mod log;
 pub mod mst;
 pub mod pds;
 pub mod repo;
+pub mod uri;
 pub mod ws;
