@@ -24,6 +24,7 @@ use serde_json::Value as JsonValue;
 use crate::pds::auth::sign_service_auth_token;
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
+use crate::uri::AtprotoProxy;
 use crate::ws::DEFAULT_APP_VIEW_HOST_NAME;
 
 use super::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info};
@@ -31,38 +32,6 @@ use super::auth_helpers::{auth_failure_response, check_user_auth, get_caller_inf
 /// Default Atproto-Proxy value for the Bluesky AppView.
 const DEFAULT_ATPROTO_PROXY: &str = "did:web:api.bsky.app#bsky_appview";
 
-/// Parsed Atproto-Proxy header value.
-struct AtprotoProxy {
-    /// The DID of the service to proxy to.
-    did: String,
-    /// The service ID within the DID document (e.g., "bsky_appview").
-    service_id: String,
-}
-
-impl AtprotoProxy {
-    /// Parse an Atproto-Proxy header value.
-    ///
-    /// Format: `did:web:api.bsky.app#bsky_appview`
-    fn from_header(header_value: &str) -> Option<Self> {
-        if header_value.is_empty() {
-            return None;
-        }
-
-        let parts: Vec<&str> = header_value.split('#').collect();
-        if parts.len() != 2 {
-            return None;
-        }
-
-        if !parts[0].starts_with("did:") {
-            return None;
-        }
-
-        Some(AtprotoProxy {
-            did: parts[0].to_string(),
-            service_id: parts[1].to_string(),
-        })
-    }
-}
 
 /// Validates that a URL is safe for outbound requests (SSRF protection).
 ///

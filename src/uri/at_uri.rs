@@ -2,6 +2,7 @@
 
 
 /// Represents an AT URI, which is a structured identifier used in the atproto ecosystem.
+/// 
 /// spec: <https://atproto.com/specs/at-uri-scheme>
 #[derive(Debug)]
 pub struct AtUri {
@@ -21,7 +22,7 @@ impl AtUri {
     }
 
     /// Parses a Bluesky post URL into an AtUri struct.
-    /// Example URL: https://bsky.app/profile/{did or handle}/post/{rkey}
+    /// Example URL: <https://bsky.app/profile/{did-or-handle}/post/{rkey}>
     pub fn from_bsky_post_url(url: &str) -> Option<Self> {
         // Example URL: https://bsky.app/profile/{did or handle}/post/{rkey}
         let parts: Vec<&str> = url.split('/').collect();
