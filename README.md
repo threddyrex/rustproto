@@ -1,11 +1,14 @@
 
-# rustproto - software for atproto
+# rustproto
 
-This is a Rust port of [dnproto](https://github.com/threddyrex/dnproto), which is an atproto PDS.
-
-My main account runs on rustproto -> [threddyrex.org](https://bsky.app/profile/did:web:threddyrex.org).
+This is a third-party implementation of an atproto PDS. It is a Rust port of [dnproto](https://github.com/threddyrex/dnproto). 
+My main account ([threddyrex.org](https://bsky.app/profile/did:web:threddyrex.org)) is hosted on rustproto.
 
 For info on how to implement a PDS from scratch, check out [Ten Steps to a PDS](/docs/articles/ten-steps-to-a-pds.md).
+
+*(Note: rustproto is an independent, community-driven project and is not affiliated with, sponsored by, or endorsed by Bluesky Social, PBC.)*
+
+
 
 &nbsp;
 
