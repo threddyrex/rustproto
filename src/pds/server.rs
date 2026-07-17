@@ -37,8 +37,8 @@ pub struct PdsState {
     pub db: PdsDb,
 }
 
-/// PDS Server - runs the Personal Data Server HTTP endpoints.
-pub struct PdsServer {
+/// PDS Runner - runs the Personal Data Server HTTP endpoints.
+pub struct PdsRunner {
     /// Shared state for all handlers.
     state: Arc<PdsState>,
     /// Listen scheme (http or https).
@@ -49,8 +49,8 @@ pub struct PdsServer {
     listen_port: i32,
 }
 
-impl PdsServer {
-    /// Initialize a new PDS server.
+impl PdsRunner {
+    /// Initialize a new PDS runner.
     ///
     /// Loads configuration from the database and prepares the server for running.
     ///
@@ -61,8 +61,8 @@ impl PdsServer {
     ///
     /// # Returns
     ///
-    /// A PdsServer instance ready to run, or an error if initialization fails.
-    pub fn initialize(lfs: LocalFileSystem, log: &'static Logger) -> Result<Self, PdsServerError> {
+    /// A PdsRunner instance ready to run, or an error if initialization fails.
+    pub fn initialize(lfs: LocalFileSystem, log: &'static Logger) -> Result<Self, PdsRunnerError> {
         // Connect to PDS database
         let db = PdsDb::connect(&lfs)?;
 
@@ -86,10 +86,10 @@ impl PdsServer {
         })
     }
 
-    /// Run the PDS server.
+    /// Run the PDS runner.
     ///
     /// This starts the HTTP server and blocks until shutdown.
-    pub async fn run(&self) -> Result<(), PdsServerError> {
+    pub async fn run(&self) -> Result<(), PdsRunnerError> {
         self.state.log.info("");
         self.state.log.info("!! Running PDS !!");
         self.state.log.info("");
@@ -114,7 +114,7 @@ impl PdsServer {
         // Create the listener
         let bind_addr = format!("{}:{}", self.listen_host, self.listen_port);
         let listener = TcpListener::bind(&bind_addr).await.map_err(|e| {
-            PdsServerError::IoError(format!("Failed to bind to {}: {}", bind_addr, e))
+            PdsRunnerError::IoError(format!("Failed to bind to {}: {}", bind_addr, e))
         })?;
 
         self.state
@@ -127,7 +127,7 @@ impl PdsServer {
             app.into_make_service_with_connect_info::<SocketAddr>(),
         )
             .await
-            .map_err(|e| PdsServerError::IoError(format!("Server error: {}", e)))?;
+            .map_err(|e| PdsRunnerError::IoError(format!("Server error: {}", e)))?;
 
         Ok(())
     }
@@ -283,7 +283,7 @@ async fn logging_middleware(
 
 /// Errors that can occur during PDS server operations.
 #[derive(thiserror::Error, Debug)]
-pub enum PdsServerError {
+pub enum PdsRunnerError {
     #[error("Database error: {0}")]
     DbError(#[from] super::db::PdsDbError),
 

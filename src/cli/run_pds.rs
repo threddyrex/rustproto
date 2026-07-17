@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::cli::get_arg;
 use crate::log::{logger};
 use crate::fs::LocalFileSystem;
-use crate::pds::server::PdsServer;
+use crate::pds::server::PdsRunner;
 
 pub async fn cmd_run_pds(args: &HashMap<String, String>) {
     let log = logger();
@@ -26,7 +26,7 @@ pub async fn cmd_run_pds(args: &HashMap<String, String>) {
         }
     };
 
-    let server = match PdsServer::initialize(lfs, log) {
+    let runner = match PdsRunner::initialize(lfs, log) {
         Ok(s) => s,
         Err(e) => {
             log.error(&format!("Failed to initialize PDS server: {}", e));
@@ -34,7 +34,7 @@ pub async fn cmd_run_pds(args: &HashMap<String, String>) {
         }
     };
 
-    if let Err(e) = server.run().await {
+    if let Err(e) = runner.run().await {
         log.error(&format!("PDS server error: {}", e));
     }
 }
