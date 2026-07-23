@@ -24,6 +24,26 @@ pub fn is_oauth_enabled(db: &PdsDb) -> bool {
         .unwrap_or(false)
 }
 
+/// Compute a short, non-reversible fingerprint of a token for safe logging.
+///
+/// Access tokens and refresh tokens are bearer secrets and must never be written
+/// to logs verbatim. This returns the first 6 bytes of SHA-256(token), base64url
+/// encoded (8 chars) — enough to correlate the same token across requests (e.g.
+/// an access token from issue at `/oauth/token` to its use on an XRPC request)
+/// without leaking the secret. Returns "none" for an empty token.
+pub fn token_fp(token: &str) -> String {
+    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+    use sha2::{Digest, Sha256};
+
+    if token.is_empty() {
+        return "none".to_string();
+    }
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    let hash = hasher.finalize();
+    URL_SAFE_NO_PAD.encode(&hash[..6])
+}
+
 /// Check if passkeys are enabled in the PDS configuration.
 ///
 /// Passkeys are enabled if the `FeatureEnabled_Passkeys` config property is set to true.

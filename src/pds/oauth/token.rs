@@ -22,7 +22,7 @@ use crate::pds::db::{OauthSession, StatisticKey};
 use crate::pds::server::PdsState;
 
 use super::dpop::validate_dpop;
-use super::helpers::{get_caller_info, get_form_value, get_hostname, is_oauth_enabled};
+use super::helpers::{get_caller_info, get_form_value, get_hostname, is_oauth_enabled, token_fp};
 
 /// Lock for OAuth refresh operations to prevent race conditions.
 static OAUTH_REFRESH_LOCK: Mutex<()> = Mutex::new(());
@@ -258,6 +258,13 @@ async fn handle_authorization_code(
         session_id
     ));
 
+    state.log.info(&format!(
+        "[AUTH] [OAUTH] oauth/token: grant=authorization_code ip={} session_id={} old_fp=none -> new_fp={}",
+        oauth_session.ip_address,
+        session_id,
+        token_fp(&refresh_token)
+    ));
+
     // Delete the OAuth request (authorization code is single-use)
     if let Err(e) = state.db.delete_oauth_request_by_authorization_code(&code) {
         state.log.warning(&format!(
@@ -293,8 +300,8 @@ async fn handle_authorization_code(
     };
 
     state.log.info(&format!(
-        "[AUTH] [OAUTH] authorization_code: Token issued. session_id={} scope={}",
-        session_id, scope
+        "[AUTH] [OAUTH] authorization_code: Token issued. session_id={} at_fp={} scope={}",
+        session_id, token_fp(&access_token), scope
     ));
 
     Json(TokenResponse {
@@ -316,6 +323,8 @@ async fn handle_refresh_token(
 ) -> impl IntoResponse {
     // Acquire lock to prevent concurrent refresh races.
     let _guard = OAUTH_REFRESH_LOCK.lock().unwrap();
+
+    let (ip_address, _) = get_caller_info(headers, None);
 
     // Get refresh_token
     let refresh_token = match get_form_value(body_str, "refresh_token") {
@@ -351,13 +360,22 @@ async fn handle_refresh_token(
 
     let jwk_thumbprint = dpop_result.jwk_thumbprint.unwrap();
 
+    state.log.info(&format!(
+        "[AUTH] [OAUTH] oauth/token: grant=refresh_token BEGIN ip={} old_fp={} thumb_fp={}",
+        ip_address,
+        token_fp(&refresh_token),
+        token_fp(&jwk_thumbprint)
+    ));
+
     // Look up OAuth session by refresh token
     let mut oauth_session = match state.db.get_oauth_session_by_refresh_token(&refresh_token) {
         Ok(session) => session,
         Err(e) => {
             state.log.warning(&format!(
-                "[AUTH] [OAUTH] refresh_token: Session not found. refresh_token={} error={}",
-                refresh_token, e
+                "[AUTH] [OAUTH] oauth/token: grant=refresh_token REJECTED (session not found). ip={} old_fp={} error={}",
+                ip_address,
+                token_fp(&refresh_token),
+                e
             ));
             return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({}))).into_response();
         }
@@ -366,8 +384,10 @@ async fn handle_refresh_token(
     // Verify thumbprint matches
     if !oauth_session.dpop_jwk_thumbprint.eq_ignore_ascii_case(&jwk_thumbprint) {
         state.log.warning(&format!(
-            "[AUTH] [OAUTH] refresh_token: Thumbprint mismatch. session_id={}",
-            oauth_session.session_id
+            "[AUTH] [OAUTH] oauth/token: grant=refresh_token REJECTED (thumbprint mismatch). ip={} session_id={} old_fp={}",
+            ip_address,
+            oauth_session.session_id,
+            token_fp(&refresh_token)
         ));
         return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({}))).into_response();
     }
@@ -418,8 +438,13 @@ async fn handle_refresh_token(
     };
 
     state.log.info(&format!(
-        "[AUTH] [OAUTH] refresh_token: Token refreshed. session_id={} scope={}",
-        oauth_session.session_id, oauth_session.scope
+        "[AUTH] [OAUTH] refresh_token: Token refreshed. session_id={} ip={} at_fp={} old_fp={} -> new_fp={} scope={}",
+        oauth_session.session_id,
+        ip_address,
+        token_fp(&access_token),
+        token_fp(&refresh_token),
+        token_fp(&new_refresh_token),
+        oauth_session.scope
     ));
 
     Json(TokenResponse {

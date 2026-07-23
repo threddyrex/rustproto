@@ -20,7 +20,7 @@ use serde::Serialize;
 
 use crate::log::logger;
 use crate::pds::auth::validate_access_jwt;
-use crate::pds::oauth::{is_oauth_enabled, validate_dpop, get_hostname};
+use crate::pds::oauth::{is_oauth_enabled, validate_dpop, get_hostname, token_fp};
 use crate::pds::server::PdsState;
 
 /// Types of authentication supported.
@@ -1009,6 +1009,14 @@ pub fn validate_oauth_access_token(
     result.scope = token_result.scope;
     result.client_id = token_result.client_id;
     result.jwk_thumbprint = token_result.jwk_thumbprint;
+
+    logger().info(&format!(
+        "[AUTH] [OAUTH] xrpc: token used. at_fp={} method={} path={}",
+        token_fp(&access_token),
+        http_method,
+        request_path
+    ));
+
     result
 }
 
