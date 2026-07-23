@@ -135,8 +135,8 @@ impl<'a> UserRepo<'a> {
     pub fn apply_writes(
         &self,
         writes: Vec<ApplyWritesOperation>,
-        _ip_address: &str,
-        _user_agent: &str,
+        ip_address: &str,
+        user_agent: &str,
     ) -> Result<Vec<ApplyWritesResult>, UserRepoError> {
         // Acquire global lock
         let _lock = REPO_LOCK.lock().unwrap();
@@ -151,6 +151,11 @@ impl<'a> UserRepo<'a> {
         for write in &writes {
             let uri = format!("at://{}/{}/{}", self.user_did, write.collection, write.rkey);
             let full_key = format!("{}/{}", write.collection, write.rkey);
+
+            crate::log::logger().info(&format!(
+                "[APPLYWRITES] op={} uri={} ip={} user_agent={}",
+                write.op_type, uri, ip_address, user_agent
+            ));
 
             match write.op_type.as_str() {
                 write_type::CREATE | write_type::UPDATE => {
