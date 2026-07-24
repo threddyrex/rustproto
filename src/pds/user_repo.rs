@@ -153,8 +153,8 @@ impl<'a> UserRepo<'a> {
             let full_key = format!("{}/{}", write.collection, write.rkey);
 
             crate::log::logger().info(&format!(
-                "[APPLYWRITES] op={} uri={} ip={} user_agent={}",
-                write.op_type, uri, ip_address, user_agent
+                "[APPLYWRITES] {} {} {} {}",
+                ip_address, write.op_type, uri, user_agent
             ));
 
             match write.op_type.as_str() {
