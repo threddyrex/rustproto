@@ -27,7 +27,7 @@ use axum::http::HeaderMap;
 /// The `User-Agent` header is returned verbatim, or `"[_UNKNOWN_]"` when absent.
 ///
 /// Requests originating from UptimeRobot (identified via the User-Agent) are
-/// grouped under the `[_UPTIME_ROBOT_]` IP so monitoring traffic from its many
+/// grouped under the `uptimerobot` IP so monitoring traffic from its many
 /// source IPs is aggregated in statistics.
 ///
 /// # Security
@@ -63,7 +63,7 @@ pub fn get_caller_info(headers: &HeaderMap, socket_addr: Option<SocketAddr>) -> 
 
     // Group UptimeRobot requests together (they come from many IPs).
     if user_agent.contains("www.uptimerobot.com") {
-        ip_address = "[_UPTIME_ROBOT_]".to_string();
+        ip_address = "uptimerobot".to_string();
     }
 
     (ip_address, user_agent)
