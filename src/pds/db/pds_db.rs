@@ -1999,12 +1999,7 @@ impl PdsDb {
     /// Increment a statistic.
     pub fn increment_statistic(&self, key: &StatisticKey) -> Result<(), PdsDbError> {
 
-        let mut key_to_insert = key.clone();
-
-        // omit ip address for these, they come from all over
-        if key_to_insert.user_agent.contains("www.uptimerobot.com") {
-            key_to_insert.ip_address = "".to_string();
-        }
+        let key_to_insert = key.clone();
 
         if self.statistic_exists(&key_to_insert)? {
             let current = self.get_statistic_value(&key_to_insert)?;
