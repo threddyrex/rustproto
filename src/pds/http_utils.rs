@@ -63,7 +63,7 @@ pub fn get_caller_info(headers: &HeaderMap, socket_addr: Option<SocketAddr>) -> 
 
     // Group UptimeRobot requests together (they come from many IPs).
     if user_agent.contains("www.uptimerobot.com") {
-        ip_address = "uptimerobot".to_string();
+        ip_address = "".to_string();
     }
 
     (ip_address, user_agent)
