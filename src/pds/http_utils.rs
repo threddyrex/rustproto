@@ -26,9 +26,6 @@ use axum::http::HeaderMap;
 ///
 /// The `User-Agent` header is returned verbatim, or `""` when absent.
 ///
-/// Requests originating from UptimeRobot (identified via the User-Agent) are
-/// grouped under the `uptimerobot` IP so monitoring traffic from its many
-/// source IPs is aggregated in statistics.
 ///
 /// # Security
 ///
@@ -38,6 +35,7 @@ use axum::http::HeaderMap;
 /// authentication or authorization control (e.g. rate limiting, lockouts, or
 /// allowlists) without additional trust guarantees.
 pub fn get_caller_info(headers: &HeaderMap, socket_addr: Option<SocketAddr>) -> (String, String) {
+
     // Get User-Agent
     let user_agent = headers
         .get("User-Agent")
@@ -46,7 +44,7 @@ pub fn get_caller_info(headers: &HeaderMap, socket_addr: Option<SocketAddr>) -> 
         .unwrap_or_else(|| "".to_string());
 
     // Get IP address from X-Forwarded-For, or fall back to the socket address.
-    let mut ip_address = headers
+    let ip_address = headers
         .get("X-Forwarded-For")
         .and_then(|v| v.to_str().ok())
         .map(|s| {
@@ -60,11 +58,6 @@ pub fn get_caller_info(headers: &HeaderMap, socket_addr: Option<SocketAddr>) -> 
                 .map(|addr| addr.ip().to_string())
                 .unwrap_or_else(|| "".to_string())
         });
-
-    // Group UptimeRobot requests together (they come from many IPs).
-    if user_agent.contains("www.uptimerobot.com") {
-        ip_address = "".to_string();
-    }
 
     (ip_address, user_agent)
 }
