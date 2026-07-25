@@ -22,9 +22,9 @@ use axum::http::HeaderMap;
 ///    spoofed by the client. This assumes the PDS runs directly behind a
 ///    single trusted Caddy reverse proxy (its last hop).
 /// 2. The direct connection socket address, when provided.
-/// 3. The literal string `"[_UNKNOWN_]"` when neither is available.
+/// 3. The literal string `""` when neither is available.
 ///
-/// The `User-Agent` header is returned verbatim, or `"[_UNKNOWN_]"` when absent.
+/// The `User-Agent` header is returned verbatim, or `""` when absent.
 ///
 /// Requests originating from UptimeRobot (identified via the User-Agent) are
 /// grouped under the `uptimerobot` IP so monitoring traffic from its many
@@ -43,7 +43,7 @@ pub fn get_caller_info(headers: &HeaderMap, socket_addr: Option<SocketAddr>) -> 
         .get("User-Agent")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string())
-        .unwrap_or_else(|| "[_UNKNOWN_]".to_string());
+        .unwrap_or_else(|| "".to_string());
 
     // Get IP address from X-Forwarded-For, or fall back to the socket address.
     let mut ip_address = headers
@@ -58,7 +58,7 @@ pub fn get_caller_info(headers: &HeaderMap, socket_addr: Option<SocketAddr>) -> 
         .unwrap_or_else(|| {
             socket_addr
                 .map(|addr| addr.ip().to_string())
-                .unwrap_or_else(|| "[_UNKNOWN_]".to_string())
+                .unwrap_or_else(|| "".to_string())
         });
 
     // Group UptimeRobot requests together (they come from many IPs).
