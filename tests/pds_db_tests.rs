@@ -877,3 +877,31 @@ fn stats_insert_and_retrieve() {
     assert_eq!(stats[0].user_agent, "useragent");
     assert_eq!(stats[0].value, 3);
 }
+
+#[test]
+fn stats_insert_raw_and_retrieve() {
+    let (pds_db, _, _) = setup_test_db();
+    pds_db.delete_all_statistics().unwrap();
+    
+    let key = StatisticKey {
+        name: "active_users".to_string(),
+        ip_address: "userip".to_string(),
+        user_agent: "useragent".to_string(),
+    };
+    
+    pds_db.increment_statistic_raw(&key).unwrap();
+    pds_db.increment_statistic_raw(&key).unwrap();
+    
+    assert_eq!(pds_db.get_statistic_value(&key).unwrap(), 2);
+    assert!(pds_db.statistic_exists(&key).unwrap());
+    
+    pds_db.increment_statistic_raw(&key).unwrap();
+    assert_eq!(pds_db.get_statistic_value(&key).unwrap(), 3);
+    
+    let stats = pds_db.get_all_statistics().unwrap();
+    assert_eq!(stats.len(), 1);
+    assert_eq!(stats[0].name, "active_users");
+    assert_eq!(stats[0].ip_address, "userip");
+    assert_eq!(stats[0].user_agent, "useragent");
+    assert_eq!(stats[0].value, 3);
+}

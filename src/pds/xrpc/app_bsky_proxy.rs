@@ -557,15 +557,15 @@ pub async fn app_bsky_fallback(
 
     // For non-app.bsky routes, return 501 Not Implemented
     let stat_key = StatisticKey {
-        name: path.clone(),
+        name: "501 Not Implemented".to_string(),
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_raw(&stat_key);
 
     state
         .log
-        .warning(&format!("[UNIMPLEMENTED] {} {}{}", method, path, query));
+        .warning(&format!("[NOT_IMPLEMENTED] {} {}{}", method, path, query));
 
     (
         StatusCode::NOT_IMPLEMENTED,

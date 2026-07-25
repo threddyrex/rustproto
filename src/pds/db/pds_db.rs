@@ -2013,6 +2013,17 @@ impl PdsDb {
         }
     }
 
+    /// Increment a statistic.
+    pub fn increment_statistic_raw(&self, key: &StatisticKey) -> Result<(), PdsDbError> {
+        if self.statistic_exists(&key)? {
+            let current = self.get_statistic_value(&key)?;
+            self.update_statistic(&key, current + 1)
+        } else {
+            self.insert_statistic(&key, 1)
+        }
+    }
+    
+
     /// Get a statistic value.
     pub fn get_statistic_value(&self, key: &StatisticKey) -> Result<i64, PdsDbError> {
         let conn = self.get_connection_read_only()?;
