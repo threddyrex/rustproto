@@ -2014,7 +2014,7 @@ impl PdsDb {
     }
 
     /// Increment a statistic.
-    pub fn increment_statistic_raw(&self, key: &StatisticKey) -> Result<(), PdsDbError> {
+    pub fn increment_statistic_exact(&self, key: &StatisticKey) -> Result<(), PdsDbError> {
         if self.statistic_exists(&key)? {
             let current = self.get_statistic_value(&key)?;
             self.update_statistic(&key, current + 1)
@@ -2022,7 +2022,7 @@ impl PdsDb {
             self.insert_statistic(&key, 1)
         }
     }
-    
+
 
     /// Get a statistic value.
     pub fn get_statistic_value(&self, key: &StatisticKey) -> Result<i64, PdsDbError> {

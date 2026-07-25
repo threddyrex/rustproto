@@ -879,7 +879,7 @@ fn stats_insert_and_retrieve() {
 }
 
 #[test]
-fn stats_insert_raw_and_retrieve() {
+fn stats_insert_exact_and_retrieve() {
     let (pds_db, _, _) = setup_test_db();
     pds_db.delete_all_statistics().unwrap();
     
@@ -889,13 +889,13 @@ fn stats_insert_raw_and_retrieve() {
         user_agent: "useragent".to_string(),
     };
     
-    pds_db.increment_statistic_raw(&key).unwrap();
-    pds_db.increment_statistic_raw(&key).unwrap();
+    pds_db.increment_statistic_exact(&key).unwrap();
+    pds_db.increment_statistic_exact(&key).unwrap();
     
     assert_eq!(pds_db.get_statistic_value(&key).unwrap(), 2);
     assert!(pds_db.statistic_exists(&key).unwrap());
     
-    pds_db.increment_statistic_raw(&key).unwrap();
+    pds_db.increment_statistic_exact(&key).unwrap();
     assert_eq!(pds_db.get_statistic_value(&key).unwrap(), 3);
     
     let stats = pds_db.get_all_statistics().unwrap();
