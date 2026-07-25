@@ -856,7 +856,7 @@ fn stats_insert_and_retrieve() {
     pds_db.delete_all_statistics().unwrap();
     
     let key = StatisticKey {
-        name: "active_users".to_string(),
+        name: "/active_users".to_string(),
         ip_address: "userip".to_string(),
         user_agent: "useragent".to_string(),
     };
@@ -872,7 +872,7 @@ fn stats_insert_and_retrieve() {
     
     let stats = pds_db.get_all_statistics().unwrap();
     assert_eq!(stats.len(), 1);
-    assert_eq!(stats[0].name, "active_users");
+    assert_eq!(stats[0].name, "/active_users");
     assert_eq!(stats[0].ip_address, "userip");
     assert_eq!(stats[0].user_agent, "useragent");
     assert_eq!(stats[0].value, 3);

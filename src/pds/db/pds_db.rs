@@ -1999,7 +1999,11 @@ impl PdsDb {
     /// Increment a statistic.
     pub fn increment_statistic(&self, key: &StatisticKey) -> Result<(), PdsDbError> {
 
-        let key_to_insert = key.clone();
+        let mut key_to_insert = key.clone();
+
+        if key_to_insert.name.starts_with("/") == false {
+            key_to_insert.name = format!("/{}", key_to_insert.name);
+        }
 
         if self.statistic_exists(&key_to_insert)? {
             let current = self.get_statistic_value(&key_to_insert)?;

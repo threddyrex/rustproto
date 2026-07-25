@@ -199,7 +199,7 @@ pub async fn proxy_to_appview(
 
     // Increment statistics
     let stat_key = StatisticKey {
-        name: format!("xrpc/proxy:{}", path),
+        name: format!("{}", path),
         ip_address,
         user_agent,
     };
@@ -557,7 +557,7 @@ pub async fn app_bsky_fallback(
 
     // For non-app.bsky routes, return 501 Not Implemented
     let stat_key = StatisticKey {
-        name: "xrpc/unimplemented".to_string(),
+        name: path.clone(),
         ip_address,
         user_agent,
     };
