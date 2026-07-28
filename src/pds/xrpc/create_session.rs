@@ -127,9 +127,9 @@ pub async fn create_session(
 
     // Get the DID - prefer the resolved DID field, then fallback to other resolved DIDs
     let actor_did = actor_info.did.clone()
-        .or_else(|| actor_info.did_bsky.clone())
-        .or_else(|| actor_info.did_dns.clone())
-        .or_else(|| actor_info.did_http.clone());
+        .or_else(|| actor_info.did_bsky.success().cloned())
+        .or_else(|| actor_info.did_dns.success().cloned())
+        .or_else(|| actor_info.did_http.success().cloned());
     let actor_handle = actor_info.handle.clone().unwrap_or_default();
 
     // Check if this is our user

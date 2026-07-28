@@ -7,7 +7,7 @@ use std::net::IpAddr;
 use std::time::Instant;
 
 use crate::log::{logger};
-use crate::ws::{ActorInfo, ActorQueryOptions};
+use crate::ws::{ActorInfo, ActorQueryOptions, OptionalResult};
 use reqwest::Client;
 use serde_json::Value;
 use thiserror::Error;
@@ -130,30 +130,28 @@ impl BlueskyClient {
             if options.should_resolve_via_bluesky() {
                 info.did_bsky = self
                     .resolve_handle_to_did_via_bluesky(&normalized_handle)
-                    .await
-                    .ok();
+                    .await;
             }
 
             if options.should_resolve_via_dns() {
                 info.did_dns = self
                     .resolve_handle_to_did_via_dns(&normalized_handle)
-                    .await
-                    .ok();
+                    .await;
             }
 
             if options.should_resolve_via_http() {
                 info.did_http = self
                     .resolve_handle_to_did_via_http(&normalized_handle)
-                    .await
-                    .ok();
+                    .await;
             }
 
             // Use first successful resolution
             info.did = info
                 .did_bsky
-                .clone()
-                .or_else(|| info.did_dns.clone())
-                .or_else(|| info.did_http.clone());
+                .success()
+                .or_else(|| info.did_dns.success())
+                .or_else(|| info.did_http.success())
+                .cloned();
         }
 
         // Early exit if no DID resolved
@@ -265,7 +263,7 @@ impl BlueskyClient {
     pub async fn resolve_handle_to_did_via_bluesky(
         &self,
         handle: &str,
-    ) -> Result<String, BlueskyClientError> {
+    ) -> OptionalResult<String, String> {
         let url = format!(
             "https://{}/xrpc/com.atproto.identity.resolveHandle?handle={}",
             self.app_view_host_name, handle
@@ -274,13 +272,19 @@ impl BlueskyClient {
         // trace log the url
         logger().trace(&format!("[ACTOR] [BSKY] Resolving handle via Bluesky API: handle={} url={}", handle, url));
 
-        let response = self.client.get(&url).send().await?;
-        let json: Value = response.json().await?;
+        let response = match self.client.get(&url).send().await {
+            Ok(r) => r,
+            Err(e) => return OptionalResult::Failure(e.to_string()),
+        };
+        let json: Value = match response.json().await {
+            Ok(j) => j,
+            Err(e) => return OptionalResult::Failure(e.to_string()),
+        };
 
-        json["did"]
-            .as_str()
-            .map(|s| s.to_string())
-            .ok_or_else(|| BlueskyClientError::ResolutionFailed("No DID in response".to_string()))
+        match json["did"].as_str() {
+            Some(did) => OptionalResult::Success(did.to_string()),
+            None => OptionalResult::Failure(format!("No DID in response: {}", json).to_string()),
+        }
     }
 
     /// Resolves a handle to a DID using DNS TXT records.
@@ -289,20 +293,27 @@ impl BlueskyClient {
     pub async fn resolve_handle_to_did_via_dns(
         &self,
         handle: &str,
-    ) -> Result<String, BlueskyClientError> {
+    ) -> OptionalResult<String, String> {
         let url = format!(
             "https://cloudflare-dns.com/dns-query?name=_atproto.{}&type=TXT",
             handle
         );
 
-        let response = self
+        let response = match self
             .client
             .get(&url)
             .header("Accept", "application/dns-json")
             .send()
-            .await?;
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => return OptionalResult::Failure(e.to_string()),
+        };
 
-        let json: Value = response.json().await?;
+        let json: Value = match response.json().await {
+            Ok(j) => j,
+            Err(e) => return OptionalResult::Failure(e.to_string()),
+        };
 
         // Parse DNS response and look for did= in TXT records
         if let Some(answers) = json["Answer"].as_array() {
@@ -311,16 +322,14 @@ impl BlueskyClient {
                     let data = data.trim_matches('"');
                     if let Some(did) = data.strip_prefix("did=") {
                         logger().trace(&format!("[ACTOR] [BSKY] Resolved handle via DNS: handle={} did={}", handle, did));
-                        return Ok(did.to_string());
+                        return OptionalResult::Success(did.to_string());
                     }
                 }
             }
         }
 
         logger().trace(&format!("[ACTOR] [BSKY] Failed to resolve handle via DNS: handle={}", handle));
-        Err(BlueskyClientError::ResolutionFailed(
-            "No DID found in DNS TXT records".to_string(),
-        ))
+        OptionalResult::Failure("No DID found in DNS TXT records".to_string())
     }
 
     /// Resolves a handle to a DID using HTTP well-known endpoint.
@@ -329,22 +338,26 @@ impl BlueskyClient {
     pub async fn resolve_handle_to_did_via_http(
         &self,
         handle: &str,
-    ) -> Result<String, BlueskyClientError> {
+    ) -> OptionalResult<String, String> {
         let url = format!("https://{}/.well-known/atproto-did", handle);
 
         logger().trace(&format!("[ACTOR] [BSKY] Resolving handle via HTTP: handle={} url={}", handle, url));
-        let response = self.client.get(&url).send().await?;
-        let text = response.text().await?;
+        let response = match self.client.get(&url).send().await {
+            Ok(r) => r,
+            Err(e) => return OptionalResult::Failure(e.to_string()),
+        };
+        let text = match response.text().await {
+            Ok(t) => t,
+            Err(e) => return OptionalResult::Failure(e.to_string()),
+        };
 
         let did = text.trim();
         if did.starts_with("did:") {
             logger().trace(&format!("[ACTOR] [BSKY] Resolved handle via HTTP: handle={} did={}", handle, did));
-            Ok(did.to_string())
+            OptionalResult::Success(did.to_string())
         } else {
             logger().trace(&format!("[ACTOR] [BSKY] Failed to resolve handle via HTTP: handle={} response={}", handle, text));
-            Err(BlueskyClientError::ResolutionFailed(
-                "Invalid DID in HTTP response".to_string(),
-            ))
+            OptionalResult::Failure("Invalid DID in HTTP response".to_string())
         }
     }
 
