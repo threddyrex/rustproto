@@ -2095,7 +2095,7 @@ impl PdsDb {
         let conn = self.get_connection()?;
         let cutoff_date = format_datetime_for_db(Utc::now() - chrono::Duration::hours(hours_lookback));
         conn.execute(
-            "DELETE FROM Statistic WHERE LastUpdatedDate < ?1",
+            "DELETE FROM Statistic WHERE LastUpdatedDate < ?1 AND Name LIKE '/%'",
             [cutoff_date],
         )?;
         Ok(())

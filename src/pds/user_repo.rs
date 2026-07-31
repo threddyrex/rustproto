@@ -18,7 +18,7 @@ use p256::ecdsa::{signature::hazmat::PrehashSigner, Signature, SigningKey};
 use sha2::{Digest, Sha256};
 
 use crate::mst::{Mst, MstItem};
-use crate::pds::db::{DbRepoCommit, FirehoseEvent, PdsDb, PdsDbError};
+use crate::pds::db::{DbRepoCommit, FirehoseEvent, PdsDb, PdsDbError, StatisticKey};
 use crate::repo::{CidV1, DagCborMajorType, DagCborObject, DagCborType, DagCborValue, RepoMst, MstNodeKey};
 
 /// Global lock for repository write operations.
@@ -156,6 +156,14 @@ impl<'a> UserRepo<'a> {
                 "[APPLYWRITES] {} {} {} {}",
                 ip_address, write.op_type, uri, user_agent
             ));
+
+            // Log a statistic for this ApplyWrites operation
+            let stat_key = StatisticKey {
+                name: format!("apply_writes - {}", write.op_type),
+                ip_address: ip_address.to_string(),
+                user_agent: user_agent.to_string(),
+            };
+            let _ = self.db.increment_statistic(&stat_key);
 
             match write.op_type.as_str() {
                 write_type::CREATE | write_type::UPDATE => {
