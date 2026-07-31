@@ -117,7 +117,6 @@ fn build_stats_writes_page(hostname: &str, statistics: &[Statistic]) -> String {
             <th class="sortable" data-col="3" data-type="number" style="text-align: right;">Value</th>
             <th class="sortable desc" data-col="4" data-type="string">Last Updated</th>
             <th class="sortable" data-col="5" data-type="number" style="text-align: right;">Minutes Ago</th>
-            <th>Action</th>
         </tr>
     </thead>
     <tbody>
@@ -153,7 +152,7 @@ fn calculate_minutes_ago(last_updated_date: &str) -> String {
 /// Build HTML rows for the writes-stats table.
 fn build_writes_rows_html(statistics: &[Statistic]) -> String {
     if statistics.is_empty() {
-        return r#"<tr><td colspan="7" style="text-align: center; color: #8899a6;">No statistics</td></tr>"#.to_string();
+        return r#"<tr><td colspan="6" style="text-align: center; color: #8899a6;">No statistics</td></tr>"#.to_string();
     }
 
     statistics
@@ -167,15 +166,6 @@ fn build_writes_rows_html(statistics: &[Statistic]) -> String {
                     <td style="text-align: right;">{value}</td>
                     <td>{last_updated}</td>
                     <td style="text-align: right;">{minutes_ago}</td>
-                    <td>
-                        <form method="post" action="/admin/deletestatistic" style="display:inline;">
-                            <input type="hidden" name="name" value="{name_encoded}" />
-                            <input type="hidden" name="ipAddress" value="{ip_encoded}" />
-                            <input type="hidden" name="userAgent" value="{user_agent_encoded}" />
-                            <input type="hidden" name="redirectTo" value="/admin/statswrites" />
-                            <button type="submit" class="delete-btn">Delete</button>
-                        </form>
-                    </td>
                 </tr>"#,
                 name = html_encode(&s.name),
                 ip = html_encode(&s.ip_address),
@@ -183,9 +173,6 @@ fn build_writes_rows_html(statistics: &[Statistic]) -> String {
                 value = s.value,
                 last_updated = html_encode(&s.last_updated_date),
                 minutes_ago = calculate_minutes_ago(&s.last_updated_date),
-                name_encoded = html_encode(&s.name),
-                ip_encoded = html_encode(&s.ip_address),
-                user_agent_encoded = html_encode(&s.user_agent),
             )
         })
         .collect::<Vec<_>>()
