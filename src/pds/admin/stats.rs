@@ -121,7 +121,7 @@ fn build_stats_all_page(hostname: &str, statistics: &[Statistic]) -> String {
     <input type="text" id="hideFilterInput" placeholder="Hide..." style="flex: 1; padding: 10px 14px; font-size: 14px; background-color: #2f3336; color: #e7e9ea; border: 1px solid #444; border-radius: 6px; outline: none;" onfocus="this.style.borderColor='#f44336'" onblur="this.style.borderColor='#444'" />
     <label style="display: flex; align-items: center; gap: 6px; color: #e7e9ea; font-size: 14px; white-space: nowrap; cursor: pointer;">
         <input type="checkbox" id="showOnlyWritesCheckbox" style="accent-color: #4caf50; width: 16px; height: 16px; cursor: pointer;" />
-        Show only writes
+        Show apply_writes
     </label>
 </div>
 <table class="stats-table filterable-table" id="statsTable">
@@ -430,8 +430,6 @@ fn get_sort_and_filter_script() -> &'static str {
     const tables = document.querySelectorAll('.filterable-table');
     if (!showFilterInput || !hideFilterInput || tables.length === 0) return;
     
-    const writeKeywords = ['put', 'create', 'apply', 'delete', 'upload', 'activate', 'deactivate', 'createsession', 'refreshsession', 'revoke'];
-    
     function applyFilters() {
         const showText = showFilterInput.value.toLowerCase();
         const hideText = hideFilterInput.value.toLowerCase();
@@ -448,10 +446,10 @@ fn get_sort_and_filter_script() -> &'static str {
                     rowText += cell.textContent.toLowerCase() + ' ';
                 });
                 
-                // "Show only writes" filter (check Name column only to avoid matching the Delete button)
+                // "Show apply_writes" filter (check Name column only to avoid matching the Delete button)
                 if (onlyWrites) {
                     const nameText = (cells[0] ? cells[0].textContent.toLowerCase() : '');
-                    if (!writeKeywords.some(kw => nameText.includes(kw))) {
+                    if (!nameText.startsWith('apply_writes')) {
                         row.style.display = 'none';
                         return;
                     }
