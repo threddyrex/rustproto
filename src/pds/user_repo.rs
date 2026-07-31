@@ -163,7 +163,7 @@ impl<'a> UserRepo<'a> {
                 ip_address: ip_address.to_string(),
                 user_agent: user_agent.to_string(),
             };
-            let _ = self.db.increment_statistic(&stat_key);
+            let _ = self.db.increment_statistic_exact(&stat_key);
 
             match write.op_type.as_str() {
                 write_type::CREATE | write_type::UPDATE => {
