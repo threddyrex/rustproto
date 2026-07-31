@@ -2133,4 +2133,27 @@ impl PdsDb {
         }
         Ok(stats)
     }
+
+    /// Get statistics for writes only (names starting with "apply_writes").
+    pub fn get_writes_statistics(&self) -> Result<Vec<Statistic>, PdsDbError> {
+        let conn = self.get_connection_read_only()?;
+        let mut stmt = conn.prepare(
+            "SELECT Name, IpAddress, UserAgent, Value, LastUpdatedDate FROM Statistic WHERE Name LIKE 'apply_writes%'",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(Statistic {
+                name: row.get(0)?,
+                ip_address: row.get(1)?,
+                user_agent: row.get(2)?,
+                value: row.get(3)?,
+                last_updated_date: row.get(4)?,
+            })
+        })?;
+
+        let mut stats = Vec::new();
+        for row in rows {
+            stats.push(row?);
+        }
+        Ok(stats)
+    }
 }
