@@ -24,8 +24,8 @@ pub struct IpStatsQuery {
     ip: Option<String>,
 }
 
-/// Handle GET /admin/ipstats - Show statistics aggregated by IP address.
-pub async fn admin_ipstats(
+/// Handle GET /admin/stats_ip - Show statistics aggregated by IP address.
+pub async fn admin_stats_ip(
     State(state): State<Arc<PdsState>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -52,7 +52,7 @@ pub async fn admin_ipstats(
 
     // Increment statistics
     let stat_key = StatisticKey {
-        name: "admin/ipstats".to_string(),
+        name: "admin/stats_ip".to_string(),
         ip_address,
         user_agent,
     };
@@ -71,17 +71,17 @@ pub async fn admin_ipstats(
     let html = if let Some(filter_ip) = &query.ip {
         // Detail page: show all stats for a specific IP address
         let filtered: Vec<&Statistic> = statistics.iter().filter(|s| s.ip_address == *filter_ip).collect();
-        build_ipstats_detail_page(&hostname, filter_ip, &filtered)
+        build_stats_ip_detail_page(&hostname, filter_ip, &filtered)
     } else {
         // Summary page: show aggregated table grouped by IP address
-        build_ipstats_summary_page(&hostname, &statistics)
+        build_stats_ip_summary_page(&hostname, &statistics)
     };
 
     Html(html).into_response()
 }
 
 /// Build the IP stats summary page HTML.
-fn build_ipstats_summary_page(hostname: &str, statistics: &[Statistic]) -> String {
+fn build_stats_ip_summary_page(hostname: &str, statistics: &[Statistic]) -> String {
     // Aggregate statistics by (IP address, User Agent): (total_value, most_recent_last_updated)
     let mut summary: std::collections::BTreeMap<(String, String), (i64, String)> = std::collections::BTreeMap::new();
     for s in statistics {
@@ -141,11 +141,11 @@ fn build_ipstats_summary_page(hostname: &str, statistics: &[Statistic]) -> Strin
     <h2>By IP Address <span class="session-count">({ip_count} addresses, {total_stats} total stats)</span></h2>
     <div style="display: flex; gap: 8px;">
         <form method="post" action="/admin/deleteallstatistics" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete all statistics?');">
-            <input type="hidden" name="redirectTo" value="/admin/ipstats" />
+            <input type="hidden" name="redirectTo" value="/admin/stats_ip" />
             <button type="submit" class="delete-all-btn">Delete All</button>
         </form>
         <form method="post" action="/admin/deleteoldstatistics" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete statistics older than 24 hours?');">
-            <input type="hidden" name="redirectTo" value="/admin/ipstats" />
+            <input type="hidden" name="redirectTo" value="/admin/stats_ip" />
             <button type="submit" class="delete-all-btn">Delete Old (&gt;24hr)</button>
         </form>
     </div>
@@ -175,7 +175,7 @@ fn build_ipstats_summary_page(hostname: &str, statistics: &[Statistic]) -> Strin
         hostname = html_encode(hostname),
         base_styles = get_base_styles(),
         navbar_css = get_navbar_css(),
-        navbar = get_navbar_html("ipstats"),
+        navbar = get_navbar_html("stats_ip"),
         ip_count = ip_count,
         total_stats = total_stats,
         stats_rows = stats_rows,
@@ -184,7 +184,7 @@ fn build_ipstats_summary_page(hostname: &str, statistics: &[Statistic]) -> Strin
 }
 
 /// Build the IP stats detail page HTML for a specific IP address.
-fn build_ipstats_detail_page(hostname: &str, filter_ip: &str, statistics: &[&Statistic]) -> String {
+fn build_stats_ip_detail_page(hostname: &str, filter_ip: &str, statistics: &[&Statistic]) -> String {
     let stats_count = statistics.len();
     let stats_rows = build_detail_rows_html(statistics);
 
@@ -221,7 +221,7 @@ fn build_ipstats_detail_page(hostname: &str, filter_ip: &str, statistics: &[&Sta
 {navbar}
 <h1>IP Statistics</h1>
 
-<a href="/admin/ipstats" class="back-link">&larr; Back to Summary</a>
+<a href="/admin/stats_ip" class="back-link">&larr; Back to Summary</a>
 
 <div class="section-header">
     <h2>{filter_ip} <span class="session-count">({stats_count})</span></h2>
@@ -248,7 +248,7 @@ fn build_ipstats_detail_page(hostname: &str, filter_ip: &str, statistics: &[&Sta
         filter_ip = html_encode(filter_ip),
         base_styles = get_base_styles(),
         navbar_css = get_navbar_css(),
-        navbar = get_navbar_html("ipstats"),
+        navbar = get_navbar_html("stats_ip"),
         stats_count = stats_count,
         stats_rows = stats_rows,
         sort_and_filter_script = get_sort_and_filter_script(),
@@ -265,7 +265,7 @@ fn build_summary_rows_html(rows: &[(String, String, i64, String)]) -> String {
         .map(|(ip, ua, value, last_updated)| {
             format!(
                 r#"<tr>
-                    <td><a href="/admin/ipstats?ip={ip_url}" class="ip-link">{ip}</a></td>
+                    <td><a href="/admin/stats_ip?ip={ip_url}" class="ip-link">{ip}</a></td>
                     <td>{ua}</td>
                     <td style="text-align: right;">{value}</td>
                     <td>{last_updated}</td>

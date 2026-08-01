@@ -17,7 +17,7 @@ use super::{get_base_styles, get_caller_info, get_navbar_css, get_navbar_html, i
 use crate::pds::db::{Statistic, StatisticKey};
 use crate::pds::server::PdsState;
 
-/// Handle GET /admin/statswrites - Show writes statistics (apply_writes only).
+/// Handle GET /admin/stats_writes - Show writes statistics (apply_writes only).
 pub async fn admin_stats_writes(
     State(state): State<Arc<PdsState>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -44,7 +44,7 @@ pub async fn admin_stats_writes(
 
     // Increment statistics
     let stat_key = StatisticKey {
-        name: "admin/statswrites".to_string(),
+        name: "admin/stats_writes".to_string(),
         ip_address,
         user_agent,
     };
@@ -132,7 +132,7 @@ fn build_stats_writes_page(hostname: &str, statistics: &[Statistic]) -> String {
         hostname = html_encode(hostname),
         base_styles = get_base_styles(),
         navbar_css = get_navbar_css(),
-        navbar = get_navbar_html("statswrites"),
+        navbar = get_navbar_html("stats_writes"),
         total_rows = total_rows,
         stats_rows = stats_rows,
         sort_and_filter_script = get_sort_and_filter_script(),
