@@ -561,7 +561,7 @@ pub async fn app_bsky_fallback(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic_exact(&stat_key);
+    let _ = state.db.increment_statistic(&stat_key);
 
     state
         .log
