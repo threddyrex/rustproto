@@ -113,12 +113,12 @@ fn build_stats_writes_page(hostname: &str, statistics: &[Statistic]) -> String {
 <table class="stats-table filterable-table" id="statsTable">
     <thead>
         <tr>
-            <th class="sortable" data-col="0" data-type="string">Name</th>
-            <th class="sortable" data-col="1" data-type="string">IP Address</th>
-            <th class="sortable" data-col="2" data-type="string">User Agent</th>
-            <th class="sortable" data-col="3" data-type="number" style="text-align: right;">Value</th>
-            <th class="sortable desc" data-col="4" data-type="string">Last Updated</th>
-            <th class="sortable" data-col="5" data-type="number" style="text-align: right;">Minutes Ago</th>
+            <th class="sortable" data-col="0" data-type="string">IP Address</th>
+            <th class="sortable" data-col="1" data-type="number" style="text-align: right;">Minutes Ago</th>
+            <th class="sortable" data-col="2" data-type="number" style="text-align: right;">Value</th>
+            <th class="sortable desc" data-col="3" data-type="string">Last Updated</th>
+            <th class="sortable" data-col="4" data-type="string">User Agent</th>
+            <th class="sortable" data-col="5" data-type="string">Name</th>
         </tr>
     </thead>
     <tbody>
@@ -162,12 +162,12 @@ fn build_writes_rows_html(statistics: &[Statistic]) -> String {
         .map(|s| {
             format!(
                 r#"<tr>
-                    <td>{name}</td>
                     <td>{ip}</td>
-                    <td>{user_agent}</td>
+                    <td style="text-align: right;">{minutes_ago}</td>
                     <td style="text-align: right;">{value}</td>
                     <td>{last_updated}</td>
-                    <td style="text-align: right;">{minutes_ago}</td>
+                    <td>{user_agent}</td>
+                    <td>{name}</td>
                 </tr>"#,
                 name = html_encode(&s.name),
                 ip = html_encode(&s.ip_address),
