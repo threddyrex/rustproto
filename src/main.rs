@@ -22,6 +22,7 @@ use rustproto::cli::{
     inspect_firehose_event::cmd_inspect_firehose_event,
     install_config::cmd_install_config,
     install_db::cmd_install_db,
+    list_passkeys::cmd_list_passkeys,
     print_db_mst::cmd_print_db_mst,
     print_repo_stats::cmd_print_repo_stats,
     print_repo_records::cmd_print_repo_records,
@@ -90,6 +91,7 @@ async fn main() {
         "inspectfirehoseevent" => cmd_inspect_firehose_event(&arguments),
         "installconfig" => cmd_install_config(&arguments),
         "installdb" => cmd_install_db(&arguments),
+        "listpasskeys" => cmd_list_passkeys(&arguments),
         "printdbmst" => cmd_print_db_mst(&arguments),
         "printreporecords" => cmd_print_repo_records(&arguments).await,
         "printrepostats" => cmd_print_repo_stats(&arguments).await,
@@ -139,6 +141,7 @@ fn print_usage() {
     println!("  InstallConfig          Configure PDS server settings");
     println!("  RepairCommit           Re-sign repo commit after migration or format change");
     println!("  RunPds                 Run the PDS HTTP server");
+    println!("  ListPasskeys           List WebAuthn passkeys stored in the PDS database");
     println!("  Help                   Show this help message");
     println!();
     println!("Arguments:");
@@ -185,6 +188,7 @@ fn print_usage() {
     println!("  rustproto /command InstallDb /dataDir ./data");
     println!("  rustproto /command InstallConfig /dataDir ./data /listenScheme https /listenHost example.com /listenPort 443");
     println!("  rustproto /command RunPds /dataDir ./data");
+    println!("  rustproto /command ListPasskeys /dataDir ./data");
     println!("  rustproto /command SyncGetRecord /actor alice.bsky.social /collection app.bsky.feed.post /rkey 3abc123");
     println!("  rustproto /command SyncGetRecordLocal /dataDir ./data /collection app.bsky.feed.post /rkey 3abc123");
     println!("  rustproto /command SyncRepo /sourceDataDir ./source-data /destDataDir ./dest-data");
