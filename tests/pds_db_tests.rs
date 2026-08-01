@@ -861,13 +861,13 @@ fn stats_insert_and_retrieve() {
         user_agent: "useragent".to_string(),
     };
     
-    pds_db.increment_statistic(&key).unwrap();
-    pds_db.increment_statistic(&key).unwrap();
+    pds_db.increment_statistic_for_endpoint(&key).unwrap();
+    pds_db.increment_statistic_for_endpoint(&key).unwrap();
     
     assert_eq!(pds_db.get_statistic_value(&key).unwrap(), 2);
     assert!(pds_db.statistic_exists(&key).unwrap());
     
-    pds_db.increment_statistic(&key).unwrap();
+    pds_db.increment_statistic_for_endpoint(&key).unwrap();
     assert_eq!(pds_db.get_statistic_value(&key).unwrap(), 3);
     
     let stats = pds_db.get_all_statistics().unwrap();

@@ -50,7 +50,7 @@ pub async fn admin_stats(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Get hostname for title
     let hostname = state
@@ -214,7 +214,7 @@ pub async fn admin_delete_statistic(
         ip_address: caller_ip,
         user_agent: caller_ua,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Delete the statistic
     if let (Some(name), Some(ip_address), Some(user_agent)) =
@@ -263,7 +263,7 @@ pub async fn admin_delete_all_statistics(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Delete all statistics
     if let Err(e) = state.db.delete_all_statistics() {
@@ -302,7 +302,7 @@ pub async fn admin_delete_old_statistics(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Delete statistics older than 24 hours
     if let Err(e) = state.db.delete_old_statistics(24) {

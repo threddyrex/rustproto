@@ -53,7 +53,7 @@ pub async fn put_preferences(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Check authentication (supports Legacy and OAuth)
     let auth_result = check_user_auth(

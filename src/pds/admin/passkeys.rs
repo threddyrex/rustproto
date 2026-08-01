@@ -49,7 +49,7 @@ pub async fn admin_passkeys(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Get hostname for title
     let hostname = state
@@ -159,7 +159,7 @@ pub async fn admin_delete_passkey(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Delete the passkey
     if let Some(name) = form.name {
@@ -206,7 +206,7 @@ pub async fn admin_delete_passkey_challenge(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Delete the challenge
     if let Some(challenge) = form.challenge {

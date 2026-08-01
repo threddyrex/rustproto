@@ -42,7 +42,7 @@ pub async fn oauth_jwks(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Return empty JWKS - we use symmetric signing
     let response = JwksResponse { keys: vec![] };

@@ -79,7 +79,7 @@ pub async fn admin_register_passkey_get(
         ip_address: ip_address.clone(),
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Check if passkeys are enabled
     if !is_passkeys_enabled(&state.db) {
@@ -444,7 +444,7 @@ pub async fn admin_passkey_registration_options(
         ip_address: ip_address.clone(),
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Check if passkeys are enabled
     if !is_passkeys_enabled(&state.db) {
@@ -614,7 +614,7 @@ pub async fn admin_register_passkey_post(
         ip_address: ip_address.clone(),
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Check if passkeys are enabled
     if !is_passkeys_enabled(&state.db) {

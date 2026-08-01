@@ -74,7 +74,7 @@ pub async fn refresh_session(
         ip_address: ip_address.clone(),
         user_agent: user_agent.clone(),
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Extract the refresh token from Authorization header
     let original_refresh_jwt = match extract_bearer_token(&headers) {

@@ -39,7 +39,7 @@ pub async fn oauth_revoke(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Parse body
     let body_str = match String::from_utf8(body.to_vec()) {

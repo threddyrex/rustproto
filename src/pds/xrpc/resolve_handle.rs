@@ -67,7 +67,7 @@ pub async fn resolve_handle(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Validate handle parameter
     let handle = match params.handle {

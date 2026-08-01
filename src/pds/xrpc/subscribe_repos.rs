@@ -91,7 +91,7 @@ pub async fn subscribe_repos(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Parse cursor from query
     let cursor = query.cursor
@@ -260,7 +260,7 @@ async fn check_and_retire_toxic_event(state: &Arc<PdsState>, sequence_number: i6
                 ip_address: "".to_string(),
                 user_agent: "".to_string(),
             };
-            let _ = state.db.increment_statistic(&stat_key);
+            let _ = state.db.increment_statistic_for_endpoint(&stat_key);
         }
         
         // Remove from tracker since it's now hidden
@@ -289,7 +289,7 @@ pub async fn subscribe_repos_non_ws(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     (
         StatusCode::BAD_REQUEST,

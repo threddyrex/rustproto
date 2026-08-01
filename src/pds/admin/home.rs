@@ -47,7 +47,7 @@ pub async fn admin_home(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Get hostname for title
     let hostname = state

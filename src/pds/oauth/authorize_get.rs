@@ -48,7 +48,7 @@ pub async fn oauth_authorize_get(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Validate required parameters
     let client_id = match params.client_id {

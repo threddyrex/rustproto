@@ -56,7 +56,7 @@ pub async fn admin_login_get(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     Html(get_login_html()).into_response()
 }
@@ -81,7 +81,7 @@ pub async fn admin_login_post(
         ip_address: stat_ip,
         user_agent: stat_ua,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     let username = form.username.unwrap_or_default();
     let password = form.password.unwrap_or_default();
@@ -156,7 +156,7 @@ pub async fn admin_logout(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Remove the session cookie
     if let Some(cookie) = cookies.get("adminSessionId") {

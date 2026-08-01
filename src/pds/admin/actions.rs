@@ -70,7 +70,7 @@ pub async fn admin_actions_get(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Check for generated password cookies
     let generated_admin_password = get_and_remove_cookie(&cookies, "generated_admin_password");
@@ -123,7 +123,7 @@ pub async fn admin_actions_post(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     let action = form.action.as_deref().unwrap_or("");
 

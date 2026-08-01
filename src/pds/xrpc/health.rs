@@ -44,7 +44,7 @@ pub async fn health(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Check for code-rev.txt file
     let code_rev_path = state.lfs.get_data_dir().join("pds").join("code-rev.txt");

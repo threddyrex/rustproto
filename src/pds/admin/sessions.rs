@@ -50,7 +50,7 @@ pub async fn admin_sessions(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Get hostname for title
     let hostname = state
@@ -277,7 +277,7 @@ pub async fn admin_delete_legacy_session(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Delete the session
     if let Some(refresh_jwt) = form.refresh_jwt {
@@ -325,7 +325,7 @@ pub async fn admin_delete_oauth_session(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Delete the session
     if let Some(session_id) = form.session_id {
@@ -373,7 +373,7 @@ pub async fn admin_delete_admin_session(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Delete the session
     if let Some(session_id) = form.session_id {

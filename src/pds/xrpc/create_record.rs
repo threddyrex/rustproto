@@ -96,7 +96,7 @@ pub async fn create_record(
         ip_address: ip_address.clone(),
         user_agent: user_agent.clone(),
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Check authentication (supports Legacy and OAuth)
     let auth_result = check_user_auth(

@@ -33,7 +33,7 @@ pub async fn root(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     let index_path = state.lfs.get_path_static_dir().join("index.html");
 

@@ -87,7 +87,7 @@ pub async fn upload_blob(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Check authentication (supports Legacy, OAuth, and Service auth)
     let allowed_auth_types = [AuthType::Legacy, AuthType::Oauth, AuthType::Service];

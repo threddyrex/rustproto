@@ -75,7 +75,7 @@ pub async fn well_known_did(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Load config properties
     let user_did = match state.db.get_config_property("UserDid") {

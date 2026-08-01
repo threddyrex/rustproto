@@ -1997,7 +1997,7 @@ impl PdsDb {
     }
 
     /// Increment a statistic.
-    pub fn increment_statistic(&self, key: &StatisticKey) -> Result<(), PdsDbError> {
+    pub fn increment_statistic_for_endpoint(&self, key: &StatisticKey) -> Result<(), PdsDbError> {
 
         let mut key_to_insert = key.clone();
 

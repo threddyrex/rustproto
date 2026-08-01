@@ -74,7 +74,7 @@ pub async fn list_blobs(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Parse limit with default of 100
     let limit = query.limit.unwrap_or(100).min(1000).max(1);

@@ -86,7 +86,7 @@ pub async fn sync_list_repos(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Get user DID
     let user_did = match state.db.get_config_property("UserDid") {

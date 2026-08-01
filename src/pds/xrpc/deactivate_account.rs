@@ -45,7 +45,7 @@ pub async fn deactivate_account(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Check authentication (Legacy auth only for deactivate)
     let auth_result = check_legacy_auth(&state, &headers);

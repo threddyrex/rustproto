@@ -95,7 +95,7 @@ pub async fn oauth_authorization_server(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     let hostname = get_hostname(&state);
     let base_url = format!("https://{}", hostname);

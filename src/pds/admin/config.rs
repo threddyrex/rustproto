@@ -82,7 +82,7 @@ pub async fn admin_config_get(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     render_config_page(&state.db).into_response()
 }
@@ -119,7 +119,7 @@ pub async fn admin_config_post(
         ip_address,
         user_agent,
     };
-    let _ = state.db.increment_statistic(&stat_key);
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
     // Validate and set the config property
     let allowed_keys: HashSet<&str> = ALLOWED_CONFIG_KEYS.iter().copied().collect();
