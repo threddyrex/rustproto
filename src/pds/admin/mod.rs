@@ -105,7 +105,6 @@ pub fn get_base_styles() -> &'static str {
     r#"
         body { background-color: #16181c; color: #e7e9ea; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 40px 20px 40px 220px; }
         .container { max-width: 800px; margin: 0 0 0 40px; }
-        @media (max-width: 700px) { body { padding: 40px 20px; } }
         h1 { color: #8899a6; margin-bottom: 24px; }
         h2 { color: #8899a6; margin-top: 32px; margin-bottom: 16px; font-size: 18px; }
         p { margin-bottom: 16px; line-height: 1.5; }
@@ -119,6 +118,17 @@ pub fn get_base_styles() -> &'static str {
         .dimmed { color: #657786; }
         .key-name { font-weight: bold; color: #1d9bf0; }
         .section-header td { background-color: #1d1f23; color: #8899a6; font-weight: 500; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+        @media (max-width: 700px) {
+            body { padding: 20px 16px; }
+            .container { margin: 0; max-width: 100%; }
+            h1 { font-size: 24px; margin-bottom: 16px; }
+            h2 { font-size: 16px; margin-top: 24px; }
+            /* Let wide tables scroll horizontally instead of squishing off-screen. */
+            table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            th, td { padding: 8px 10px; }
+            /* Stack section headers (title + action buttons) vertically. */
+            .section-header { flex-wrap: wrap; gap: 8px; }
+        }
     "#
 }
 

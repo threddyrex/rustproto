@@ -74,6 +74,8 @@ fn build_stats_writes_page(hostname: &str, statistics: &[Statistic]) -> String {
         r#"<!DOCTYPE html>
 <html>
 <head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Admin - Writes Statistics - {hostname}</title>
 <style>
     {base_styles}

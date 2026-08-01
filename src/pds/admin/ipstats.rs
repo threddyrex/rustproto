@@ -108,6 +108,8 @@ fn build_ipstats_summary_page(hostname: &str, statistics: &[Statistic]) -> Strin
         r#"<!DOCTYPE html>
 <html>
 <head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Admin - IP Statistics - {hostname}</title>
 <style>
     {base_styles}
@@ -190,6 +192,8 @@ fn build_ipstats_detail_page(hostname: &str, filter_ip: &str, statistics: &[&Sta
         r#"<!DOCTYPE html>
 <html>
 <head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Admin - IP Statistics - {filter_ip} - {hostname}</title>
 <style>
     {base_styles}
