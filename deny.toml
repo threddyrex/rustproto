@@ -206,7 +206,7 @@ deny = [
 # Certain crates/versions that will be skipped when doing duplicate detection.
 skip = [
     # --- rsa -> num-bigint-dig pulls the older rand 0.8 stack ---
-    { crate = "rand@0.8.6", reason = "pulled by rsa->num-bigint-dig; no newer release uses the rand 0.9 stack" },
+    { crate = "rand@0.8.7", reason = "pulled by rsa->num-bigint-dig; no newer release uses the rand 0.9 stack" },
     { crate = "rand_core@0.6.4", reason = "part of the old rand 0.8 stack via rsa->num-bigint-dig" },
     { crate = "rand_chacha@0.3.1", reason = "part of the old rand 0.8 stack via rsa->num-bigint-dig" },
     { crate = "getrandom@0.2.17", reason = "required by the old rand_core 0.6 stack via rsa->num-bigint-dig" },
@@ -217,6 +217,8 @@ skip = [
     { crate = "core-foundation@0.9.4", reason = "older macOS/native-tls bindings; transitive, platform-specific" },
     { crate = "windows-sys@0.52.0", reason = "older Windows bindings from transitive deps; platform-specific" },
     { crate = "r-efi@5.3.0", reason = "UEFI backend for getrandom; platform-specific, transitive" },
+    # --- proc-macro toolchain crates pulled at two majors by transitive deps ---
+    { crate = "syn@3.0.3", reason = "newer syn major pulled by a few transitive proc-macro deps; most of the tree still uses syn 2.x" },
 ]
 # Similarly to `skip` allows you to skip certain crates during duplicate
 # detection. Unlike skip, it also includes the entire tree of transitive
