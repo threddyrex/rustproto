@@ -125,6 +125,10 @@ pub fn get_base_styles() -> &'static str {
             h2 { font-size: 16px; margin-top: 24px; }
             /* Let wide tables scroll horizontally instead of squishing off-screen. */
             table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            /* Data-heavy tables keep their width and scroll rather than wrap/squish.
+               The home config table (plain <table>) is intentionally excluded so its
+               long description column still wraps. */
+            .stats-table, .sessions-table, .passkeys-table, .config-table { white-space: nowrap; }
             th, td { padding: 8px 10px; }
             /* Stack section headers (title + action buttons) vertically. */
             .section-header { flex-wrap: wrap; gap: 8px; }
