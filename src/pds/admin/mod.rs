@@ -126,9 +126,18 @@ pub fn get_base_styles() -> &'static str {
             /* Let wide tables scroll horizontally instead of squishing off-screen. */
             table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
             /* Data-heavy tables keep their width and scroll rather than wrap/squish.
-               The home config table (plain <table>) is intentionally excluded so its
-               long description column still wraps. */
-            .stats-table, .sessions-table, .passkeys-table, .config-table { white-space: nowrap; }
+               The .container prefix is needed to out-specify each page's
+               ".stats-table { overflow: hidden }" (used for rounded corners),
+               which would otherwise clip the horizontal scroll. The home config
+               table (plain <table>) is intentionally excluded so its long
+               description column still wraps. */
+            .container .stats-table,
+            .container .sessions-table,
+            .container .passkeys-table,
+            .container .config-table {
+                overflow-x: auto;
+                white-space: nowrap;
+            }
             th, td { padding: 8px 10px; }
             /* Stack section headers (title + action buttons) vertically. */
             .section-header { flex-wrap: wrap; gap: 8px; }
