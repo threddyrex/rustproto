@@ -21,6 +21,7 @@ use tower_cookies::Cookies;
 
 use crate::pds::db::{Passkey, PasskeyChallenge, PdsDb, StatisticKey};
 use crate::pds::server::PdsState;
+use crate::repo::DagCborObject;
 
 use super::{get_caller_info, is_admin_enabled, is_authenticated};
 
@@ -757,18 +758,12 @@ pub async fn admin_register_passkey_post(
 /// - attStmt: attestation statement (not used for "none" attestation)
 fn extract_public_key_from_attestation(attestation_bytes: &[u8]) -> Result<String, String> {
     // Parse CBOR attestation object
-    let attestation: ciborium::Value = ciborium::from_reader(attestation_bytes)
+    let attestation = DagCborObject::from_bytes(attestation_bytes)
         .map_err(|e| format!("Failed to parse CBOR: {}", e))?;
 
     // Extract authData
     let auth_data = attestation
-        .as_map()
-        .and_then(|m| {
-            m.iter()
-                .find(|(k, _)| k.as_text() == Some("authData"))
-                .map(|(_, v)| v)
-        })
-        .and_then(|v| v.as_bytes())
+        .select_bytes(&["authData"])
         .ok_or("Missing authData in attestation")?;
 
     // AuthData structure:
@@ -807,7 +802,7 @@ fn extract_public_key_from_attestation(attestation_bytes: &[u8]) -> Result<Strin
     let cose_key_bytes = &auth_data[cose_key_offset..];
 
     // Parse COSE key
-    let cose_key: ciborium::Value = ciborium::from_reader(cose_key_bytes)
+    let cose_key = DagCborObject::from_bytes(cose_key_bytes)
         .map_err(|e| format!("Failed to parse COSE key: {}", e))?;
 
     // Convert COSE key to JWK
@@ -822,23 +817,22 @@ fn extract_public_key_from_attestation(attestation_bytes: &[u8]) -> Result<Strin
 /// - -1 (crv): 1 (P-256)
 /// - -2 (x): x coordinate
 /// - -3 (y): y coordinate
-fn cose_to_jwk(cose_key: &ciborium::Value) -> Result<String, String> {
+fn cose_to_jwk(cose_key: &DagCborObject) -> Result<String, String> {
     let map = cose_key
+        .value
         .as_map()
         .ok_or("COSE key is not a map")?;
 
+    // COSE integer keys are decoded to their string form (e.g. 1 -> "1", -1 -> "-1").
     // Helper to get integer value
-    let get_int = |key: i128| -> Option<i128> {
-        map.iter()
-            .find(|(k, _)| k.as_integer().map(|i| i128::from(i)) == Some(key))
-            .and_then(|(_, v)| v.as_integer().map(|i| i128::from(i)))
+    let get_int = |key: i64| -> Option<i64> {
+        map.get(&key.to_string()).and_then(|v| v.value.as_int())
     };
 
     // Helper to get bytes value
-    let get_bytes = |key: i128| -> Option<&[u8]> {
-        map.iter()
-            .find(|(k, _)| k.as_integer().map(|i| i128::from(i)) == Some(key))
-            .and_then(|(_, v)| v.as_bytes())
+    let get_bytes = |key: i64| -> Option<&[u8]> {
+        map.get(&key.to_string())
+            .and_then(|v| v.value.as_bytes())
             .map(|v| v.as_slice())
     };
 
