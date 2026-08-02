@@ -238,6 +238,8 @@ pub fn generate_auth_form(
         r#"<!DOCTYPE html>
 <html>
 <head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Authorize {safe_client_id}</title>
 <style>
     body {{ background-color: #16181c; color: #e7e9ea; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 40px 20px; }}
@@ -260,6 +262,11 @@ pub fn generate_auth_form(
     .divider span {{ padding: 0 16px; }}
     .error-msg {{ color: #f44336; margin-bottom: 16px; display: none; }}
     .auth-failed {{ color: #f44336; margin-bottom: 16px; }}
+    @media (max-width: 700px) {{
+        body {{ padding: 20px 16px; }}
+        .container {{ margin: 0; max-width: 100%; }}
+        h1 {{ font-size: 24px; margin-bottom: 16px; }}
+    }}
 </style>
 </head>
 <body>
