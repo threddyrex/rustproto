@@ -161,7 +161,7 @@ fn build_stats_ip_summary_page(hostname: &str, statistics: &[Statistic]) -> Stri
             <th class="sortable" data-col="1" data-type="string">User Agent</th>
             <th class="sortable" data-col="2" data-type="number" style="text-align: right;">Value</th>
             <th class="sortable desc" data-col="3" data-type="string">Last Updated</th>
-            <th class="sortable" data-col="4" data-type="number" style="text-align: right;">Minutes Ago</th>
+            <th class="sortable" data-col="4" data-type="number" style="text-align: right;">Ago</th>
         </tr>
     </thead>
     <tbody>
@@ -233,7 +233,7 @@ fn build_stats_ip_detail_page(hostname: &str, filter_ip: &str, statistics: &[&St
             <th class="sortable" data-col="1" data-type="string">User Agent</th>
             <th class="sortable" data-col="2" data-type="number" style="text-align: right;">Value</th>
             <th class="sortable desc" data-col="3" data-type="string">Last Updated</th>
-            <th class="sortable" data-col="4" data-type="number" style="text-align: right;">Minutes Ago</th>
+            <th class="sortable" data-col="4" data-type="number" style="text-align: right;">Ago</th>
         </tr>
     </thead>
     <tbody>
@@ -263,20 +263,22 @@ fn build_summary_rows_html(rows: &[(String, String, i64, String)]) -> String {
 
     rows.iter()
         .map(|(ip, ua, value, last_updated)| {
+            let (time_ago, sort_minutes) = calculate_time_ago(last_updated);
             format!(
                 r#"<tr>
                     <td><a href="/admin/stats_ip?ip={ip_url}" class="ip-link">{ip}</a></td>
                     <td>{ua}</td>
                     <td style="text-align: right;">{value}</td>
                     <td>{last_updated}</td>
-                    <td style="text-align: right;">{minutes_ago}</td>
+                    <td style="text-align: right;" data-sort="{sort_minutes}">{time_ago}</td>
                 </tr>"#,
                 ip_url = url_encode(ip),
                 ip = html_encode(ip),
                 ua = html_encode(ua),
                 value = value,
                 last_updated = html_encode(last_updated),
-                minutes_ago = calculate_minutes_ago(last_updated),
+                time_ago = time_ago,
+                sort_minutes = sort_minutes,
             )
         })
         .collect::<Vec<_>>()
@@ -292,33 +294,46 @@ fn build_detail_rows_html(statistics: &[&Statistic]) -> String {
     statistics
         .iter()
         .map(|s| {
+            let (time_ago, sort_minutes) = calculate_time_ago(&s.last_updated_date);
             format!(
                 r#"<tr>
                     <td>{name}</td>
                     <td>{user_agent}</td>
                     <td style="text-align: right;">{value}</td>
                     <td>{last_updated}</td>
-                    <td style="text-align: right;">{minutes_ago}</td>
+                    <td style="text-align: right;" data-sort="{sort_minutes}">{time_ago}</td>
                 </tr>"#,
                 name = html_encode(&s.name),
                 user_agent = html_encode(&s.user_agent),
                 value = s.value,
                 last_updated = html_encode(&s.last_updated_date),
-                minutes_ago = calculate_minutes_ago(&s.last_updated_date),
+                time_ago = time_ago,
+                sort_minutes = sort_minutes,
             )
         })
         .collect::<Vec<_>>()
         .join("\n")
 }
 
-/// Calculate the minutes ago from a last updated date string.
-fn calculate_minutes_ago(last_updated_date: &str) -> String {
+/// Calculate a human-friendly "time ago" from a last updated date string.
+///
+/// Returns a tuple of `(display, sort_minutes)` where `display` is a compact
+/// string (e.g. `45m`, `3.2h`, `2.1d`) and `sort_minutes` is the elapsed time
+/// in minutes for correct numeric sorting regardless of the unit shown.
+fn calculate_time_ago(last_updated_date: &str) -> (String, f64) {
     if let Ok(last_updated) = DateTime::parse_from_rfc3339(last_updated_date) {
         let elapsed = Utc::now().signed_duration_since(last_updated.with_timezone(&Utc));
-        let minutes = elapsed.num_seconds() as f64 / 60.0;
-        format!("{:.1}m", minutes.max(0.0))
+        let minutes = (elapsed.num_seconds() as f64 / 60.0).max(0.0);
+        let display = if minutes < 60.0 {
+            format!("{:.0}m", minutes)
+        } else if minutes < 60.0 * 24.0 {
+            format!("{:.1}h", minutes / 60.0)
+        } else {
+            format!("{:.1}d", minutes / (60.0 * 24.0))
+        };
+        (display, minutes)
     } else {
-        "N/A".to_string()
+        ("N/A".to_string(), -1.0)
     }
 }
 
@@ -362,8 +377,10 @@ fn get_sort_and_filter_script() -> &'static str {
             let bVal = bCell.textContent.trim();
             
             if (type === 'number') {
-                aVal = parseFloat(aVal) || 0;
-                bVal = parseFloat(bVal) || 0;
+                aVal = aCell.dataset.sort !== undefined ? parseFloat(aCell.dataset.sort) : (parseFloat(aVal) || 0);
+                bVal = bCell.dataset.sort !== undefined ? parseFloat(bCell.dataset.sort) : (parseFloat(bVal) || 0);
+                if (isNaN(aVal)) aVal = 0;
+                if (isNaN(bVal)) bVal = 0;
                 return ascending ? aVal - bVal : bVal - aVal;
             } else {
                 return ascending 

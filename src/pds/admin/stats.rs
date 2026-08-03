@@ -134,7 +134,7 @@ fn build_stats_all_page(hostname: &str, statistics: &[Statistic]) -> String {
             <th class="sortable" data-col="2" data-type="string">User Agent</th>
             <th class="sortable" data-col="3" data-type="number" style="text-align: right;">Value</th>
             <th class="sortable desc" data-col="4" data-type="string">Last Updated</th>
-            <th class="sortable" data-col="5" data-type="number" style="text-align: right;">Minutes Ago</th>
+            <th class="sortable" data-col="5" data-type="number" style="text-align: right;">Ago</th>
             <th>Action</th>
         </tr>
     </thead>
@@ -314,15 +314,26 @@ pub async fn admin_delete_old_statistics(
     Redirect::to(resolve_redirect(&form.redirect_to)).into_response()
 }
 
-/// Calculate the minutes ago from a last updated date string.
-fn calculate_minutes_ago(last_updated_date: &str) -> String {
+/// Calculate a human-friendly "time ago" from a last updated date string.
+///
+/// Returns a tuple of `(display, sort_minutes)` where `display` is a compact
+/// string (e.g. `45m`, `3.2h`, `2.1d`) and `sort_minutes` is the elapsed time
+/// in minutes for correct numeric sorting regardless of the unit shown.
+fn calculate_time_ago(last_updated_date: &str) -> (String, f64) {
     // Parse the date - format is "yyyy-MM-ddTHH:mm:ss.fffZ"
     if let Ok(last_updated) = DateTime::parse_from_rfc3339(last_updated_date) {
         let elapsed = Utc::now().signed_duration_since(last_updated.with_timezone(&Utc));
-        let minutes = elapsed.num_seconds() as f64 / 60.0;
-        format!("{:.1}m", minutes.max(0.0))
+        let minutes = (elapsed.num_seconds() as f64 / 60.0).max(0.0);
+        let display = if minutes < 60.0 {
+            format!("{:.0}m", minutes)
+        } else if minutes < 60.0 * 24.0 {
+            format!("{:.1}h", minutes / 60.0)
+        } else {
+            format!("{:.1}d", minutes / (60.0 * 24.0))
+        };
+        (display, minutes)
     } else {
-        "N/A".to_string()
+        ("N/A".to_string(), -1.0)
     }
 }
 
@@ -335,6 +346,7 @@ fn build_all_rows_html(statistics: &[Statistic]) -> String {
     statistics
         .iter()
         .map(|s| {
+            let (time_ago, sort_minutes) = calculate_time_ago(&s.last_updated_date);
             format!(
                 r#"<tr>
                     <td>{name}</td>
@@ -342,7 +354,7 @@ fn build_all_rows_html(statistics: &[Statistic]) -> String {
                     <td>{user_agent}</td>
                     <td style="text-align: right;">{value}</td>
                     <td>{last_updated}</td>
-                    <td style="text-align: right;">{minutes_ago}</td>
+                    <td style="text-align: right;" data-sort="{sort_minutes}">{time_ago}</td>
                     <td>
                         <form method="post" action="/admin/deletestatistic" style="display:inline;">
                             <input type="hidden" name="name" value="{name_encoded}" />
@@ -358,7 +370,8 @@ fn build_all_rows_html(statistics: &[Statistic]) -> String {
                 user_agent = html_encode(&s.user_agent),
                 value = s.value,
                 last_updated = html_encode(&s.last_updated_date),
-                minutes_ago = calculate_minutes_ago(&s.last_updated_date),
+                time_ago = time_ago,
+                sort_minutes = sort_minutes,
                 name_encoded = html_encode(&s.name),
                 ip_encoded = html_encode(&s.ip_address),
                 user_agent_encoded = html_encode(&s.user_agent),
@@ -410,8 +423,10 @@ fn get_sort_and_filter_script() -> &'static str {
             let bVal = bCell.textContent.trim();
             
             if (type === 'number') {
-                aVal = parseFloat(aVal) || 0;
-                bVal = parseFloat(bVal) || 0;
+                aVal = aCell.dataset.sort !== undefined ? parseFloat(aCell.dataset.sort) : (parseFloat(aVal) || 0);
+                bVal = bCell.dataset.sort !== undefined ? parseFloat(bCell.dataset.sort) : (parseFloat(bVal) || 0);
+                if (isNaN(aVal)) aVal = 0;
+                if (isNaN(bVal)) bVal = 0;
                 return ascending ? aVal - bVal : bVal - aVal;
             } else {
                 return ascending 
