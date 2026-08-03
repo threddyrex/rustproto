@@ -129,12 +129,12 @@ fn build_stats_all_page(hostname: &str, statistics: &[Statistic]) -> String {
 <table class="stats-table filterable-table" id="statsTable">
     <thead>
         <tr>
-            <th class="sortable" data-col="0" data-type="string">Name</th>
-            <th class="sortable" data-col="1" data-type="string">IP Address</th>
-            <th class="sortable" data-col="2" data-type="string">User Agent</th>
-            <th class="sortable" data-col="3" data-type="number" style="text-align: right;">Value</th>
-            <th class="sortable desc" data-col="4" data-type="string">Last Updated</th>
-            <th class="sortable" data-col="5" data-type="number" style="text-align: right;">Ago</th>
+            <th class="sortable" data-col="0" data-type="string">IP Address</th>
+            <th class="sortable" data-col="1" data-type="number" style="text-align: right;">Ago</th>
+            <th class="sortable" data-col="2" data-type="number" style="text-align: right;">Value</th>
+            <th class="sortable" data-col="3" data-type="string">User Agent</th>
+            <th class="sortable" data-col="4" data-type="string">Name</th>
+            <th class="sortable desc" data-col="5" data-type="string">Last Updated</th>
             <th>Action</th>
         </tr>
     </thead>
@@ -349,12 +349,12 @@ fn build_all_rows_html(statistics: &[Statistic]) -> String {
             let (time_ago, sort_minutes) = calculate_time_ago(&s.last_updated_date);
             format!(
                 r#"<tr>
-                    <td>{name}</td>
                     <td>{ip}</td>
-                    <td>{user_agent}</td>
-                    <td style="text-align: right;">{value}</td>
-                    <td>{last_updated}</td>
                     <td style="text-align: right;" data-sort="{sort_minutes}">{time_ago}</td>
+                    <td style="text-align: right;">{value}</td>
+                    <td>{user_agent}</td>
+                    <td>{name}</td>
+                    <td>{last_updated}</td>
                     <td>
                         <form method="post" action="/admin/deletestatistic" style="display:inline;">
                             <input type="hidden" name="name" value="{name_encoded}" />

@@ -158,10 +158,10 @@ fn build_stats_ip_summary_page(hostname: &str, statistics: &[Statistic]) -> Stri
     <thead>
         <tr>
             <th class="sortable" data-col="0" data-type="string">IP Address</th>
-            <th class="sortable" data-col="1" data-type="string">User Agent</th>
+            <th class="sortable" data-col="1" data-type="number" style="text-align: right;">Ago</th>
             <th class="sortable" data-col="2" data-type="number" style="text-align: right;">Value</th>
-            <th class="sortable desc" data-col="3" data-type="string">Last Updated</th>
-            <th class="sortable" data-col="4" data-type="number" style="text-align: right;">Ago</th>
+            <th class="sortable" data-col="3" data-type="string">User Agent</th>
+            <th class="sortable desc" data-col="4" data-type="string">Last Updated</th>
         </tr>
     </thead>
     <tbody>
@@ -229,11 +229,11 @@ fn build_stats_ip_detail_page(hostname: &str, filter_ip: &str, statistics: &[&St
 <table class="stats-table" id="statsTable">
     <thead>
         <tr>
-            <th class="sortable" data-col="0" data-type="string">Name</th>
-            <th class="sortable" data-col="1" data-type="string">User Agent</th>
-            <th class="sortable" data-col="2" data-type="number" style="text-align: right;">Value</th>
-            <th class="sortable desc" data-col="3" data-type="string">Last Updated</th>
-            <th class="sortable" data-col="4" data-type="number" style="text-align: right;">Ago</th>
+            <th class="sortable" data-col="0" data-type="number" style="text-align: right;">Ago</th>
+            <th class="sortable" data-col="1" data-type="number" style="text-align: right;">Value</th>
+            <th class="sortable" data-col="2" data-type="string">User Agent</th>
+            <th class="sortable" data-col="3" data-type="string">Name</th>
+            <th class="sortable desc" data-col="4" data-type="string">Last Updated</th>
         </tr>
     </thead>
     <tbody>
@@ -267,10 +267,10 @@ fn build_summary_rows_html(rows: &[(String, String, i64, String)]) -> String {
             format!(
                 r#"<tr>
                     <td><a href="/admin/stats_ip?ip={ip_url}" class="ip-link">{ip}</a></td>
-                    <td>{ua}</td>
-                    <td style="text-align: right;">{value}</td>
-                    <td>{last_updated}</td>
                     <td style="text-align: right;" data-sort="{sort_minutes}">{time_ago}</td>
+                    <td style="text-align: right;">{value}</td>
+                    <td>{ua}</td>
+                    <td>{last_updated}</td>
                 </tr>"#,
                 ip_url = url_encode(ip),
                 ip = html_encode(ip),
@@ -297,11 +297,11 @@ fn build_detail_rows_html(statistics: &[&Statistic]) -> String {
             let (time_ago, sort_minutes) = calculate_time_ago(&s.last_updated_date);
             format!(
                 r#"<tr>
-                    <td>{name}</td>
-                    <td>{user_agent}</td>
-                    <td style="text-align: right;">{value}</td>
-                    <td>{last_updated}</td>
                     <td style="text-align: right;" data-sort="{sort_minutes}">{time_ago}</td>
+                    <td style="text-align: right;">{value}</td>
+                    <td>{user_agent}</td>
+                    <td>{name}</td>
+                    <td>{last_updated}</td>
                 </tr>"#,
                 name = html_encode(&s.name),
                 user_agent = html_encode(&s.user_agent),
