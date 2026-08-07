@@ -60,7 +60,7 @@ pub async fn admin_sessions(
 
     // Get all sessions sorted by newest first
     let mut legacy_sessions = state.db.get_all_legacy_sessions().unwrap_or_default();
-    legacy_sessions.sort_by(|a, b| b.created_date.cmp(&a.created_date));
+    legacy_sessions.sort_by(|a, b| b.last_used_date.cmp(&a.last_used_date));
 
     let mut oauth_sessions = state.db.get_all_oauth_sessions().unwrap_or_default();
     oauth_sessions.sort_by(|a, b| b.created_date.cmp(&a.created_date));
@@ -107,8 +107,8 @@ pub async fn admin_sessions(
     <thead>
         <tr>
             <th class="sortable" data-col="0" data-type="string">IP Address</th>
-            <th class="sortable" data-col="1" data-type="number" style="text-align: right;">Used</th>
-            <th class="sortable desc" data-col="2" data-type="number" style="text-align: right;">Created</th>
+            <th class="sortable desc" data-col="1" data-type="number" style="text-align: right;">Used</th>
+            <th class="sortable" data-col="2" data-type="number" style="text-align: right;">Created</th>
             <th class="sortable" data-col="3" data-type="string">User Agent</th>
             <th>Action</th>
         </tr>
