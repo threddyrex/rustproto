@@ -102,31 +102,13 @@ pub async fn admin_sessions(
 {navbar}
 <h1>Sessions</h1>
 
-<h2>Admin Sessions <span class="session-count">({admin_count})</span></h2>
-<table class="sessions-table" id="adminSessionsTable">
-    <thead>
-        <tr>
-            <th class="sortable" data-col="0" data-type="string">IP Address</th>
-            <th class="sortable" data-col="1" data-type="string">User Agent</th>
-            <th class="sortable desc" data-col="2" data-type="string">Created</th>
-            <th class="sortable" data-col="3" data-type="number" style="text-align: right;">Age (min)</th>
-            <th class="sortable" data-col="4" data-type="string">AuthType</th>
-            <th>Action</th>
-        </tr>
-    </thead>
-    <tbody>
-        {admin_rows}
-    </tbody>
-</table>
-
 <h2>Legacy Sessions <span class="session-count">({legacy_count})</span></h2>
 <table class="sessions-table" id="legacySessionsTable">
     <thead>
         <tr>
             <th class="sortable" data-col="0" data-type="string">IP Address</th>
-            <th class="sortable" data-col="1" data-type="string">User Agent</th>
-            <th class="sortable desc" data-col="2" data-type="string">Created</th>
-            <th class="sortable" data-col="3" data-type="number" style="text-align: right;">Age (min)</th>
+            <th class="sortable desc" data-col="1" data-type="number" style="text-align: right;">Created</th>
+            <th class="sortable" data-col="2" data-type="string">User Agent</th>
             <th>Action</th>
         </tr>
     </thead>
@@ -135,15 +117,30 @@ pub async fn admin_sessions(
     </tbody>
 </table>
 
+<h2>Admin Sessions <span class="session-count">({admin_count})</span></h2>
+<table class="sessions-table" id="adminSessionsTable">
+    <thead>
+        <tr>
+            <th class="sortable" data-col="0" data-type="string">IP Address</th>
+            <th class="sortable desc" data-col="1" data-type="number" style="text-align: right;">Created</th>
+            <th class="sortable" data-col="2" data-type="string">User Agent</th>
+            <th class="sortable" data-col="3" data-type="string">AuthType</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody>
+        {admin_rows}
+    </tbody>
+</table>
+
 <h2>OAuth Sessions <span class="session-count">({oauth_count})</span></h2>
 <table class="sessions-table" id="oauthSessionsTable">
     <thead>
         <tr>
             <th class="sortable" data-col="0" data-type="string">IP Address</th>
-            <th class="sortable desc" data-col="1" data-type="string">Created</th>
-            <th class="sortable" data-col="2" data-type="number" style="text-align: right;">Age (min)</th>
-            <th class="sortable" data-col="3" data-type="string">Client ID</th>
-            <th class="sortable" data-col="4" data-type="string">Auth Type</th>
+            <th class="sortable desc" data-col="1" data-type="number" style="text-align: right;">Created</th>
+            <th class="sortable" data-col="2" data-type="string">Client ID</th>
+            <th class="sortable" data-col="3" data-type="string">Auth Type</th>
             <th>Action</th>
         </tr>
     </thead>
@@ -391,37 +388,43 @@ pub async fn admin_delete_admin_session(
 // HELPER FUNCTIONS
 // ============================================================================
 
-/// Calculate the age in minutes from a created date string.
-fn calculate_age(created_date: &str) -> String {
-    // Parse the date - format is "yyyy-MM-ddTHH:mm:ss.fffZ"
+/// Calculate a human-friendly "time ago" from a created date string.
+///
+/// Returns a tuple of `(display, sort_minutes)` where `display` is a compact
+/// string (e.g. `45m`, `3.2h`, `2.1d`) and `sort_minutes` is the elapsed time
+/// in minutes for correct numeric sorting regardless of the unit shown.
+fn calculate_time_ago(created_date: &str) -> (String, f64) {
     if let Ok(created) = DateTime::parse_from_rfc3339(created_date) {
         let elapsed = Utc::now().signed_duration_since(created.with_timezone(&Utc));
-        let minutes = elapsed.num_seconds() as f64 / 60.0;
-        if minutes < 1.0 {
-            format!("{:.0}s", elapsed.num_seconds().max(0))
+        let minutes = (elapsed.num_seconds() as f64 / 60.0).max(0.0);
+        let display = if minutes < 60.0 {
+            format!("{:.0}m", minutes)
+        } else if minutes < 60.0 * 24.0 {
+            format!("{:.1}h", minutes / 60.0)
         } else {
-            format!("{:.1}", minutes)
-        }
+            format!("{:.1}d", minutes / (60.0 * 24.0))
+        };
+        (display, minutes)
     } else {
-        "N/A".to_string()
+        ("N/A".to_string(), 0.0)
     }
 }
 
 /// Build HTML rows for legacy sessions.
 fn build_legacy_sessions_html(sessions: &[LegacySession]) -> String {
     if sessions.is_empty() {
-        return r#"<tr><td colspan="5" style="text-align: center; color: #8899a6;">No legacy sessions</td></tr>"#.to_string();
+        return r#"<tr><td colspan="4" style="text-align: center; color: #8899a6;">No legacy sessions</td></tr>"#.to_string();
     }
 
     sessions
         .iter()
         .map(|s| {
+            let (created_display, sort_minutes) = calculate_time_ago(&s.created_date);
             format!(
                 r#"<tr>
                     <td class="ip-address">{ip}</td>
+                    <td style="text-align: right;" data-sort="{sort_minutes}">{created}</td>
                     <td>{user_agent}</td>
-                    <td>{created}</td>
-                    <td style="text-align: right;">{age}</td>
                     <td>
                         <form method="post" action="/admin/deletelegacysession" style="display:inline;">
                             <input type="hidden" name="refreshJwt" value="{refresh_jwt}" />
@@ -431,8 +434,8 @@ fn build_legacy_sessions_html(sessions: &[LegacySession]) -> String {
                 </tr>"#,
                 ip = html_encode(&s.ip_address),
                 user_agent = html_encode(&s.user_agent),
-                created = html_encode(&s.created_date),
-                age = html_encode(&calculate_age(&s.created_date)),
+                created = html_encode(&created_display),
+                sort_minutes = sort_minutes,
                 refresh_jwt = html_encode(&s.refresh_jwt),
             )
         })
@@ -443,17 +446,17 @@ fn build_legacy_sessions_html(sessions: &[LegacySession]) -> String {
 /// Build HTML rows for OAuth sessions.
 fn build_oauth_sessions_html(sessions: &[OauthSession]) -> String {
     if sessions.is_empty() {
-        return r#"<tr><td colspan="6" style="text-align: center; color: #8899a6;">No OAuth sessions</td></tr>"#.to_string();
+        return r#"<tr><td colspan="5" style="text-align: center; color: #8899a6;">No OAuth sessions</td></tr>"#.to_string();
     }
 
     sessions
         .iter()
         .map(|s| {
+            let (created_display, sort_minutes) = calculate_time_ago(&s.created_date);
             format!(
                 r#"<tr>
                     <td class="ip-address">{ip}</td>
-                    <td>{created}</td>
-                    <td style="text-align: right;">{age}</td>
+                    <td style="text-align: right;" data-sort="{sort_minutes}">{created}</td>
                     <td>{client_id}</td>
                     <td>{auth_type}</td>
                     <td>
@@ -464,8 +467,8 @@ fn build_oauth_sessions_html(sessions: &[OauthSession]) -> String {
                     </td>
                 </tr>"#,
                 ip = html_encode(&s.ip_address),
-                created = html_encode(&s.created_date),
-                age = html_encode(&calculate_age(&s.created_date)),
+                created = html_encode(&created_display),
+                sort_minutes = sort_minutes,
                 client_id = html_encode(&s.client_id),
                 auth_type = html_encode(&s.auth_type),
                 session_id = html_encode(&s.session_id),
@@ -478,18 +481,18 @@ fn build_oauth_sessions_html(sessions: &[OauthSession]) -> String {
 /// Build HTML rows for admin sessions.
 fn build_admin_sessions_html(sessions: &[AdminSession]) -> String {
     if sessions.is_empty() {
-        return r#"<tr><td colspan="6" style="text-align: center; color: #8899a6;">No admin sessions</td></tr>"#.to_string();
+        return r#"<tr><td colspan="5" style="text-align: center; color: #8899a6;">No admin sessions</td></tr>"#.to_string();
     }
 
     sessions
         .iter()
         .map(|s| {
+            let (created_display, sort_minutes) = calculate_time_ago(&s.created_date);
             format!(
                 r#"<tr>
                     <td class="ip-address">{ip}</td>
+                    <td style="text-align: right;" data-sort="{sort_minutes}">{created}</td>
                     <td>{user_agent}</td>
-                    <td>{created}</td>
-                    <td style="text-align: right;">{age}</td>
                     <td>{auth_type}</td>
                     <td>
                         <form method="post" action="/admin/deleteadminsession" style="display:inline;">
@@ -500,8 +503,8 @@ fn build_admin_sessions_html(sessions: &[AdminSession]) -> String {
                 </tr>"#,
                 ip = html_encode(&s.ip_address),
                 user_agent = html_encode(&s.user_agent),
-                created = html_encode(&s.created_date),
-                age = html_encode(&calculate_age(&s.created_date)),
+                created = html_encode(&created_display),
+                sort_minutes = sort_minutes,
                 auth_type = html_encode(&s.auth_type),
                 session_id = html_encode(&s.session_id),
             )
