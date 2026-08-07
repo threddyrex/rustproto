@@ -657,6 +657,7 @@ fn oauth_session_insert_get() {
         created_date: get_current_datetime_for_db(),
         ip_address: "ipaddr".to_string(),
         auth_type: "Passkey".to_string(),
+        last_used_date: get_current_datetime_for_db(),
     };
     
     pds_db.insert_oauth_session(&session).unwrap();
@@ -686,6 +687,7 @@ fn oauth_session_delete_old() {
         created_date: get_current_datetime_for_db(),
         ip_address: "ipaddr".to_string(),
         auth_type: "Legacy".to_string(),
+        last_used_date: get_current_datetime_for_db(),
     };
     
     pds_db.insert_oauth_session(&session).unwrap();

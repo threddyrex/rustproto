@@ -63,7 +63,7 @@ pub async fn admin_sessions(
     legacy_sessions.sort_by(|a, b| b.last_used_date.cmp(&a.last_used_date));
 
     let mut oauth_sessions = state.db.get_all_oauth_sessions().unwrap_or_default();
-    oauth_sessions.sort_by(|a, b| b.created_date.cmp(&a.created_date));
+    oauth_sessions.sort_by(|a, b| b.last_used_date.cmp(&a.last_used_date));
 
     let mut admin_sessions = state.db.get_all_admin_sessions().unwrap_or_default();
     admin_sessions.sort_by(|a, b| b.last_used_date.cmp(&a.last_used_date));
@@ -140,9 +140,10 @@ pub async fn admin_sessions(
     <thead>
         <tr>
             <th class="sortable" data-col="0" data-type="string">IP Address</th>
-            <th class="sortable desc" data-col="1" data-type="number" style="text-align: right;">Created</th>
-            <th class="sortable" data-col="2" data-type="string">Client ID</th>
-            <th class="sortable" data-col="3" data-type="string">Auth Type</th>
+            <th class="sortable desc" data-col="1" data-type="number" style="text-align: right;">Used</th>
+            <th class="sortable" data-col="2" data-type="number" style="text-align: right;">Created</th>
+            <th class="sortable" data-col="3" data-type="string">Client ID</th>
+            <th class="sortable" data-col="4" data-type="string">Auth Type</th>
             <th>Action</th>
         </tr>
     </thead>
@@ -452,16 +453,18 @@ fn build_legacy_sessions_html(sessions: &[LegacySession]) -> String {
 /// Build HTML rows for OAuth sessions.
 fn build_oauth_sessions_html(sessions: &[OauthSession]) -> String {
     if sessions.is_empty() {
-        return r#"<tr><td colspan="5" style="text-align: center; color: #8899a6;">No OAuth sessions</td></tr>"#.to_string();
+        return r#"<tr><td colspan="6" style="text-align: center; color: #8899a6;">No OAuth sessions</td></tr>"#.to_string();
     }
 
     sessions
         .iter()
         .map(|s| {
             let (created_display, sort_minutes) = calculate_time_ago(&s.created_date);
+            let (used_display, used_sort_minutes) = calculate_time_ago(&s.last_used_date);
             format!(
                 r#"<tr>
                     <td class="ip-address">{ip}</td>
+                    <td style="text-align: right;" data-sort="{used_sort_minutes}">{used}</td>
                     <td style="text-align: right;" data-sort="{sort_minutes}">{created}</td>
                     <td>{client_id}</td>
                     <td>{auth_type}</td>
@@ -473,6 +476,8 @@ fn build_oauth_sessions_html(sessions: &[OauthSession]) -> String {
                     </td>
                 </tr>"#,
                 ip = html_encode(&s.ip_address),
+                used = html_encode(&used_display),
+                used_sort_minutes = used_sort_minutes,
                 created = html_encode(&created_display),
                 sort_minutes = sort_minutes,
                 client_id = html_encode(&s.client_id),

@@ -54,6 +54,8 @@ pub struct OauthSession {
     pub ip_address: String,
     /// Authentication type (e.g., "Legacy", "Passkey").
     pub auth_type: String,
+    /// Last used date in ISO 8601 format.
+    pub last_used_date: String,
 }
 
 /// A legacy (non-OAuth) session.

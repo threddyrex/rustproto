@@ -1008,6 +1008,9 @@ pub fn validate_oauth_access_token(
         return result;
     }
 
+    // update db
+    let _ = state.db.update_oauth_session_last_used_date(&jwk_thumbprint);
+
     result.is_valid = true;
     result.subject = token_result.subject;
     result.scope = token_result.scope;

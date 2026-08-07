@@ -1281,7 +1281,8 @@ impl PdsDb {
                 RefreshTokenExpiresDate TEXT NOT NULL,
                 CreatedDate TEXT NOT NULL,
                 IpAddress TEXT NOT NULL,
-                AuthType TEXT NOT NULL
+                AuthType TEXT NOT NULL,
+                LastUsedDate TEXT NOT NULL
             )",
             [],
         )?;
@@ -1299,8 +1300,8 @@ impl PdsDb {
     pub fn insert_oauth_session(&self, session: &OauthSession) -> Result<(), PdsDbError> {
         let conn = self.get_connection()?;
         conn.execute(
-            "INSERT INTO OauthSession (SessionId, ClientId, Scope, DpopJwkThumbprint, RefreshToken, RefreshTokenExpiresDate, CreatedDate, IpAddress, AuthType)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            "INSERT INTO OauthSession (SessionId, ClientId, Scope, DpopJwkThumbprint, RefreshToken, RefreshTokenExpiresDate, CreatedDate, IpAddress, AuthType, LastUsedDate)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             rusqlite::params![
                 session.session_id,
                 session.client_id,
@@ -1310,7 +1311,8 @@ impl PdsDb {
                 session.refresh_token_expires_date,
                 session.created_date,
                 session.ip_address,
-                session.auth_type
+                session.auth_type,
+                session.last_used_date
             ],
         )?;
         Ok(())
@@ -1323,7 +1325,7 @@ impl PdsDb {
     ) -> Result<OauthSession, PdsDbError> {
         let conn = self.get_connection_read_only()?;
         let result = conn.query_row(
-            "SELECT SessionId, ClientId, Scope, DpopJwkThumbprint, RefreshToken, RefreshTokenExpiresDate, CreatedDate, IpAddress, AuthType
+            "SELECT SessionId, ClientId, Scope, DpopJwkThumbprint, RefreshToken, RefreshTokenExpiresDate, CreatedDate, IpAddress, AuthType, LastUsedDate
              FROM OauthSession WHERE SessionId = ?1",
             [session_id],
             |row| {
@@ -1337,6 +1339,7 @@ impl PdsDb {
                     created_date: row.get(6)?,
                     ip_address: row.get(7)?,
                     auth_type: row.get(8)?,
+                    last_used_date: row.get(9)?,
                 })
             },
         );
@@ -1370,7 +1373,7 @@ impl PdsDb {
         let conn = self.get_connection_read_only()?;
         let right_now = get_current_datetime_for_db();
         let result = conn.query_row(
-            "SELECT SessionId, ClientId, Scope, DpopJwkThumbprint, RefreshToken, RefreshTokenExpiresDate, CreatedDate, IpAddress, AuthType
+            "SELECT SessionId, ClientId, Scope, DpopJwkThumbprint, RefreshToken, RefreshTokenExpiresDate, CreatedDate, IpAddress, AuthType, LastUsedDate
              FROM OauthSession WHERE RefreshToken = ?1 AND RefreshTokenExpiresDate > ?2",
             rusqlite::params![refresh_token, right_now],
             |row| {
@@ -1384,6 +1387,7 @@ impl PdsDb {
                     created_date: row.get(6)?,
                     ip_address: row.get(7)?,
                     auth_type: row.get(8)?,
+                    last_used_date: row.get(9)?,
                 })
             },
         );
@@ -1402,8 +1406,8 @@ impl PdsDb {
         let conn = self.get_connection()?;
         conn.execute(
             "UPDATE OauthSession SET ClientId = ?1, Scope = ?2, DpopJwkThumbprint = ?3, RefreshToken = ?4, 
-             RefreshTokenExpiresDate = ?5, CreatedDate = ?6, IpAddress = ?7, AuthType = ?8
-             WHERE SessionId = ?9",
+             RefreshTokenExpiresDate = ?5, CreatedDate = ?6, IpAddress = ?7, AuthType = ?8, LastUsedDate = ?9
+             WHERE SessionId = ?10",
             rusqlite::params![
                 session.client_id,
                 session.scope,
@@ -1413,6 +1417,7 @@ impl PdsDb {
                 session.created_date,
                 session.ip_address,
                 session.auth_type,
+                session.last_used_date,
                 session.session_id
             ],
         )?;
@@ -1453,6 +1458,16 @@ impl PdsDb {
         )?;
         Ok(count > 0)
     }
+    
+    pub fn update_oauth_session_last_used_date(&self, dpop_jwk_thumbprint: &str) -> Result<(), PdsDbError> {
+        let conn = self.get_connection()?;
+        let last_used_date = get_current_datetime_for_db();
+        conn.execute(
+            "UPDATE OauthSession SET LastUsedDate = ?1 WHERE DpopJwkThumbprint = ?2",
+            rusqlite::params![last_used_date, dpop_jwk_thumbprint],
+        )?;
+        Ok(())
+    }
 
     /// Get an OAuth session by DPoP thumbprint.
     pub fn get_oauth_session_by_dpop_thumbprint(
@@ -1462,7 +1477,7 @@ impl PdsDb {
         let conn = self.get_connection_read_only()?;
         let right_now = get_current_datetime_for_db();
         let result = conn.query_row(
-            "SELECT SessionId, ClientId, Scope, DpopJwkThumbprint, RefreshToken, RefreshTokenExpiresDate, CreatedDate, IpAddress, AuthType
+            "SELECT SessionId, ClientId, Scope, DpopJwkThumbprint, RefreshToken, RefreshTokenExpiresDate, CreatedDate, IpAddress, AuthType, LastUsedDate
              FROM OauthSession WHERE DpopJwkThumbprint = ?1 AND RefreshTokenExpiresDate > ?2",
             rusqlite::params![dpop_jwk_thumbprint, right_now],
             |row| {
@@ -1476,6 +1491,7 @@ impl PdsDb {
                     created_date: row.get(6)?,
                     ip_address: row.get(7)?,
                     auth_type: row.get(8)?,
+                    last_used_date: row.get(9)?,
                 })
             },
         );
@@ -1491,7 +1507,7 @@ impl PdsDb {
     pub fn get_all_oauth_sessions(&self) -> Result<Vec<OauthSession>, PdsDbError> {
         let conn = self.get_connection_read_only()?;
         let mut stmt = conn.prepare(
-            "SELECT SessionId, ClientId, Scope, DpopJwkThumbprint, RefreshToken, RefreshTokenExpiresDate, CreatedDate, IpAddress, AuthType
+            "SELECT SessionId, ClientId, Scope, DpopJwkThumbprint, RefreshToken, RefreshTokenExpiresDate, CreatedDate, IpAddress, AuthType, LastUsedDate
              FROM OauthSession",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -1505,6 +1521,7 @@ impl PdsDb {
                 created_date: row.get(6)?,
                 ip_address: row.get(7)?,
                 auth_type: row.get(8)?,
+                last_used_date: row.get(9)?,
             })
         })?;
 

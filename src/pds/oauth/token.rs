@@ -224,6 +224,8 @@ async fn handle_authorization_code(
     let now = chrono::Utc::now();
     let refresh_expires = now + chrono::Duration::days(90);
 
+    let right_now = crate::pds::db::get_current_datetime_for_db();
+
     let oauth_session = OauthSession {
         session_id: session_id.clone(),
         client_id: client_id.clone(),
@@ -231,9 +233,10 @@ async fn handle_authorization_code(
         dpop_jwk_thumbprint: jwk_thumbprint.clone(),
         refresh_token: refresh_token.clone(),
         refresh_token_expires_date: refresh_expires.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
-        created_date: now.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+        created_date: right_now.clone(),
         ip_address,
         auth_type,
+        last_used_date: right_now.clone(),
     };
 
     state.log.info(&format!(
