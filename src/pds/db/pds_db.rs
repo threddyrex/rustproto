@@ -1657,7 +1657,8 @@ impl PdsDb {
                 CreatedDate TEXT NOT NULL,
                 IpAddress TEXT NOT NULL,
                 UserAgent TEXT NOT NULL,
-                AuthType TEXT NOT NULL
+                AuthType TEXT NOT NULL,
+                LastUsedDate TEXT NOT NULL
             )",
             [],
         )?;
@@ -1668,15 +1669,25 @@ impl PdsDb {
     pub fn insert_admin_session(&self, session: &AdminSession) -> Result<(), PdsDbError> {
         let conn = self.get_connection()?;
         conn.execute(
-            "INSERT INTO AdminSession (SessionId, CreatedDate, IpAddress, UserAgent, AuthType)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO AdminSession (SessionId, CreatedDate, IpAddress, UserAgent, AuthType, LastUsedDate)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             rusqlite::params![
                 session.session_id,
                 session.created_date,
                 session.ip_address,
                 session.user_agent,
-                session.auth_type
+                session.auth_type,
+                session.last_used_date
             ],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_admin_session_last_used_date(&self, session_id: &str) -> Result<(), PdsDbError> {
+        let conn = self.get_connection()?;
+        conn.execute(
+            "UPDATE AdminSession SET LastUsedDate = ?1 WHERE SessionId = ?2",
+            rusqlite::params![get_current_datetime_for_db(), session_id],
         )?;
         Ok(())
     }
@@ -1693,7 +1704,7 @@ impl PdsDb {
             Utc::now() - chrono::Duration::minutes(timeout_minutes as i64),
         );
         let result = conn.query_row(
-            "SELECT SessionId, CreatedDate, IpAddress, UserAgent, AuthType
+            "SELECT SessionId, CreatedDate, IpAddress, UserAgent, AuthType, LastUsedDate
              FROM AdminSession WHERE SessionId = ?1 AND IpAddress = ?2 AND CreatedDate > ?3",
             rusqlite::params![session_id, ip_address, cutoff_date],
             |row| {
@@ -1703,6 +1714,7 @@ impl PdsDb {
                     ip_address: row.get(2)?,
                     user_agent: row.get(3)?,
                     auth_type: row.get(4)?,
+                    last_used_date: row.get(5)?,
                 })
             },
         );
@@ -1727,7 +1739,7 @@ impl PdsDb {
             Utc::now() - chrono::Duration::minutes(timeout_minutes as i64),
         );
         let result = conn.query_row(
-            "SELECT SessionId, CreatedDate, IpAddress, UserAgent, AuthType
+            "SELECT SessionId, CreatedDate, IpAddress, UserAgent, AuthType, LastUsedDate
              FROM AdminSession WHERE SessionId = ?1 AND CreatedDate > ?2",
             rusqlite::params![session_id, cutoff_date],
             |row| {
@@ -1737,6 +1749,7 @@ impl PdsDb {
                     ip_address: row.get(2)?,
                     user_agent: row.get(3)?,
                     auth_type: row.get(4)?,
+                    last_used_date: row.get(5)?,
                 })
             },
         );
@@ -1752,7 +1765,7 @@ impl PdsDb {
     pub fn get_all_admin_sessions(&self) -> Result<Vec<AdminSession>, PdsDbError> {
         let conn = self.get_connection_read_only()?;
         let mut stmt = conn.prepare(
-            "SELECT SessionId, CreatedDate, IpAddress, UserAgent, AuthType FROM AdminSession",
+            "SELECT SessionId, CreatedDate, IpAddress, UserAgent, AuthType, LastUsedDate FROM AdminSession",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(AdminSession {
@@ -1761,6 +1774,7 @@ impl PdsDb {
                 ip_address: row.get(2)?,
                 user_agent: row.get(3)?,
                 auth_type: row.get(4)?,
+                last_used_date: row.get(5)?,
             })
         })?;
 

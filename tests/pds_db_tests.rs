@@ -762,6 +762,7 @@ fn admin_session_create_and_delete() {
         created_date: get_current_datetime_for_db(),
         user_agent: "useragent".to_string(),
         auth_type: "authType".to_string(),
+        last_used_date: get_current_datetime_for_db(),
     };
     
     pds_db.insert_admin_session(&session).unwrap();
@@ -792,6 +793,7 @@ fn admin_session_create_and_get_invalid() {
         created_date: format_datetime_for_db(Utc::now() - Duration::hours(2)),
         user_agent: "useragent".to_string(),
         auth_type: "authType".to_string(),
+        last_used_date: format_datetime_for_db(Utc::now() - Duration::hours(2)),
     };
     
     pds_db.insert_admin_session(&session).unwrap();

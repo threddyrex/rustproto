@@ -166,8 +166,14 @@ pub fn is_authenticated(db: &PdsDb, cookies: &Cookies, ip_address: &str) -> bool
     let session_id = cookie.value();
 
     // Check session validity with IP address verification
-    db.get_valid_admin_session(session_id, ip_address, ADMIN_SESSION_TIMEOUT_MINUTES)
+    let is_authenticated = db.get_valid_admin_session(session_id, ip_address, ADMIN_SESSION_TIMEOUT_MINUTES)
         .ok()
         .flatten()
-        .is_some()
+        .is_some();
+
+    if is_authenticated {
+        let _ = db.update_admin_session_last_used_date(session_id);
+    }
+
+    is_authenticated
 }

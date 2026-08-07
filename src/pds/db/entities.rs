@@ -86,6 +86,8 @@ pub struct AdminSession {
     pub created_date: String,
     /// Authentication type.
     pub auth_type: String,
+    /// Last used date in ISO 8601 format.
+    pub last_used_date: String,
 }
 
 /// A WebAuthn passkey credential.

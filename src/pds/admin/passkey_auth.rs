@@ -439,9 +439,10 @@ pub async fn admin_authenticate_passkey(
     let session = AdminSession {
         session_id: session_id.clone(),
         ip_address: ip_address.clone(),
-        user_agent,
-        created_date,
+        user_agent: user_agent,
+        created_date: created_date.clone(),
         auth_type: "Passkey".to_string(),
+        last_used_date: created_date.clone(),
     };
 
     if let Err(e) = state.db.insert_admin_session(&session) {

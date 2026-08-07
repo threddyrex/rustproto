@@ -66,7 +66,7 @@ pub async fn admin_sessions(
     oauth_sessions.sort_by(|a, b| b.created_date.cmp(&a.created_date));
 
     let mut admin_sessions = state.db.get_all_admin_sessions().unwrap_or_default();
-    admin_sessions.sort_by(|a, b| b.created_date.cmp(&a.created_date));
+    admin_sessions.sort_by(|a, b| b.last_used_date.cmp(&a.last_used_date));
     // Get all passkey challenges sorted by newest first
     let mut challenges = state.db.get_all_passkey_challenges().unwrap_or_default();
     challenges.sort_by(|a, b| b.created_date.cmp(&a.created_date));
@@ -123,9 +123,10 @@ pub async fn admin_sessions(
     <thead>
         <tr>
             <th class="sortable" data-col="0" data-type="string">IP Address</th>
-            <th class="sortable desc" data-col="1" data-type="number" style="text-align: right;">Created</th>
-            <th class="sortable" data-col="2" data-type="string">User Agent</th>
-            <th class="sortable" data-col="3" data-type="string">AuthType</th>
+            <th class="sortable desc" data-col="1" data-type="number" style="text-align: right;">Used</th>
+            <th class="sortable" data-col="2" data-type="number" style="text-align: right;">Created</th>
+            <th class="sortable" data-col="3" data-type="string">User Agent</th>
+            <th class="sortable" data-col="4" data-type="string">AuthType</th>
             <th>Action</th>
         </tr>
     </thead>
@@ -486,16 +487,18 @@ fn build_oauth_sessions_html(sessions: &[OauthSession]) -> String {
 /// Build HTML rows for admin sessions.
 fn build_admin_sessions_html(sessions: &[AdminSession]) -> String {
     if sessions.is_empty() {
-        return r#"<tr><td colspan="5" style="text-align: center; color: #8899a6;">No admin sessions</td></tr>"#.to_string();
+        return r#"<tr><td colspan="6" style="text-align: center; color: #8899a6;">No admin sessions</td></tr>"#.to_string();
     }
 
     sessions
         .iter()
         .map(|s| {
             let (created_display, sort_minutes) = calculate_time_ago(&s.created_date);
+            let (used_display, used_sort_minutes) = calculate_time_ago(&s.last_used_date);
             format!(
                 r#"<tr>
                     <td class="ip-address">{ip}</td>
+                    <td style="text-align: right;" data-sort="{used_sort_minutes}">{used}</td>
                     <td style="text-align: right;" data-sort="{sort_minutes}">{created}</td>
                     <td>{user_agent}</td>
                     <td>{auth_type}</td>
@@ -507,6 +510,8 @@ fn build_admin_sessions_html(sessions: &[AdminSession]) -> String {
                     </td>
                 </tr>"#,
                 ip = html_encode(&s.ip_address),
+                used = html_encode(&used_display),
+                used_sort_minutes = used_sort_minutes,
                 user_agent = html_encode(&s.user_agent),
                 created = html_encode(&created_display),
                 sort_minutes = sort_minutes,

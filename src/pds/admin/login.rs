@@ -111,10 +111,11 @@ pub async fn admin_login_post(
         
         let session = AdminSession {
             session_id: session_id.clone(),
-            ip_address,
-            user_agent,
-            created_date,
+            ip_address: ip_address,
+            user_agent: user_agent,
+            created_date: created_date.clone(),
             auth_type: "Legacy".to_string(),
+            last_used_date: created_date.clone(),
         };
 
         if let Err(e) = state.db.insert_admin_session(&session) {
