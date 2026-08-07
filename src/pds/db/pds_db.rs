@@ -1546,7 +1546,8 @@ impl PdsDb {
                 AccessJwt TEXT PRIMARY KEY,
                 RefreshJwt TEXT NOT NULL,
                 IpAddress TEXT NOT NULL,
-                UserAgent TEXT NOT NULL
+                UserAgent TEXT NOT NULL,
+                LastUsedDate TEXT NOT NULL
             )",
             [],
         )?;
@@ -1557,15 +1558,25 @@ impl PdsDb {
     pub fn create_legacy_session(&self, session: &LegacySession) -> Result<(), PdsDbError> {
         let conn = self.get_connection()?;
         conn.execute(
-            "INSERT INTO LegacySession (CreatedDate, AccessJwt, RefreshJwt, IpAddress, UserAgent)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO LegacySession (CreatedDate, AccessJwt, RefreshJwt, IpAddress, UserAgent, LastUsedDate)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             rusqlite::params![
                 session.created_date,
                 session.access_jwt,
                 session.refresh_jwt,
                 session.ip_address,
-                session.user_agent
+                session.user_agent,
+                session.last_used_date
             ],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_legacy_session_last_used_date(&self, access_jwt: &str) -> Result<(), PdsDbError> {
+        let conn = self.get_connection()?;
+        conn.execute(
+            "UPDATE LegacySession SET LastUsedDate = ?1 WHERE AccessJwt = ?2",
+            [&get_current_datetime_for_db(), access_jwt],
         )?;
         Ok(())
     }
@@ -1613,7 +1624,7 @@ impl PdsDb {
     pub fn get_all_legacy_sessions(&self) -> Result<Vec<LegacySession>, PdsDbError> {
         let conn = self.get_connection_read_only()?;
         let mut stmt = conn.prepare(
-            "SELECT CreatedDate, AccessJwt, RefreshJwt, IpAddress, UserAgent FROM LegacySession",
+            "SELECT CreatedDate, AccessJwt, RefreshJwt, IpAddress, UserAgent, LastUsedDate FROM LegacySession",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(LegacySession {
@@ -1622,6 +1633,7 @@ impl PdsDb {
                 refresh_jwt: row.get(2)?,
                 ip_address: row.get(3)?,
                 user_agent: row.get(4)?,
+                last_used_date: row.get(5)?,
             })
         })?;
 

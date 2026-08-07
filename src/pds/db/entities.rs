@@ -69,6 +69,8 @@ pub struct LegacySession {
     pub ip_address: String,
     /// Client user agent string.
     pub user_agent: String,
+    /// Last used date in ISO 8601 format.
+    pub last_used_date: String,
 }
 
 /// An admin session for the PDS admin interface.

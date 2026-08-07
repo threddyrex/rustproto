@@ -710,6 +710,7 @@ fn legacy_session_create() {
         created_date: get_current_datetime_for_db(),
         ip_address: "ipaddr".to_string(),
         user_agent: "useragent".to_string(),
+        last_used_date: get_current_datetime_for_db(),
     };
     
     pds_db.create_legacy_session(&session).unwrap();
@@ -731,6 +732,7 @@ fn legacy_session_delete_for_refresh_jwt() {
         created_date: get_current_datetime_for_db(),
         ip_address: "ipaddr".to_string(),
         user_agent: "useragent".to_string(),
+        last_used_date: get_current_datetime_for_db(),
     };
     
     pds_db.create_legacy_session(&session).unwrap();

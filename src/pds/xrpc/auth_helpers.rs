@@ -197,6 +197,10 @@ pub fn check_legacy_auth(state: &Arc<PdsState>, headers: &HeaderMap) -> AuthResu
         ip
     ));
 
+    // update last used
+    let _ = state.db.update_legacy_session_last_used_date(&access_jwt);
+
+    // return result
     AuthResult {
         is_authenticated: true,
         user_did: validation_result.sub,

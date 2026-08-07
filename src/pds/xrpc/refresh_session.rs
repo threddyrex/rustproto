@@ -13,7 +13,6 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
-use chrono::Utc;
 use serde::Serialize;
 
 use crate::pds::auth::{generate_access_jwt, generate_refresh_jwt, validate_refresh_jwt};
@@ -198,13 +197,17 @@ pub async fn refresh_session(
 
     match (access_jwt, new_refresh_jwt) {
         (Some(access_jwt), Some(refresh_jwt)) => {
+
+            let right_now = crate::pds::db::get_current_datetime_for_db();
+
             // Store the new session
             let session = LegacySession {
-                created_date: Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+                created_date: right_now.clone(),
                 access_jwt: access_jwt.clone(),
                 refresh_jwt: refresh_jwt.clone(),
                 ip_address: ip_address.clone(),
                 user_agent: user_agent.clone(),
+                last_used_date: right_now.clone(),
             };
 
             if let Err(e) = state.db.create_legacy_session(&session) {
