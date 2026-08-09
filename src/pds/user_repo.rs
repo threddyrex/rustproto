@@ -159,7 +159,7 @@ impl<'a> UserRepo<'a> {
 
             // Log a statistic for this ApplyWrites operation
             let stat_key = StatisticKey {
-                name: format!("apply_writes - {}", write.op_type),
+                name: format!("apply_writes - {} - {}", write.op_type, write.collection),
                 ip_address: ip_address.to_string(),
                 user_agent: user_agent.to_string(),
             };
