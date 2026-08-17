@@ -102,22 +102,6 @@ pub async fn admin_sessions(
 {navbar}
 <h1>Sessions</h1>
 
-<h2>Legacy Sessions <span class="session-count">({legacy_count})</span></h2>
-<table class="sessions-table" id="legacySessionsTable">
-    <thead>
-        <tr>
-            <th class="sortable" data-col="0" data-type="string">IP Address</th>
-            <th class="sortable desc" data-col="1" data-type="number" style="text-align: right;">Used</th>
-            <th class="sortable" data-col="2" data-type="number" style="text-align: right;">Created</th>
-            <th class="sortable" data-col="3" data-type="string">User Agent</th>
-            <th>Action</th>
-        </tr>
-    </thead>
-    <tbody>
-        {legacy_rows}
-    </tbody>
-</table>
-
 <h2>Admin Sessions <span class="session-count">({admin_count})</span></h2>
 <table class="sessions-table" id="adminSessionsTable">
     <thead>
@@ -132,6 +116,22 @@ pub async fn admin_sessions(
     </thead>
     <tbody>
         {admin_rows}
+    </tbody>
+</table>
+
+<h2>Legacy Sessions <span class="session-count">({legacy_count})</span></h2>
+<table class="sessions-table" id="legacySessionsTable">
+    <thead>
+        <tr>
+            <th class="sortable" data-col="0" data-type="string">IP Address</th>
+            <th class="sortable desc" data-col="1" data-type="number" style="text-align: right;">Used</th>
+            <th class="sortable" data-col="2" data-type="number" style="text-align: right;">Created</th>
+            <th class="sortable" data-col="3" data-type="string">User Agent</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody>
+        {legacy_rows}
     </tbody>
 </table>
 
