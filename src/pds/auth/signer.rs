@@ -79,6 +79,30 @@ struct SpaceDelegationPayload {
     jti: String,
 }
 
+/// JWT header for a space credential.
+#[derive(Serialize)]
+struct SpaceCredentialJwtHeader {
+    alg: &'static str,
+    typ: &'static str,
+    kid: &'static str,
+}
+
+/// JWT payload for a space credential.
+#[derive(Serialize)]
+struct SpaceCredentialPayload {
+    iss: String,
+    sub: String,
+    iat: i64,
+    exp: i64,
+    jti: String,
+    cnf: SpaceCredentialConfirmation,
+}
+
+#[derive(Serialize)]
+struct SpaceCredentialConfirmation {
+    jkt: String,
+}
+
 /// Sign a service auth token using ES256 (ECDSA with P-256).
 ///
 /// # Arguments
@@ -163,6 +187,36 @@ pub fn sign_space_delegation_token(
         iat: now,
         exp: now + expires_in_seconds,
         jti: hex_encode(&jti_bytes),
+    };
+
+    sign_es256_jwt(&signing_key, &header, &payload)
+}
+
+/// Sign a DPoP-bound space credential using the space authority's key.
+pub fn sign_space_credential(
+    private_key_multibase: &str,
+    authority: &str,
+    space_uri: &str,
+    dpop_jwk_thumbprint: &str,
+    expires_in_seconds: i64,
+) -> Result<String, SignerError> {
+    let signing_key = decode_p256_private_key(private_key_multibase)?;
+    let header = SpaceCredentialJwtHeader {
+        alg: "ES256",
+        typ: "atproto-space-credential+jwt",
+        kid: "#atproto_space",
+    };
+    let now = chrono::Utc::now().timestamp();
+    let jti_bytes: [u8; 16] = rand::random();
+    let payload = SpaceCredentialPayload {
+        iss: authority.to_string(),
+        sub: space_uri.to_string(),
+        iat: now,
+        exp: now + expires_in_seconds,
+        jti: hex_encode(&jti_bytes),
+        cnf: SpaceCredentialConfirmation {
+            jkt: dpop_jwk_thumbprint.to_string(),
+        },
     };
 
     sign_es256_jwt(&signing_key, &header, &payload)

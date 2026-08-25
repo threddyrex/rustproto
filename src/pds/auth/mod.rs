@@ -13,5 +13,6 @@ pub use jwt::{
 };
 pub use password::verify_password;
 pub use signer::{
-    sign_service_auth_token, sign_space_delegation_token, verify_service_auth_token, SignerError,
+    sign_service_auth_token, sign_space_credential, sign_space_delegation_token,
+    verify_service_auth_token, SignerError,
 };
