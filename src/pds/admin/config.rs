@@ -41,6 +41,7 @@ const ALLOWED_CONFIG_KEYS: &[&str] = &[
     "FeatureEnabled_RequestCrawl",
     "AtprotoProxyAllowedDids",
     "OauthAllowedRedirectUris",
+    "OauthAllowedPermissionSets",
     "AppViewHostName",
 ];
 
@@ -305,6 +306,12 @@ fn render_config_page(db: &PdsDb) -> Html<String> {
         <td><button class="set-btn" onclick="setConfig('OauthAllowedRedirectUris', '{oauth_allowed_redirect_uris_js}')">Set</button></td>
         <td>Comma-separated list of allowed OAuth redirect URIs.</td>
     </tr>
+    <tr>
+        <td class="key-name">OauthAllowedPermissionSets</td>
+        <td>{oauth_allowed_permission_sets}</td>
+        <td><button class="set-btn" onclick="setConfig('OauthAllowedPermissionSets', '{oauth_allowed_permission_sets_js}')">Set</button></td>
+        <td>Comma-separated list of permission-set NSIDs trusted when referenced by an 'include:' scope token.</td>
+    </tr>
     <tr class="section-header"><td colspan="4">App View</td></tr>
     <tr>
         <td class="key-name">AppViewHostName</td>
@@ -401,6 +408,8 @@ function setBoolConfig(key, value) {{
         atproto_proxy_allowed_dids_js = get_config_value_for_js(db, "AtprotoProxyAllowedDids"),
         oauth_allowed_redirect_uris = get_config_value(db, "OauthAllowedRedirectUris"),
         oauth_allowed_redirect_uris_js = get_config_value_for_js(db, "OauthAllowedRedirectUris"),
+        oauth_allowed_permission_sets = get_config_value(db, "OauthAllowedPermissionSets"),
+        oauth_allowed_permission_sets_js = get_config_value_for_js(db, "OauthAllowedPermissionSets"),
         // App View section
         app_view_host_name = get_config_value(db, "AppViewHostName"),
         app_view_host_name_js = get_config_value_for_js(db, "AppViewHostName"),

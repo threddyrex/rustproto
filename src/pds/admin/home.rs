@@ -173,6 +173,7 @@ fn build_config_table(db: &PdsDb) -> String {
     rows.push(section("Security"));
     rows.push(row("AtprotoProxyAllowedDids", get_value("AtprotoProxyAllowedDids"), "Comma-separated list of DIDs allowed for Atproto-Proxy header."));
     rows.push(row("OauthAllowedRedirectUris", get_value("OauthAllowedRedirectUris"), "Comma-separated list of allowed OAuth redirect URIs."));
+    rows.push(row("OauthAllowedPermissionSets", get_value("OauthAllowedPermissionSets"), "Comma-separated list of permission-set NSIDs trusted when referenced by an 'include:' scope token."));
 
     // App View section
     rows.push(section("App View"));

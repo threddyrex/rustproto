@@ -82,6 +82,31 @@ pub fn get_allowed_redirect_uris(db: &PdsDb) -> std::collections::HashSet<String
         .unwrap_or_default()
 }
 
+/// Get the allowlisted "permission set" NSIDs that may be referenced by an
+/// `include:<nsid>` scope token.
+///
+/// Permission sets are normally published as Lexicons and would need to be
+/// fetched and parsed to know exactly what they grant; until that
+/// resolution is implemented, this operator-controlled allowlist
+/// (comma-separated NSIDs, same shape as `OauthAllowedRedirectUris`) is used
+/// as a simple, explicit substitute. It is general-purpose: any endpoint
+/// that needs to check whether a granted scope covers some resource (e.g.
+/// `com.atproto.space.getDelegationToken` checking for space access, or
+/// future endpoints checking `repo:`/`blob:`/`chat:` access) can treat an
+/// `include:` token naming an NSID on this list as trusted to grant that
+/// resource - it is the caller's responsibility to know which resources
+/// each allowlisted permission set actually covers.
+pub fn get_allowed_permission_sets(db: &PdsDb) -> std::collections::HashSet<String> {
+    db.get_config_property("OauthAllowedPermissionSets")
+        .map(|v| {
+            v.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Parse URL-encoded form data into key-value pairs.
 /// Note: In application/x-www-form-urlencoded, + represents a space.
 /// urlencoding::decode only decodes %XX sequences, so we must replace + with space first.
