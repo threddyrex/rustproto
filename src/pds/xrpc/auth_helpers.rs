@@ -1099,12 +1099,40 @@ fn validate_oauth_access_token_internal(
 /// # Returns
 ///
 /// An AuthResult indicating whether the user is authenticated.
-pub fn check_oauth_auth(
+/// Result of an OAuth authentication check that also exposes the granted
+/// scope and client_id, for endpoints that need to authorize by scope in
+/// addition to identity (e.g. the `space:` scope grants used by
+/// `com.atproto.space.*` endpoints, or future `repo:`/`rpc:` scope checks).
+#[allow(dead_code)]
+pub struct ScopedAuthResult {
+    /// Whether the request is authenticated with a valid, non-expired OAuth session.
+    pub is_authenticated: bool,
+    /// Whether the token was valid but expired.
+    pub is_expired: bool,
+    /// The user's DID if authenticated.
+    pub user_did: Option<String>,
+    /// The granted scope string (space-separated), if authenticated.
+    pub scope: Option<String>,
+    /// The OAuth client_id, if authenticated.
+    pub client_id: Option<String>,
+    /// Error message if authentication failed.
+    pub error: Option<String>,
+}
+
+/// Check if the request is authenticated with a valid OAuth session, keeping
+/// the granted scope and client_id (unlike [`check_oauth_auth`], which
+/// discards them). Endpoints that need to authorize by scope grant - not
+/// just identity - should use this instead of `check_oauth_auth`.
+///
+/// Requires the request to actually look like an OAuth request (DPoP-bound
+/// bearer token); use this instead of `check_user_auth` when an endpoint
+/// must not accept Legacy or Service auth at all.
+pub fn check_oauth_auth_with_scope(
     state: &Arc<PdsState>,
     headers: &HeaderMap,
     http_method: &str,
     request_path: &str,
-) -> AuthResult {
+) -> ScopedAuthResult {
     let ip = headers
         .get("X-Forwarded-For")
         .and_then(|v| v.to_str().ok())
@@ -1117,11 +1145,29 @@ pub fn check_oauth_auth(
             "[AUTH] [OAUTH] ip={} authenticated=false error=oauth_disabled",
             ip
         ));
-        return AuthResult {
+        return ScopedAuthResult {
             is_authenticated: false,
-            user_did: None,
-            error: Some("OAuth is not enabled".to_string()),
             is_expired: false,
+            user_did: None,
+            scope: None,
+            client_id: None,
+            error: Some("OAuth is not enabled".to_string()),
+        };
+    }
+
+    // Must actually look like an OAuth request (DPoP-bound bearer token).
+    if !is_oauth_token_request(headers) {
+        logger().info(&format!(
+            "[AUTH] [OAUTH] ip={} authenticated=false error=not_oauth_request",
+            ip
+        ));
+        return ScopedAuthResult {
+            is_authenticated: false,
+            is_expired: false,
+            user_did: None,
+            scope: None,
+            client_id: None,
+            error: Some("This endpoint requires an OAuth session (DPoP-bound access token)".to_string()),
         };
     }
 
@@ -1132,11 +1178,13 @@ pub fn check_oauth_auth(
             "[AUTH] [OAUTH] ip={} authenticated=false expired=true",
             ip
         ));
-        return AuthResult {
+        return ScopedAuthResult {
             is_authenticated: false,
-            user_did: oauth_result.subject,
-            error: Some("Token expired".to_string()),
             is_expired: true,
+            user_did: oauth_result.subject,
+            scope: oauth_result.scope,
+            client_id: oauth_result.client_id,
+            error: Some("Token expired".to_string()),
         };
     }
 
@@ -1145,11 +1193,13 @@ pub fn check_oauth_auth(
             "[AUTH] [OAUTH] ip={} authenticated=false error={:?}",
             ip, oauth_result.error
         ));
-        return AuthResult {
+        return ScopedAuthResult {
             is_authenticated: false,
-            user_did: oauth_result.subject,
-            error: oauth_result.error,
             is_expired: false,
+            user_did: oauth_result.subject,
+            scope: oauth_result.scope,
+            client_id: oauth_result.client_id,
+            error: oauth_result.error,
         };
     }
 
@@ -1158,11 +1208,63 @@ pub fn check_oauth_auth(
         ip, oauth_result.scope
     ));
 
-    AuthResult {
+    ScopedAuthResult {
         is_authenticated: true,
-        user_did: oauth_result.subject,
-        error: None,
         is_expired: false,
+        user_did: oauth_result.subject,
+        scope: oauth_result.scope,
+        client_id: oauth_result.client_id,
+        error: None,
+    }
+}
+
+/// Check whether a granted OAuth scope string includes a grant covering the
+/// given resource and action.
+///
+/// This implements the common atproto "rich scope" resource shape used
+/// across resource types, e.g. `repo:<collection>?action=<action>`:
+/// `<resource_type>:<resource>?action=<action>`. A granted resource of `*`
+/// matches any requested resource (e.g. `space:*?action=read` covers every
+/// space type).
+///
+/// # Arguments
+///
+/// * `scope` - The space-separated granted scope string from the token.
+/// * `resource_type` - The scope's resource type prefix, e.g. `"space"`.
+/// * `resource` - The specific resource being requested, e.g. a space type.
+/// * `action` - The action being performed, e.g. `"read"`.
+pub fn scope_grants(scope: &str, resource_type: &str, resource: &str, action: &str) -> bool {
+    let prefix = format!("{}:", resource_type);
+
+    scope.split_whitespace().any(|token| {
+        let Some(rest) = token.strip_prefix(prefix.as_str()) else {
+            return false;
+        };
+        let mut parts = rest.splitn(2, '?');
+        let granted_resource = parts.next().unwrap_or("");
+        let query = parts.next().unwrap_or("");
+
+        if granted_resource != "*" && granted_resource != resource {
+            return false;
+        }
+
+        let expected_action = format!("action={}", action);
+        query.split('&').any(|kv| kv == expected_action)
+    })
+}
+
+pub fn check_oauth_auth(
+    state: &Arc<PdsState>,
+    headers: &HeaderMap,
+    http_method: &str,
+    request_path: &str,
+) -> AuthResult {
+    let scoped = check_oauth_auth_with_scope(state, headers, http_method, request_path);
+    AuthResult {
+        is_authenticated: scoped.is_authenticated,
+        user_did: scoped.user_did,
+        error: scoped.error,
+        is_expired: scoped.is_expired,
     }
 }
 
