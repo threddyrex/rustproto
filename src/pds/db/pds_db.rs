@@ -256,6 +256,75 @@ impl PdsDb {
     }
 
     // =========================================================================
+    // SIMPLE SPACE
+    // =========================================================================
+
+    pub fn create_table_simple_space(conn: &Connection, log: &Logger) -> Result<(), PdsDbError> {
+        log.info("table: SimpleSpace");
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS SimpleSpace (
+                Authority TEXT NOT NULL,
+                SpaceType TEXT NOT NULL,
+                Skey TEXT NOT NULL,
+                PolicyJson TEXT NOT NULL,
+                AppAccessJson TEXT NOT NULL,
+                CreatedDate TEXT NOT NULL,
+                PRIMARY KEY (Authority, SpaceType, Skey)
+            )",
+            [],
+        )?;
+        Ok(())
+    }
+
+    pub fn insert_simple_space(&self, space: &SimpleSpace) -> Result<(), PdsDbError> {
+        let conn = self.get_connection()?;
+        conn.execute(
+            "INSERT INTO SimpleSpace
+                (Authority, SpaceType, Skey, PolicyJson, AppAccessJson, CreatedDate)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                space.authority,
+                space.space_type,
+                space.skey,
+                space.policy_json,
+                space.app_access_json,
+                space.created_date,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_simple_space(
+        &self,
+        authority: &str,
+        space_type: &str,
+        skey: &str,
+    ) -> Result<Option<SimpleSpace>, PdsDbError> {
+        let conn = self.get_connection_read_only()?;
+        let result = conn.query_row(
+            "SELECT Authority, SpaceType, Skey, PolicyJson, AppAccessJson, CreatedDate
+             FROM SimpleSpace
+             WHERE Authority = ?1 AND SpaceType = ?2 AND Skey = ?3",
+            rusqlite::params![authority, space_type, skey],
+            |row| {
+                Ok(SimpleSpace {
+                    authority: row.get(0)?,
+                    space_type: row.get(1)?,
+                    skey: row.get(2)?,
+                    policy_json: row.get(3)?,
+                    app_access_json: row.get(4)?,
+                    created_date: row.get(5)?,
+                })
+            },
+        );
+        match result {
+            Ok(space) => Ok(Some(space)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(PdsDbError::SqliteError(e)),
+        }
+    }
+
+    // =========================================================================
     // BLOB
     // =========================================================================
 
