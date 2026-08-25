@@ -533,6 +533,106 @@ pub async fn proxy_to_appview(
         .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
+/// Maximum number of body bytes logged for an unimplemented XRPC request.
+const MAX_LOGGED_BODY_BYTES: usize = 8 * 1024;
+
+/// Log the full URL and payload of an unimplemented /xrpc request.
+///
+/// This is a discovery aid: when a client (for example an atproto spaces
+/// implementation) calls an endpoint this PDS does not implement yet, the
+/// request is logged in enough detail to build the missing handler.
+///
+/// Sensitive headers (authorization, cookie, dpop) are redacted.
+fn log_unimplemented_xrpc_request(
+    state: &Arc<PdsState>,
+    method: &Method,
+    path: &str,
+    query: &str,
+    headers: &HeaderMap,
+    body: &Bytes,
+) {
+    let nsid = path.strip_prefix("/xrpc/").unwrap_or(path);
+
+    state.log.warning("[UNIMPLEMENTED_XRPC] ----------------------------------------");
+    state.log.warning(&format!("[UNIMPLEMENTED_XRPC] method: {}", method));
+    state.log.warning(&format!("[UNIMPLEMENTED_XRPC] nsid:   {}", nsid));
+    state.log.warning(&format!("[UNIMPLEMENTED_XRPC] url:    {}{}", path, query));
+
+    // Query parameters, one per line for readability.
+    let query_params = query.trim_start_matches('?');
+    if !query_params.is_empty() {
+        for pair in query_params.split('&') {
+            state
+                .log
+                .warning(&format!("[UNIMPLEMENTED_XRPC] query:  {}", pair));
+        }
+    }
+
+    // Headers (with sensitive values redacted).
+    let redacted: HashSet<&str> = ["authorization", "cookie", "dpop", "set-cookie"]
+        .iter()
+        .cloned()
+        .collect();
+    for (name, value) in headers.iter() {
+        let name_lower = name.as_str().to_lowercase();
+        let value_str = if redacted.contains(name_lower.as_str()) {
+            "<redacted>".to_string()
+        } else {
+            value.to_str().unwrap_or("<non-utf8>").to_string()
+        };
+        state
+            .log
+            .warning(&format!("[UNIMPLEMENTED_XRPC] header: {}: {}", name_lower, value_str));
+    }
+
+    // Body / payload.
+    if body.is_empty() {
+        state.log.warning("[UNIMPLEMENTED_XRPC] body:   <empty>");
+    } else {
+        let content_type = headers
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("<unknown>");
+        state.log.warning(&format!(
+            "[UNIMPLEMENTED_XRPC] body:   {} bytes, content-type: {}",
+            body.len(),
+            content_type
+        ));
+
+        let truncated = body.len() > MAX_LOGGED_BODY_BYTES;
+        let slice = &body[..body.len().min(MAX_LOGGED_BODY_BYTES)];
+
+        match std::str::from_utf8(slice) {
+            Ok(text) => {
+                // Pretty-print JSON when possible, otherwise log the raw text.
+                let rendered = serde_json::from_str::<JsonValue>(text)
+                    .ok()
+                    .and_then(|v| serde_json::to_string_pretty(&v).ok())
+                    .unwrap_or_else(|| text.to_string());
+
+                for line in rendered.lines() {
+                    state
+                        .log
+                        .warning(&format!("[UNIMPLEMENTED_XRPC] body:   {}", line));
+                }
+            }
+            Err(_) => {
+                state.log.warning("[UNIMPLEMENTED_XRPC] body:   <binary, not logged>");
+            }
+        }
+
+        if truncated {
+            state.log.warning(&format!(
+                "[UNIMPLEMENTED_XRPC] body:   <truncated, {} of {} bytes shown>",
+                MAX_LOGGED_BODY_BYTES,
+                body.len()
+            ));
+        }
+    }
+
+    state.log.warning("[UNIMPLEMENTED_XRPC] ----------------------------------------");
+}
+
 /// Handler for fallback app.bsky.*/chat.bsky.* routes.
 ///
 /// This is used as the catch-all for app.bsky.* and chat.bsky.* endpoints.
@@ -566,6 +666,12 @@ pub async fn app_bsky_fallback(
     state
         .log
         .warning(&format!("[NOT_IMPLEMENTED] {} {}{}", method, path, query));
+
+    // For unimplemented /xrpc endpoints, log the full request details (URL + payload)
+    // so that missing XRPC endpoints can be discovered and implemented.
+    if path.starts_with("/xrpc") {
+        log_unimplemented_xrpc_request(&state, &method, &path, &query, &headers, &body);
+    }
 
     (
         StatusCode::NOT_IMPLEMENTED,
