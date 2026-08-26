@@ -215,6 +215,30 @@ pub struct DbRepoRecord {
     pub dag_cbor_bytes: Vec<u8>,
 }
 
+/// A permissioned space managed by the `simplespace` implementation.
+///
+/// Spaces are not implicit: they come into existence through
+/// `com.atproto.simplespace.createSpace`, which anchors the space on the
+/// owner's DID and persists its configuration (user `policy` and app
+/// `appAccess`). `com.atproto.simplespace.getSpace` reads this record back.
+#[derive(Debug, Clone)]
+pub struct DbSpace {
+    /// Canonical space URI (`at://{owner}/space/{spaceType}/{skey}`).
+    pub uri: String,
+    /// DID the space is anchored on (its owner / authority).
+    pub owner_did: String,
+    /// The NSID of the space type (e.g. `my.bulletin.board`).
+    pub space_type: String,
+    /// The space key differentiating spaces of the same type under one owner.
+    pub skey: String,
+    /// Serialized user-access `policy` union (JSON object).
+    pub policy_json: String,
+    /// Serialized app-access `appAccess` union (JSON object).
+    pub app_access_json: String,
+    /// Creation timestamp (ISO 8601).
+    pub created_date: String,
+}
+
 /// Format a DateTime for database storage.
 ///
 /// Uses ISO 8601 format with milliseconds: `yyyy-MM-ddTHH:mm:ss.fffZ`

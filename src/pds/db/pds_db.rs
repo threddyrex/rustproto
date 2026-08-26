@@ -57,6 +57,9 @@ pub enum PdsDbError {
     #[error("Statistic not found")]
     StatisticNotFound,
 
+    #[error("Space not found: {0}")]
+    SpaceNotFound(String),
+
     #[error("Invalid repo commit: {0}")]
     InvalidRepoCommit(String),
 
@@ -2223,5 +2226,101 @@ impl PdsDb {
             stats.push(row?);
         }
         Ok(stats)
+    }
+
+    // =========================================================================
+    // SPACE
+    // =========================================================================
+
+    /// Create the Space table.
+    ///
+    /// Stores `simplespace`-managed permissioned spaces. A space is keyed by its
+    /// canonical URI and records the owner DID plus the `policy`/`appAccess`
+    /// configuration it was created with, serialized as JSON.
+    pub fn create_table_space(conn: &Connection, log: &Logger) -> Result<(), PdsDbError> {
+        log.info("table: Space");
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS Space (
+                Uri TEXT NOT NULL PRIMARY KEY,
+                OwnerDid TEXT NOT NULL,
+                SpaceType TEXT NOT NULL,
+                Skey TEXT NOT NULL,
+                PolicyJson TEXT NOT NULL,
+                AppAccessJson TEXT NOT NULL,
+                CreatedDate TEXT NOT NULL
+            )",
+            [],
+        )?;
+        Ok(())
+    }
+
+    /// Insert a new space record.
+    pub fn insert_space(&self, space: &DbSpace) -> Result<(), PdsDbError> {
+        if space.uri.is_empty() || space.owner_did.is_empty() {
+            return Err(PdsDbError::InvalidInput(
+                "Space uri and owner DID cannot be empty.".to_string(),
+            ));
+        }
+
+        let conn = self.get_connection()?;
+        conn.execute(
+            "INSERT INTO Space (Uri, OwnerDid, SpaceType, Skey, PolicyJson, AppAccessJson, CreatedDate)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![
+                space.uri,
+                space.owner_did,
+                space.space_type,
+                space.skey,
+                space.policy_json,
+                space.app_access_json,
+                space.created_date,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Get a space record by its canonical URI.
+    pub fn get_space(&self, uri: &str) -> Result<DbSpace, PdsDbError> {
+        let conn = self.get_connection_read_only()?;
+        let result = conn.query_row(
+            "SELECT Uri, OwnerDid, SpaceType, Skey, PolicyJson, AppAccessJson, CreatedDate
+             FROM Space WHERE Uri = ?1 LIMIT 1",
+            [uri],
+            |row| {
+                Ok(DbSpace {
+                    uri: row.get(0)?,
+                    owner_did: row.get(1)?,
+                    space_type: row.get(2)?,
+                    skey: row.get(3)?,
+                    policy_json: row.get(4)?,
+                    app_access_json: row.get(5)?,
+                    created_date: row.get(6)?,
+                })
+            },
+        );
+
+        match result {
+            Ok(space) => Ok(space),
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                Err(PdsDbError::SpaceNotFound(uri.to_string()))
+            }
+            Err(e) => Err(PdsDbError::SqliteError(e)),
+        }
+    }
+
+    /// Check whether a space with the given URI exists.
+    pub fn space_exists(&self, uri: &str) -> Result<bool, PdsDbError> {
+        let conn = self.get_connection_read_only()?;
+        let result: Result<i32, rusqlite::Error> = conn.query_row(
+            "SELECT 1 FROM Space WHERE Uri = ?1 LIMIT 1",
+            [uri],
+            |row| row.get(0),
+        );
+
+        match result {
+            Ok(_) => Ok(true),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
+            Err(e) => Err(PdsDbError::SqliteError(e)),
+        }
     }
 }

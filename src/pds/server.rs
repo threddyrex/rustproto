@@ -187,6 +187,9 @@ impl PdsRunner {
             // Permissioned spaces
             .route("/xrpc/com.atproto.space.getDelegationToken", axum::routing::get(xrpc::get_delegation_token))
             .route("/xrpc/com.atproto.space.getSpaceCredential", axum::routing::post(xrpc::get_space_credential))
+            // Simplespace management
+            .route("/xrpc/com.atproto.simplespace.createSpace", axum::routing::post(xrpc::create_space))
+            .route("/xrpc/com.atproto.simplespace.getSpace", axum::routing::get(xrpc::get_space))
             // App.bsky endpoints (preferences are handled locally, others proxy to AppView)
             .route("/xrpc/app.bsky.actor.getPreferences", axum::routing::get(xrpc::get_preferences))
             .route("/xrpc/app.bsky.actor.putPreferences", axum::routing::post(xrpc::put_preferences))
