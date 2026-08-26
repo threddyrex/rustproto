@@ -2334,6 +2334,13 @@ impl PdsDb {
         Ok(spaces)
     }
 
+    /// Delete a space record by its canonical URI.
+    pub fn delete_space(&self, uri: &str) -> Result<(), PdsDbError> {
+        let conn = self.get_connection()?;
+        conn.execute("DELETE FROM Space WHERE Uri = ?1", [uri])?;
+        Ok(())
+    }
+
     /// Check whether a space with the given URI exists.
     pub fn space_exists(&self, uri: &str) -> Result<bool, PdsDbError> {
         let conn = self.get_connection_read_only()?;

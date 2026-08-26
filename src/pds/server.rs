@@ -235,6 +235,7 @@ impl PdsRunner {
             .route("/admin/stats_ip/", axum::routing::get(admin::admin_stats_ip))
             .route("/admin/spaces", axum::routing::get(admin::admin_spaces))
             .route("/admin/spaces/", axum::routing::get(admin::admin_spaces))
+            .route("/admin/deletespace", axum::routing::post(admin::admin_delete_space))
             .route("/admin/deletestatistic", axum::routing::post(admin::admin_delete_statistic))
             .route("/admin/deleteallstatistics", axum::routing::post(admin::admin_delete_all_statistics))
             .route("/admin/deleteoldstatistics", axum::routing::post(admin::admin_delete_old_statistics))

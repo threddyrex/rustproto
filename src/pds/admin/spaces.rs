@@ -9,7 +9,9 @@ use axum::{
     extract::{ConnectInfo, State},
     http::HeaderMap,
     response::{Html, IntoResponse, Redirect, Response},
+    Form,
 };
+use serde::Deserialize;
 use tower_cookies::Cookies;
 
 use super::{get_base_styles, get_caller_info, get_navbar_css, get_navbar_html, is_admin_enabled, is_authenticated};
@@ -63,6 +65,53 @@ pub async fn admin_spaces(
     Html(html).into_response()
 }
 
+/// Form data for deleting a space.
+#[derive(Deserialize)]
+pub struct DeleteSpaceForm {
+    uri: Option<String>,
+}
+
+/// Handle POST /admin/deletespace - Delete a space by URI.
+pub async fn admin_delete_space(
+    State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    cookies: Cookies,
+    Form(form): Form<DeleteSpaceForm>,
+) -> impl IntoResponse {
+    // Extract caller info first for IP-based session validation
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
+    // Check if admin dashboard is enabled
+    if !is_admin_enabled(&state.db) {
+        return Redirect::to("/admin/login").into_response();
+    }
+
+    // Check authentication with IP verification
+    if !is_authenticated(&state.db, &cookies, &ip_address) {
+        return Redirect::to("/admin/login").into_response();
+    }
+
+    // Increment statistics
+    let stat_key = StatisticKey {
+        name: "admin/deletespace".to_string(),
+        ip_address,
+        user_agent,
+    };
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
+
+    // Delete the space
+    if let Some(uri) = form.uri {
+        if !uri.is_empty() {
+            if let Err(e) = state.db.delete_space(&uri) {
+                state.log.error(&format!("Failed to delete space: {}", e));
+            }
+        }
+    }
+
+    Redirect::to("/admin/spaces").into_response()
+}
+
 /// Build the spaces page HTML showing every space in one table.
 fn build_spaces_page(hostname: &str, spaces: &[DbSpace]) -> String {
     let total_rows = spaces.len();
@@ -78,6 +127,8 @@ fn build_spaces_page(hostname: &str, spaces: &[DbSpace]) -> String {
 <style>
     {base_styles}
     {navbar_css}
+    .delete-btn {{ background-color: #4caf50; color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500; }}
+    .delete-btn:hover {{ background-color: #388e3c; }}
     .section-header {{ display: flex; justify-content: space-between; align-items: center; }}
     .session-count {{ color: #8899a6; font-size: 14px; margin-left: 8px; }}
     .stats-table {{ width: 100%; border-collapse: collapse; background-color: #2f3336; border-radius: 8px; overflow: hidden; }}
@@ -112,6 +163,7 @@ fn build_spaces_page(hostname: &str, spaces: &[DbSpace]) -> String {
             <th class="sortable" data-col="2" data-type="string">Space Type</th>
             <th class="sortable" data-col="3" data-type="string">Skey</th>
             <th class="sortable desc" data-col="4" data-type="string">Created</th>
+            <th>Actions</th>
         </tr>
     </thead>
     <tbody>
@@ -135,7 +187,7 @@ fn build_spaces_page(hostname: &str, spaces: &[DbSpace]) -> String {
 /// Build HTML rows for the spaces table.
 fn build_spaces_rows_html(spaces: &[DbSpace]) -> String {
     if spaces.is_empty() {
-        return r#"<tr><td colspan="5" style="text-align: center; color: #8899a6;">No spaces</td></tr>"#.to_string();
+        return r#"<tr><td colspan="6" style="text-align: center; color: #8899a6;">No spaces</td></tr>"#.to_string();
     }
 
     spaces
@@ -148,6 +200,12 @@ fn build_spaces_rows_html(spaces: &[DbSpace]) -> String {
                     <td>{space_type}</td>
                     <td>{skey}</td>
                     <td>{created}</td>
+                    <td>
+                        <form method="post" action="/admin/deletespace" style="display:inline;" onsubmit="return confirm('Delete this space?');">
+                            <input type="hidden" name="uri" value="{uri}" />
+                            <button type="submit" class="delete-btn">Delete</button>
+                        </form>
+                    </td>
                 </tr>"#,
                 uri = html_encode(&s.uri),
                 owner_did = html_encode(&s.owner_did),
