@@ -22,22 +22,16 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::pds::auth::{verify_service_auth_token, SPACE_CREDENTIAL_TYP};
 use crate::pds::db::StatisticKey;
-use crate::pds::oauth::{get_hostname, validate_dpop};
 use crate::pds::server::PdsState;
 
-use super::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info};
+use super::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info, AuthType};
 
 /// The fixed marker segment identifying a permissioned-space URI.
 const SPACE_MARKER: &str = "space";
-
-/// Maximum age of an accepted DPoP proof, in seconds.
-const DPOP_MAX_AGE_SECS: i64 = 300;
 
 /// Query parameters for getSpace.
 #[derive(Deserialize)]
@@ -97,39 +91,6 @@ fn parse_space_uri(uri: &str) -> Option<SpaceId> {
         space_type: parts[2].to_string(),
         skey: parts[3].to_string(),
     })
-}
-
-/// Extract the authorization token, accepting either the `DPoP` scheme (used by
-/// the credential flow) or `Bearer`.
-fn extract_auth_token(headers: &HeaderMap) -> Option<String> {
-    let auth_str = headers.get("Authorization")?.to_str().ok()?;
-    for scheme in ["DPoP ", "Bearer "] {
-        if let Some(rest) = auth_str.strip_prefix(scheme) {
-            let token = rest.trim();
-            if !token.is_empty() {
-                return Some(token.to_string());
-            }
-        }
-    }
-    None
-}
-
-/// Decode a base64url JWT segment into JSON.
-fn decode_jwt_segment(segment: &str) -> Option<Value> {
-    let bytes = URL_SAFE_NO_PAD.decode(segment).ok()?;
-    serde_json::from_slice(&bytes).ok()
-}
-
-/// Whether the presented token is a space credential (by its JWT `typ` header).
-fn is_space_credential(token: &str) -> bool {
-    let parts: Vec<&str> = token.split('.').collect();
-    if parts.len() != 3 {
-        return false;
-    }
-    decode_jwt_segment(parts[0])
-        .and_then(|h| h.get("typ").and_then(|v| v.as_str()).map(str::to_string))
-        .as_deref()
-        == Some(SPACE_CREDENTIAL_TYP)
 }
 
 fn error_response(status: StatusCode, error: &str, message: &str) -> Response {
@@ -215,26 +176,27 @@ pub async fn get_space(
         );
     }
 
-    // Authenticate the caller. A space credential (member hosted elsewhere) is
-    // detected by its JWT typ; otherwise fall back to OAuth/Legacy user auth
-    // (the account that owns the space on this host).
-    let token = extract_auth_token(&headers);
-    if let Some(token) = token.as_deref().filter(|t| is_space_credential(t)) {
-        if let Err(message) =
-            verify_space_credential(&state, token, &headers, &canonical_uri, &user_did)
-        {
-            return error_response(StatusCode::BAD_REQUEST, "InvalidToken", &message);
-        }
-    } else {
-        let auth_result = check_user_auth(
-            &state,
-            &headers,
-            None,
-            "GET",
-            "/xrpc/com.atproto.simplespace.getSpace",
-        );
-        if !auth_result.is_authenticated {
-            return auth_failure_response(&auth_result);
+    // Authenticate the caller: OAuth (the account that owns the space on this
+    // host) or a DPoP-bound space credential (a member hosted elsewhere).
+    let auth_result = check_user_auth(
+        &state,
+        &headers,
+        Some(&[AuthType::Oauth, AuthType::SpaceCredential]),
+        "GET",
+        "/xrpc/com.atproto.simplespace.getSpace",
+    );
+    if !auth_result.is_authenticated {
+        return auth_failure_response(&auth_result);
+    }
+    // A space credential is scoped to a single space (its `sub`); ensure it
+    // grants access to the space actually being requested.
+    if let Some(cred_space) = auth_result.space_uri.as_deref() {
+        if cred_space != canonical_uri {
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                "InvalidToken",
+                "Space credential does not grant access to the requested space",
+            );
         }
     }
 
@@ -296,91 +258,6 @@ pub async fn get_space(
     .into_response()
 }
 
-/// Verify a space credential presented for `space_uri` whose authority is
-/// `authority_did` (this host's account). The credential must be signed by the
-/// authority, name this space as its subject, be unexpired, and be bound (via
-/// `cnf.jkt`) to the key that signed the accompanying DPoP proof.
-///
-/// Returns `Err(message)` on any failure.
-fn verify_space_credential(
-    state: &Arc<PdsState>,
-    token: &str,
-    headers: &HeaderMap,
-    space_uri: &str,
-    authority_did: &str,
-) -> Result<(), String> {
-    let parts: Vec<&str> = token.split('.').collect();
-    if parts.len() != 3 {
-        return Err("Space credential is not a valid JWT".to_string());
-    }
-
-    // Header: must declare the space-credential type.
-    let header = decode_jwt_segment(parts[0]).ok_or("Invalid space credential header")?;
-    if header.get("typ").and_then(|v| v.as_str()) != Some(SPACE_CREDENTIAL_TYP) {
-        return Err("Unexpected space credential typ".to_string());
-    }
-
-    // Payload: validate the credential claims.
-    let payload = decode_jwt_segment(parts[1]).ok_or("Invalid space credential payload")?;
-
-    let sub = payload.get("sub").and_then(|v| v.as_str()).unwrap_or_default();
-    if sub != space_uri {
-        return Err("Space credential subject does not match the requested space".to_string());
-    }
-
-    let iss = payload.get("iss").and_then(|v| v.as_str()).unwrap_or_default();
-    if iss != authority_did {
-        return Err("Space credential was not issued by this authority".to_string());
-    }
-
-    // Expiry.
-    let now = chrono::Utc::now().timestamp();
-    match payload.get("exp").and_then(|v| v.as_i64()) {
-        Some(exp) if exp > now => {}
-        Some(_) => return Err("Space credential has expired".to_string()),
-        None => return Err("Space credential missing exp claim".to_string()),
-    }
-
-    // Signature: verify against the authority's (this account's) signing key.
-    let public_key = state
-        .db
-        .get_config_property("UserPublicKeyMultibase")
-        .map_err(|_| "Signing key not configured".to_string())?;
-    match verify_service_auth_token(token, &public_key) {
-        Ok(true) => {}
-        Ok(false) => return Err("Space credential signature is invalid".to_string()),
-        Err(e) => return Err(format!("Failed to verify space credential: {}", e)),
-    }
-
-    // DPoP binding: the credential is bound to a key via cnf.jkt; the caller must
-    // prove possession of that key with a DPoP proof over this request.
-    let cnf_jkt = payload
-        .get("cnf")
-        .and_then(|c| c.get("jkt"))
-        .and_then(|v| v.as_str())
-        .ok_or("Space credential missing cnf.jkt")?;
-
-    let dpop_header = headers
-        .get("DPoP")
-        .and_then(|v| v.to_str().ok())
-        .filter(|h| !h.is_empty())
-        .ok_or("Missing DPoP proof")?;
-    let request_uri = format!(
-        "https://{}/xrpc/com.atproto.simplespace.getSpace",
-        get_hostname(state)
-    );
-    let dpop_result = validate_dpop(Some(dpop_header), "GET", &request_uri, DPOP_MAX_AGE_SECS);
-    match (dpop_result.is_valid, dpop_result.jwk_thumbprint) {
-        (true, Some(jkt)) if jkt == cnf_jkt => Ok(()),
-        (true, Some(_)) => {
-            Err("DPoP proof key does not match the credential binding".to_string())
-        }
-        _ => Err(dpop_result
-            .error
-            .unwrap_or_else(|| "DPoP proof validation failed".to_string())),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -405,19 +282,5 @@ mod tests {
         assert!(parse_space_uri("at://did:plc:abc/space/my.type").is_none());
         assert!(parse_space_uri("at://did:plc:abc/space/my.type/self/extra").is_none());
         assert!(parse_space_uri("did:plc:abc/space/my.type/self").is_none());
-    }
-
-    #[test]
-    fn extracts_token_from_dpop_and_bearer_schemes() {
-        let mut headers = HeaderMap::new();
-        headers.insert("Authorization", "DPoP abc.def.ghi".parse().unwrap());
-        assert_eq!(extract_auth_token(&headers).as_deref(), Some("abc.def.ghi"));
-
-        let mut headers = HeaderMap::new();
-        headers.insert("Authorization", "Bearer xyz.123.456".parse().unwrap());
-        assert_eq!(extract_auth_token(&headers).as_deref(), Some("xyz.123.456"));
-
-        let headers = HeaderMap::new();
-        assert!(extract_auth_token(&headers).is_none());
     }
 }

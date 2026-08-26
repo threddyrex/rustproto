@@ -7,6 +7,9 @@
 //! - Legacy: Original AT Protocol auth using handle/password with Bearer tokens
 //! - OAuth: DPoP-bound OAuth 2.0 tokens with at+jwt type
 //! - Service: Service auth tokens (JWT signed by remote service's signing key)
+//! - SpaceCredential: DPoP-bound space-credential JWTs (atproto-space-credential+jwt)
+//!   issued by this host for permissioned spaces. Never allowed by default; an
+//!   endpoint must explicitly opt in.
 
 use std::sync::Arc;
 
@@ -19,7 +22,7 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::Serialize;
 
 use crate::log::logger;
-use crate::pds::auth::validate_access_jwt;
+use crate::pds::auth::{validate_access_jwt, verify_service_auth_token, SPACE_CREDENTIAL_TYP};
 use crate::pds::oauth::{is_oauth_enabled, validate_dpop, get_hostname, token_fp};
 use crate::pds::server::PdsState;
 
@@ -32,6 +35,12 @@ pub enum AuthType {
     Oauth,
     /// Service authentication using JWTs signed by remote services.
     Service,
+    /// Space credential authentication using DPoP-bound space-credential JWTs.
+    ///
+    /// Distinguished from all other types by the JWT `typ` header
+    /// `atproto-space-credential+jwt`. Never included in the defaults: an
+    /// endpoint must explicitly list `SpaceCredential` to accept it.
+    SpaceCredential,
 }
 
 /// Error response for authentication failures.
@@ -52,6 +61,11 @@ pub struct AuthResult {
     pub error: Option<String>,
     /// Whether the token was valid but expired.
     pub is_expired: bool,
+    /// The space URI (`sub`) granted by a validated space credential, if the
+    /// caller authenticated with `AuthType::SpaceCredential`. `None` for all
+    /// other auth types. Endpoints must confirm this matches the space being
+    /// accessed.
+    pub space_uri: Option<String>,
 }
 
 
@@ -134,10 +148,32 @@ pub fn check_user_auth_with_lxm(
                 user_did: None,
                 error: Some("OAuth authentication not allowed for this endpoint".to_string()),
                 is_expired: false,
+                space_uri: None,
             };
         }
 
         return check_oauth_auth(state, headers, http_method, request_path);
+    }
+
+    // Check if this looks like a Space Credential request (JWT typ = space credential)
+    if is_space_credential_request(headers) {
+        if !allowed.contains(&AuthType::SpaceCredential) {
+            logger().info(&format!(
+                "[AUTH] ip={} type=space_credential authenticated=false error=space_credential_not_allowed",
+                ip
+            ));
+            return AuthResult {
+                is_authenticated: false,
+                user_did: None,
+                error: Some(
+                    "Space credential authentication not allowed for this endpoint".to_string(),
+                ),
+                is_expired: false,
+                space_uri: None,
+            };
+        }
+
+        return check_space_credential(state, headers, http_method, request_path);
     }
 
     // Check if this looks like a Service Auth request (ES256 JWT with lxm claim)
@@ -152,6 +188,7 @@ pub fn check_user_auth_with_lxm(
                 user_did: None,
                 error: Some("Service authentication not allowed for this endpoint".to_string()),
                 is_expired: false,
+                space_uri: None,
             };
         }
 
@@ -173,6 +210,7 @@ pub fn check_user_auth_with_lxm(
         user_did: None,
         error: Some("No valid authentication provided".to_string()),
         is_expired: false,
+        space_uri: None,
     }
 }
 
@@ -208,10 +246,33 @@ pub async fn check_user_auth_with_lxm_async(
                 user_did: None,
                 error: Some("OAuth authentication not allowed for this endpoint".to_string()),
                 is_expired: false,
+                space_uri: None,
             };
         }
 
         return check_oauth_auth(state, headers, http_method, request_path);
+    }
+
+    // Check if this looks like a Space Credential request (JWT typ = space credential)
+    if is_space_credential_request(headers) {
+        if !allowed.contains(&AuthType::SpaceCredential) {
+            logger().info(&format!(
+                "[AUTH] ip={} type=space_credential authenticated=false error=space_credential_not_allowed",
+                ip
+            ));
+            return AuthResult {
+                is_authenticated: false,
+                user_did: None,
+                error: Some(
+                    "Space credential authentication not allowed for this endpoint".to_string(),
+                ),
+                is_expired: false,
+                space_uri: None,
+            };
+        }
+
+        // Space credential verification is fully local (no remote DID resolution).
+        return check_space_credential(state, headers, http_method, request_path);
     }
 
     // Check if this looks like a Service Auth request (ES256 JWT with lxm claim)
@@ -226,6 +287,7 @@ pub async fn check_user_auth_with_lxm_async(
                 user_did: None,
                 error: Some("Service authentication not allowed for this endpoint".to_string()),
                 is_expired: false,
+                space_uri: None,
             };
         }
 
@@ -248,6 +310,7 @@ pub async fn check_user_auth_with_lxm_async(
         user_did: None,
         error: Some("No valid authentication provided".to_string()),
         is_expired: false,
+        space_uri: None,
     }
 }
 
@@ -308,6 +371,7 @@ pub fn check_legacy_auth(state: &Arc<PdsState>, headers: &HeaderMap) -> AuthResu
                 user_did: None,
                 error: Some("No authorization token".to_string()),
                 is_expired: false,
+                space_uri: None,
             };
         }
     };
@@ -325,6 +389,7 @@ pub fn check_legacy_auth(state: &Arc<PdsState>, headers: &HeaderMap) -> AuthResu
                 user_did: None,
                 error: Some("Server configuration error".to_string()),
                 is_expired: false,
+                space_uri: None,
             };
         }
     };
@@ -341,6 +406,7 @@ pub fn check_legacy_auth(state: &Arc<PdsState>, headers: &HeaderMap) -> AuthResu
                 user_did: None,
                 error: Some("Server configuration error".to_string()),
                 is_expired: false,
+                space_uri: None,
             };
         }
     };
@@ -361,6 +427,7 @@ pub fn check_legacy_auth(state: &Arc<PdsState>, headers: &HeaderMap) -> AuthResu
                 user_did: expired_check.sub,
                 error: Some("Token expired".to_string()),
                 is_expired: true,
+                space_uri: None,
             };
         }
 
@@ -373,6 +440,7 @@ pub fn check_legacy_auth(state: &Arc<PdsState>, headers: &HeaderMap) -> AuthResu
             user_did: None,
             error: validation_result.error,
             is_expired: false,
+            space_uri: None,
         };
     }
 
@@ -392,6 +460,7 @@ pub fn check_legacy_auth(state: &Arc<PdsState>, headers: &HeaderMap) -> AuthResu
             user_did: validation_result.sub,
             error: Some("Session not found".to_string()),
             is_expired: false,
+            space_uri: None,
         };
     }
 
@@ -409,6 +478,7 @@ pub fn check_legacy_auth(state: &Arc<PdsState>, headers: &HeaderMap) -> AuthResu
         user_did: validation_result.sub,
         error: None,
         is_expired: false,
+        space_uri: None,
     }
 }
 
@@ -613,6 +683,47 @@ pub fn is_service_auth_request(headers: &HeaderMap) -> bool {
         Some(issuer) if issuer.starts_with("did:") => true,
         _ => false,
     }
+}
+
+/// Check if a JWT declares the space-credential type in its header.
+///
+/// Space credentials are the only tokens whose JWT `typ` header is
+/// `atproto-space-credential+jwt`, which is what distinguishes them from OAuth
+/// (`at+jwt`), Service auth (ES256 + `lxm`) and Legacy (HS256) tokens.
+fn is_space_credential_token(token: &str) -> bool {
+    let parts: Vec<&str> = token.split('.').collect();
+    if parts.len() != 3 {
+        return false;
+    }
+
+    let header_bytes = match URL_SAFE_NO_PAD.decode(parts[0]) {
+        Ok(b) => b,
+        Err(_) => return false,
+    };
+
+    let header: serde_json::Value = match serde_json::from_slice(&header_bytes) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+
+    header.get("typ").and_then(|v| v.as_str()) == Some(SPACE_CREDENTIAL_TYP)
+}
+
+/// Check if the request presents a space credential.
+///
+/// Space credentials are DPoP-bound JWTs distinguished from every other auth
+/// type by their JWT `typ` header of `atproto-space-credential+jwt`. They may be
+/// presented with either the `DPoP` or the `Bearer` authorization scheme.
+///
+/// This does NOT validate the credential, only checks whether the presented
+/// token has the shape of a space credential.
+pub fn is_space_credential_request(headers: &HeaderMap) -> bool {
+    let token = match extract_dpop_token(headers).or_else(|| extract_bearer_token(headers)) {
+        Some(t) => t,
+        None => return false,
+    };
+
+    is_space_credential_token(&token)
 }
 
 /// Result of service auth token validation.
@@ -1051,6 +1162,7 @@ pub fn check_service_auth(
             user_did: None,
             error: result.error,
             is_expired: false,
+            space_uri: None,
         };
     }
 
@@ -1064,6 +1176,7 @@ pub fn check_service_auth(
         user_did: None, // Service auth doesn't authenticate as a specific user
         error: None,
         is_expired: false,
+        space_uri: None,
     }
 }
 
@@ -1093,6 +1206,7 @@ pub async fn check_service_auth_async(
             user_did: None,
             error: result.error,
             is_expired: false,
+            space_uri: None,
         };
     }
 
@@ -1106,6 +1220,188 @@ pub async fn check_service_auth_async(
         user_did: None, // Service auth doesn't authenticate as a specific user
         error: None,
         is_expired: false,
+        space_uri: None,
+    }
+}
+
+/// Check if the request is authenticated with a valid space credential.
+///
+/// Space credentials are DPoP-bound JWTs (`atproto-space-credential+jwt`) minted
+/// by this host (the space authority) via `com.atproto.space.getSpaceCredential`.
+/// Verification is entirely local: it checks the credential's `typ`, issuer
+/// (must be this account), expiry, ES256 signature (against this account's
+/// signing key) and DPoP binding (the caller must prove possession of the key
+/// named in `cnf.jkt` via a DPoP proof over this request).
+///
+/// This does NOT check which space the credential grants access to. The calling
+/// endpoint must additionally confirm the credential's `sub` claim matches the
+/// space being accessed.
+///
+/// # Arguments
+///
+/// * `state` - The PDS state containing database/config access
+/// * `headers` - The HTTP headers from the request
+/// * `http_method` - The HTTP method of the request (needed for DPoP validation)
+/// * `request_path` - The path of the request (needed for DPoP validation)
+///
+/// # Returns
+///
+/// An AuthResult indicating whether the caller holds a valid space credential.
+pub fn check_space_credential(
+    state: &Arc<PdsState>,
+    headers: &HeaderMap,
+    http_method: &str,
+    request_path: &str,
+) -> AuthResult {
+    let ip = headers
+        .get("X-Forwarded-For")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.split(',').next().unwrap_or(s).trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let fail = |error: &str| AuthResult {
+        is_authenticated: false,
+        user_did: None,
+        error: Some(error.to_string()),
+        is_expired: false,
+        space_uri: None,
+    };
+
+    // Extract the credential (presented via DPoP or Bearer scheme).
+    let token = match extract_dpop_token(headers).or_else(|| extract_bearer_token(headers)) {
+        Some(t) => t,
+        None => {
+            logger().info(&format!(
+                "[AUTH] [SPACECRED] ip={} authenticated=false error=no_token",
+                ip
+            ));
+            return fail("No authorization token");
+        }
+    };
+
+    let parts: Vec<&str> = token.split('.').collect();
+    if parts.len() != 3 {
+        return fail("Space credential is not a valid JWT");
+    }
+
+    // Header: must declare the space-credential type.
+    let header: serde_json::Value = match URL_SAFE_NO_PAD
+        .decode(parts[0])
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+    {
+        Some(h) => h,
+        None => return fail("Invalid space credential header"),
+    };
+    if header.get("typ").and_then(|v| v.as_str()) != Some(SPACE_CREDENTIAL_TYP) {
+        return fail("Unexpected space credential typ");
+    }
+
+    // Payload claims.
+    let payload: serde_json::Value = match URL_SAFE_NO_PAD
+        .decode(parts[1])
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+    {
+        Some(p) => p,
+        None => return fail("Invalid space credential payload"),
+    };
+
+    // Issuer must be this host's account (the space authority).
+    let authority_did = match state.db.get_config_property("UserDid") {
+        Ok(did) => did,
+        Err(_) => return fail("Server configuration error"),
+    };
+    let iss = payload.get("iss").and_then(|v| v.as_str()).unwrap_or_default();
+    if iss != authority_did {
+        logger().info(&format!(
+            "[AUTH] [SPACECRED] ip={} authenticated=false error=wrong_issuer",
+            ip
+        ));
+        return fail("Space credential was not issued by this authority");
+    }
+
+    // Expiry.
+    let now = chrono::Utc::now().timestamp();
+    match payload.get("exp").and_then(|v| v.as_i64()) {
+        Some(exp) if exp > now => {}
+        Some(_) => {
+            logger().info(&format!(
+                "[AUTH] [SPACECRED] ip={} authenticated=false expired=true",
+                ip
+            ));
+            return AuthResult {
+                is_authenticated: false,
+                user_did: None,
+                error: Some("Space credential has expired".to_string()),
+                is_expired: true,
+                space_uri: None,
+            };
+        }
+        None => return fail("Space credential missing exp claim"),
+    }
+
+    // Signature: verify against the authority's (this account's) signing key.
+    let public_key = match state.db.get_config_property("UserPublicKeyMultibase") {
+        Ok(key) => key,
+        Err(_) => return fail("Signing key not configured"),
+    };
+    match verify_service_auth_token(&token, &public_key) {
+        Ok(true) => {}
+        Ok(false) => return fail("Space credential signature is invalid"),
+        Err(e) => return fail(&format!("Failed to verify space credential: {}", e)),
+    }
+
+    // DPoP binding: the credential is bound to a key via cnf.jkt; the caller must
+    // prove possession of that key with a DPoP proof over this request.
+    let cnf_jkt = match payload
+        .get("cnf")
+        .and_then(|c| c.get("jkt"))
+        .and_then(|v| v.as_str())
+    {
+        Some(j) => j,
+        None => return fail("Space credential missing cnf.jkt"),
+    };
+
+    let dpop_header = match headers
+        .get("DPoP")
+        .and_then(|v| v.to_str().ok())
+        .filter(|h| !h.is_empty())
+    {
+        Some(h) => h,
+        None => return fail("Missing DPoP proof"),
+    };
+
+    let request_uri = format!("https://{}{}", get_hostname(state), request_path);
+    let dpop_result = validate_dpop(Some(dpop_header), http_method, &request_uri, 300);
+    let dpop_valid = dpop_result.is_valid;
+    let dpop_jkt = dpop_result.jwk_thumbprint.clone();
+    let dpop_err = dpop_result.error.clone();
+    match (dpop_valid, dpop_jkt.as_deref()) {
+        (true, Some(jkt)) if jkt == cnf_jkt => {}
+        (true, Some(_)) => {
+            return fail("DPoP proof key does not match the credential binding");
+        }
+        _ => {
+            return fail(
+                &dpop_err.unwrap_or_else(|| "DPoP proof validation failed".to_string()),
+            );
+        }
+    }
+
+    let sub = payload.get("sub").and_then(|v| v.as_str()).unwrap_or_default();
+    logger().info(&format!(
+        "[AUTH] [SPACECRED] ip={} authenticated=true sub={} iss={}",
+        ip, sub, iss
+    ));
+
+    // A space credential authenticates access to a space, not a specific user.
+    AuthResult {
+        is_authenticated: true,
+        user_did: None,
+        error: None,
+        is_expired: false,
+        space_uri: Some(sub.to_string()),
     }
 }
 
@@ -1325,6 +1621,7 @@ pub fn check_oauth_auth(
             user_did: None,
             error: Some("OAuth is not enabled".to_string()),
             is_expired: false,
+            space_uri: None,
         };
     }
 
@@ -1340,6 +1637,7 @@ pub fn check_oauth_auth(
             user_did: oauth_result.subject,
             error: Some("Token expired".to_string()),
             is_expired: true,
+            space_uri: None,
         };
     }
 
@@ -1353,6 +1651,7 @@ pub fn check_oauth_auth(
             user_did: oauth_result.subject,
             error: oauth_result.error,
             is_expired: false,
+            space_uri: None,
         };
     }
 
@@ -1366,6 +1665,7 @@ pub fn check_oauth_auth(
         user_did: oauth_result.subject,
         error: None,
         is_expired: false,
+        space_uri: None,
     }
 }
 

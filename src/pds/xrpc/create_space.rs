@@ -24,7 +24,7 @@ use serde_json::Value;
 use crate::pds::db::{DbSpace, PdsDb, StatisticKey};
 use crate::pds::server::PdsState;
 
-use super::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info};
+use super::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info, AuthType};
 
 /// The fixed marker segment identifying a permissioned-space URI.
 const SPACE_MARKER: &str = "space";
@@ -180,11 +180,11 @@ pub async fn create_space(
     };
     let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
-    // Check authentication (supports Legacy and OAuth).
+    // Check authentication (OAuth only).
     let auth_result = check_user_auth(
         &state,
         &headers,
-        None,
+        Some(&[AuthType::Oauth]),
         "POST",
         "/xrpc/com.atproto.simplespace.createSpace",
     );
