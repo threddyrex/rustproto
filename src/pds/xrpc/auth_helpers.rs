@@ -1218,30 +1218,6 @@ pub fn check_oauth_auth_with_scope(
     }
 }
 
-/// Check whether a granted OAuth scope string references an allowlisted
-/// "permission set" via an `include:<nsid>` token.
-///
-/// Real atproto OAuth clients typically request grouped permissions via
-/// `include:<permission-set-nsid>` (optionally with a `?...` query suffix,
-/// e.g. `include:com.example.perms?aud=did:web:svc#frag`), which references
-/// a separately-published Lexicon that expands into the actual granular
-/// scopes at consent time. This server does not (yet) fetch/parse that
-/// Lexicon; instead, callers pass an operator-controlled allowlist of NSIDs
-/// (see [`crate::pds::oauth::get_allowed_permission_sets`]) that are
-/// trusted to grant the resource being checked.
-pub fn scope_includes_permission_set(
-    scope: &str,
-    allowed_permission_sets: &std::collections::HashSet<String>,
-) -> bool {
-    scope.split_whitespace().any(|token| {
-        let Some(rest) = token.strip_prefix("include:") else {
-            return false;
-        };
-        let nsid = rest.split('?').next().unwrap_or("");
-        allowed_permission_sets.contains(nsid)
-    })
-}
-
 /// Check whether a granted OAuth scope string includes a grant covering the
 /// given resource and action.
 ///

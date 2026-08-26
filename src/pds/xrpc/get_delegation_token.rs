@@ -25,12 +25,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::pds::auth::sign_space_delegation_token;
 use crate::pds::db::StatisticKey;
-use crate::pds::oauth::get_allowed_permission_sets;
 use crate::pds::server::PdsState;
 
-use super::auth_helpers::{
-    check_oauth_auth_with_scope, get_caller_info, scope_grants, scope_includes_permission_set,
-};
+use super::auth_helpers::{check_oauth_auth_with_scope, get_caller_info, scope_grants};
 
 /// Query parameters for getDelegationToken.
 #[derive(Deserialize)]
@@ -93,22 +90,12 @@ fn parse_space_uri(uri: &str) -> Option<SpaceUri<'_>> {
 
 /// Check whether a granted OAuth scope string covers a read grant for the given space type.
 ///
-/// Checks two forms of grant, either of which is sufficient:
-/// 1. A literal resource-scope token via the shared [`scope_grants`] helper
-///    (`space:<type>?action=read` or `space:*?action=read`), matching the
-///    resource-scope grammar used by other `com.atproto.space.*` endpoints
-///    and any future `repo:`/`rpc:` checks.
-/// 2. An `include:<nsid>` permission-set reference, where `<nsid>` is on the
-///    operator-controlled allowlist in `OauthAllowedPermissionSets`
-///    (see [`scope_includes_permission_set`]) - this is how real-world OAuth
-///    clients request grouped permissions in practice.
-fn scope_grants_space_read(
-    scope: &str,
-    space_type: &str,
-    allowed_permission_sets: &std::collections::HashSet<String>,
-) -> bool {
+/// Delegates to the shared [`scope_grants`] helper in `auth_helpers`, using
+/// the `space` resource type - this keeps the resource-scope grammar
+/// (`<resource_type>:<resource>?action=<action>`) consistent with other
+/// `com.atproto.space.*` endpoints and any future `repo:`/`rpc:` checks.
+fn scope_grants_space_read(scope: &str, space_type: &str) -> bool {
     scope_grants(scope, "space", space_type, "read")
-        || scope_includes_permission_set(scope, allowed_permission_sets)
 }
 
 /// GET /xrpc/com.atproto.space.getDelegationToken - Space delegation token endpoint.
@@ -212,17 +199,15 @@ pub async fn get_delegation_token(
             .into_response();
     }
 
-    // Confirm the session's granted scope covers a read grant for this space type,
-    // either via a literal resource-scope token or an allowlisted permission set.
+    // Confirm the session's granted scope covers a read grant for this space type.
     let scope = oauth_result.scope.unwrap_or_default();
-    let allowed_permission_sets = get_allowed_permission_sets(&state.db);
-    if !scope_grants_space_read(&scope, space_uri.space_type, &allowed_permission_sets) {
+    if !scope_grants_space_read(&scope, space_uri.space_type) {
         return (
             StatusCode::FORBIDDEN,
             Json(GetDelegationTokenError {
                 error: "InvalidToken".to_string(),
                 message: format!(
-                    "Session is missing a covering 'space:{}?action=read' scope grant (or an allowlisted 'include:' permission set)",
+                    "Session is missing a covering 'space:{}?action=read' (or 'space:*?action=read') scope grant",
                     space_uri.space_type
                 ),
             }),
@@ -317,45 +302,25 @@ mod tests {
     #[test]
     fn test_scope_grants_space_read_exact_match() {
         let scope = "atproto transition:generic space:my.bulletin.board?action=read";
-        let allowed = std::collections::HashSet::new();
-        assert!(scope_grants_space_read(scope, "my.bulletin.board", &allowed));
-        assert!(!scope_grants_space_read(scope, "other.type", &allowed));
+        assert!(scope_grants_space_read(scope, "my.bulletin.board"));
+        assert!(!scope_grants_space_read(scope, "other.type"));
     }
 
     #[test]
     fn test_scope_grants_space_read_wildcard() {
         let scope = "atproto space:*?action=read";
-        let allowed = std::collections::HashSet::new();
-        assert!(scope_grants_space_read(scope, "my.bulletin.board", &allowed));
+        assert!(scope_grants_space_read(scope, "my.bulletin.board"));
     }
 
     #[test]
     fn test_scope_grants_space_read_wrong_action() {
         let scope = "atproto space:my.bulletin.board?action=write";
-        let allowed = std::collections::HashSet::new();
-        assert!(!scope_grants_space_read(scope, "my.bulletin.board", &allowed));
+        assert!(!scope_grants_space_read(scope, "my.bulletin.board"));
     }
 
     #[test]
     fn test_scope_grants_space_read_no_grant() {
         let scope = "atproto transition:generic";
-        let allowed = std::collections::HashSet::new();
-        assert!(!scope_grants_space_read(scope, "my.bulletin.board", &allowed));
-    }
-
-    #[test]
-    fn test_scope_grants_space_read_allowlisted_permission_set() {
-        // Mirrors a real-world grant: "atproto blob?... include:my.bulletin.permissions"
-        let scope = "atproto blob?accept=image/jpeg include:my.bulletin.permissions";
-        let mut allowed = std::collections::HashSet::new();
-        allowed.insert("my.bulletin.permissions".to_string());
-        assert!(scope_grants_space_read(scope, "my.bulletin.board", &allowed));
-    }
-
-    #[test]
-    fn test_scope_grants_space_read_permission_set_not_allowlisted() {
-        let scope = "atproto include:my.bulletin.permissions";
-        let allowed = std::collections::HashSet::new();
-        assert!(!scope_grants_space_read(scope, "my.bulletin.board", &allowed));
+        assert!(!scope_grants_space_read(scope, "my.bulletin.board"));
     }
 }
