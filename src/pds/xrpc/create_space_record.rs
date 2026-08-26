@@ -25,11 +25,9 @@ use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
 use crate::pds::user_repo::{parse_json_to_dag_cbor, UserRepo};
 use crate::repo::{CidV1, DagCborObject, DagCborValue};
+use crate::uri::{SpaceAtUri, SpaceRef};
 
 use super::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info, AuthType};
-
-/// The fixed marker segment identifying a permissioned-space URI.
-const SPACE_MARKER: &str = "space";
 
 /// Request body for createRecord.
 #[derive(Deserialize)]
@@ -68,40 +66,6 @@ pub struct CreateSpaceRecordResponse {
 pub struct CreateSpaceRecordError {
     error: String,
     message: String,
-}
-
-/// A parsed permissioned-space identity.
-struct SpaceId {
-    authority: String,
-    space_type: String,
-    skey: String,
-}
-
-impl SpaceId {
-    /// `at://{authority}/space/{spaceType}/{skey}`
-    fn uri(&self) -> String {
-        format!(
-            "at://{}/{}/{}/{}",
-            self.authority, SPACE_MARKER, self.space_type, self.skey
-        )
-    }
-}
-
-/// Parse a permissioned-space URI (`at://{authority}/space/{spaceType}/{skey}`).
-fn parse_space_uri(uri: &str) -> Option<SpaceId> {
-    let rest = uri.strip_prefix("at://")?;
-    let parts: Vec<&str> = rest.split('/').collect();
-    if parts.len() != 4 || parts[1] != SPACE_MARKER {
-        return None;
-    }
-    if parts[0].is_empty() || parts[2].is_empty() || parts[3].is_empty() {
-        return None;
-    }
-    Some(SpaceId {
-        authority: parts[0].to_string(),
-        space_type: parts[2].to_string(),
-        skey: parts[3].to_string(),
-    })
 }
 
 fn error_response(status: StatusCode, error: &str, message: &str) -> Response {
@@ -176,8 +140,8 @@ pub async fn create_space_record(
             );
         }
     };
-    let space_id = match parse_space_uri(&space_uri) {
-        Some(space_id) => space_id,
+    let space_ref = match SpaceRef::from_space_ref(&space_uri) {
+        Some(space_ref) => space_ref,
         None => {
             return error_response(
                 StatusCode::BAD_REQUEST,
@@ -186,7 +150,7 @@ pub async fn create_space_record(
             );
         }
     };
-    let canonical_uri = space_id.uri();
+    let canonical_uri = space_ref.to_space_ref();
 
     // Validate the required collection parameter.
     let collection = match body.collection {
@@ -223,7 +187,7 @@ pub async fn create_space_record(
             );
         }
     };
-    if space_id.authority != user_did {
+    if space_ref.authority != user_did {
         return error_response(
             StatusCode::BAD_REQUEST,
             "SpaceNotFound",
@@ -348,7 +312,12 @@ pub async fn create_space_record(
         );
     }
 
-    let uri = format!("{}/{}/{}", canonical_uri, collection, rkey);
+    // The record URI for a permissioned space includes the author (repo) DID
+    // segment between the space URI and the collection/rkey. `SpaceAtUri`
+    // codifies this shape:
+    // `at://{authority}/space/{spaceType}/{skey}/{authorDid}/{collection}/{rkey}`.
+    let uri = SpaceAtUri::from_space_ref(&space_ref, &user_did, &collection, &rkey)
+        .to_space_at_uri();
 
     state.log.info(&format!(
         "[SPACE] [CREATE_RECORD] Created {} ({})",
@@ -368,31 +337,4 @@ pub async fn create_space_record(
         validation_status: validation_status.to_string(),
     })
     .into_response()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parses_valid_space_uri() {
-        let space =
-            parse_space_uri("at://did:web:testuser.rustproto.com/space/my.bulletin.board/self")
-                .expect("valid space uri");
-        assert_eq!(space.authority, "did:web:testuser.rustproto.com");
-        assert_eq!(space.space_type, "my.bulletin.board");
-        assert_eq!(space.skey, "self");
-        assert_eq!(
-            space.uri(),
-            "at://did:web:testuser.rustproto.com/space/my.bulletin.board/self"
-        );
-    }
-
-    #[test]
-    fn rejects_malformed_space_uri() {
-        assert!(parse_space_uri("at://did:plc:abc/app.bsky.feed.post/3kabc").is_none());
-        assert!(parse_space_uri("at://did:plc:abc/space/my.type").is_none());
-        assert!(parse_space_uri("at://did:plc:abc/space/my.type/self/extra").is_none());
-        assert!(parse_space_uri("did:plc:abc/space/my.type/self").is_none());
-    }
 }
