@@ -54,6 +54,209 @@ pub struct AuthResult {
     pub is_expired: bool,
 }
 
+
+
+
+/// Check if the user is authenticated using any of the allowed auth types.
+///
+/// Entry point for user auth checks.
+/// 
+/// By default, allows both Legacy and OAuth authentication.
+/// The function checks in order: OAuth (if DPoP token present), Service Auth, then Legacy.
+///
+/// # Arguments
+///
+/// * `state` - The PDS state containing database access
+/// * `headers` - The HTTP headers from the request
+/// * `allowed_auth_types` - Which auth types are allowed (defaults to Legacy + OAuth)
+/// * `http_method` - The HTTP method of the request (needed for OAuth DPoP validation)
+/// * `request_path` - The path of the request (needed for OAuth DPoP validation)
+///
+/// # Returns
+///
+/// An AuthResult indicating whether the user is authenticated.
+pub fn check_user_auth(
+    state: &Arc<PdsState>,
+    headers: &HeaderMap,
+    allowed_auth_types: Option<&[AuthType]>,
+    http_method: &str,
+    request_path: &str,
+) -> AuthResult {
+    check_user_auth_with_lxm(state, headers, allowed_auth_types, http_method, request_path, None)
+}
+
+
+
+
+/// Check if the user is authenticated using any of the allowed auth types, with lxm validation.
+///
+/// By default, allows both Legacy and OAuth authentication.
+/// The function checks in order: OAuth (if DPoP token present), Service Auth, then Legacy.
+///
+/// # Arguments
+///
+/// * `state` - The PDS state containing database access
+/// * `headers` - The HTTP headers from the request
+/// * `allowed_auth_types` - Which auth types are allowed (defaults to Legacy + OAuth)
+/// * `http_method` - The HTTP method of the request (needed for OAuth DPoP validation)
+/// * `request_path` - The path of the request (needed for OAuth DPoP validation)
+/// * `expected_lxm` - Optional: the expected lxm claim for service auth validation
+///
+/// # Returns
+///
+/// An AuthResult indicating whether the user is authenticated.
+pub fn check_user_auth_with_lxm(
+    state: &Arc<PdsState>,
+    headers: &HeaderMap,
+    allowed_auth_types: Option<&[AuthType]>,
+    http_method: &str,
+    request_path: &str,
+    expected_lxm: Option<&str>,
+) -> AuthResult {
+    let default_types = [AuthType::Legacy, AuthType::Oauth];
+    let allowed = allowed_auth_types.unwrap_or(&default_types);
+
+    let ip = headers
+        .get("X-Forwarded-For")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.split(',').next().unwrap_or(s).trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    // Check if this looks like an OAuth request (has DPoP header and DPoP auth scheme)
+    if is_oauth_token_request(headers) {
+        if !allowed.contains(&AuthType::Oauth) {
+            logger().info(&format!(
+                "[AUTH] ip={} type=oauth authenticated=false error=oauth_not_allowed",
+                ip
+            ));
+            return AuthResult {
+                is_authenticated: false,
+                user_did: None,
+                error: Some("OAuth authentication not allowed for this endpoint".to_string()),
+                is_expired: false,
+            };
+        }
+
+        return check_oauth_auth(state, headers, http_method, request_path);
+    }
+
+    // Check if this looks like a Service Auth request (ES256 JWT with lxm claim)
+    if is_service_auth_request(headers) {
+        if !allowed.contains(&AuthType::Service) {
+            logger().info(&format!(
+                "[AUTH] ip={} type=service authenticated=false error=service_auth_not_allowed",
+                ip
+            ));
+            return AuthResult {
+                is_authenticated: false,
+                user_did: None,
+                error: Some("Service authentication not allowed for this endpoint".to_string()),
+                is_expired: false,
+            };
+        }
+
+        return check_service_auth(state, headers, expected_lxm);
+    }
+
+    // Otherwise try legacy auth
+    if allowed.contains(&AuthType::Legacy) {
+        return check_legacy_auth(state, headers);
+    }
+
+    // No valid auth type
+    logger().info(&format!(
+        "[AUTH] ip={} authenticated=false error=no_valid_auth_type",
+        ip
+    ));
+    AuthResult {
+        is_authenticated: false,
+        user_did: None,
+        error: Some("No valid authentication provided".to_string()),
+        is_expired: false,
+    }
+}
+
+/// Async version of check_user_auth_with_lxm that properly awaits service auth DID resolution.
+///
+/// This should be used when Service auth is allowed and the caller is in an async context.
+pub async fn check_user_auth_with_lxm_async(
+    state: &Arc<PdsState>,
+    headers: &HeaderMap,
+    allowed_auth_types: Option<&[AuthType]>,
+    http_method: &str,
+    request_path: &str,
+    expected_lxm: Option<&str>,
+) -> AuthResult {
+    let default_types = [AuthType::Legacy, AuthType::Oauth];
+    let allowed = allowed_auth_types.unwrap_or(&default_types);
+
+    let ip = headers
+        .get("X-Forwarded-For")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.split(',').next().unwrap_or(s).trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    // Check if this looks like an OAuth request (has DPoP header and DPoP auth scheme)
+    if is_oauth_token_request(headers) {
+        if !allowed.contains(&AuthType::Oauth) {
+            logger().info(&format!(
+                "[AUTH] ip={} type=oauth authenticated=false error=oauth_not_allowed",
+                ip
+            ));
+            return AuthResult {
+                is_authenticated: false,
+                user_did: None,
+                error: Some("OAuth authentication not allowed for this endpoint".to_string()),
+                is_expired: false,
+            };
+        }
+
+        return check_oauth_auth(state, headers, http_method, request_path);
+    }
+
+    // Check if this looks like a Service Auth request (ES256 JWT with lxm claim)
+    if is_service_auth_request(headers) {
+        if !allowed.contains(&AuthType::Service) {
+            logger().info(&format!(
+                "[AUTH] ip={} type=service authenticated=false error=service_auth_not_allowed",
+                ip
+            ));
+            return AuthResult {
+                is_authenticated: false,
+                user_did: None,
+                error: Some("Service authentication not allowed for this endpoint".to_string()),
+                is_expired: false,
+            };
+        }
+
+        // Use async version for service auth to avoid blocking
+        return check_service_auth_async(state, headers, expected_lxm).await;
+    }
+
+    // Otherwise try legacy auth
+    if allowed.contains(&AuthType::Legacy) {
+        return check_legacy_auth(state, headers);
+    }
+
+    // No valid auth type
+    logger().info(&format!(
+        "[AUTH] ip={} authenticated=false error=no_valid_auth_type",
+        ip
+    ));
+    AuthResult {
+        is_authenticated: false,
+        user_did: None,
+        error: Some("No valid authentication provided".to_string()),
+        is_expired: false,
+    }
+}
+
+
+
+
+
+
+
 /// Extract the Bearer token from the Authorization header.
 ///
 /// # Arguments
@@ -1166,191 +1369,4 @@ pub fn check_oauth_auth(
     }
 }
 
-/// Check if the user is authenticated using any of the allowed auth types.
-///
-/// By default, allows both Legacy and OAuth authentication.
-/// The function checks in order: OAuth (if DPoP token present), Service Auth, then Legacy.
-///
-/// # Arguments
-///
-/// * `state` - The PDS state containing database access
-/// * `headers` - The HTTP headers from the request
-/// * `allowed_auth_types` - Which auth types are allowed (defaults to Legacy + OAuth)
-/// * `http_method` - The HTTP method of the request (needed for OAuth DPoP validation)
-/// * `request_path` - The path of the request (needed for OAuth DPoP validation)
-///
-/// # Returns
-///
-/// An AuthResult indicating whether the user is authenticated.
-pub fn check_user_auth(
-    state: &Arc<PdsState>,
-    headers: &HeaderMap,
-    allowed_auth_types: Option<&[AuthType]>,
-    http_method: &str,
-    request_path: &str,
-) -> AuthResult {
-    check_user_auth_with_lxm(state, headers, allowed_auth_types, http_method, request_path, None)
-}
 
-/// Check if the user is authenticated using any of the allowed auth types, with lxm validation.
-///
-/// By default, allows both Legacy and OAuth authentication.
-/// The function checks in order: OAuth (if DPoP token present), Service Auth, then Legacy.
-///
-/// # Arguments
-///
-/// * `state` - The PDS state containing database access
-/// * `headers` - The HTTP headers from the request
-/// * `allowed_auth_types` - Which auth types are allowed (defaults to Legacy + OAuth)
-/// * `http_method` - The HTTP method of the request (needed for OAuth DPoP validation)
-/// * `request_path` - The path of the request (needed for OAuth DPoP validation)
-/// * `expected_lxm` - Optional: the expected lxm claim for service auth validation
-///
-/// # Returns
-///
-/// An AuthResult indicating whether the user is authenticated.
-pub fn check_user_auth_with_lxm(
-    state: &Arc<PdsState>,
-    headers: &HeaderMap,
-    allowed_auth_types: Option<&[AuthType]>,
-    http_method: &str,
-    request_path: &str,
-    expected_lxm: Option<&str>,
-) -> AuthResult {
-    let default_types = [AuthType::Legacy, AuthType::Oauth];
-    let allowed = allowed_auth_types.unwrap_or(&default_types);
-
-    let ip = headers
-        .get("X-Forwarded-For")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.split(',').next().unwrap_or(s).trim().to_string())
-        .unwrap_or_else(|| "unknown".to_string());
-
-    // Check if this looks like an OAuth request (has DPoP header and DPoP auth scheme)
-    if is_oauth_token_request(headers) {
-        if !allowed.contains(&AuthType::Oauth) {
-            logger().info(&format!(
-                "[AUTH] ip={} type=oauth authenticated=false error=oauth_not_allowed",
-                ip
-            ));
-            return AuthResult {
-                is_authenticated: false,
-                user_did: None,
-                error: Some("OAuth authentication not allowed for this endpoint".to_string()),
-                is_expired: false,
-            };
-        }
-
-        return check_oauth_auth(state, headers, http_method, request_path);
-    }
-
-    // Check if this looks like a Service Auth request (ES256 JWT with lxm claim)
-    if is_service_auth_request(headers) {
-        if !allowed.contains(&AuthType::Service) {
-            logger().info(&format!(
-                "[AUTH] ip={} type=service authenticated=false error=service_auth_not_allowed",
-                ip
-            ));
-            return AuthResult {
-                is_authenticated: false,
-                user_did: None,
-                error: Some("Service authentication not allowed for this endpoint".to_string()),
-                is_expired: false,
-            };
-        }
-
-        return check_service_auth(state, headers, expected_lxm);
-    }
-
-    // Otherwise try legacy auth
-    if allowed.contains(&AuthType::Legacy) {
-        return check_legacy_auth(state, headers);
-    }
-
-    // No valid auth type
-    logger().info(&format!(
-        "[AUTH] ip={} authenticated=false error=no_valid_auth_type",
-        ip
-    ));
-    AuthResult {
-        is_authenticated: false,
-        user_did: None,
-        error: Some("No valid authentication provided".to_string()),
-        is_expired: false,
-    }
-}
-
-/// Async version of check_user_auth_with_lxm that properly awaits service auth DID resolution.
-///
-/// This should be used when Service auth is allowed and the caller is in an async context.
-pub async fn check_user_auth_with_lxm_async(
-    state: &Arc<PdsState>,
-    headers: &HeaderMap,
-    allowed_auth_types: Option<&[AuthType]>,
-    http_method: &str,
-    request_path: &str,
-    expected_lxm: Option<&str>,
-) -> AuthResult {
-    let default_types = [AuthType::Legacy, AuthType::Oauth];
-    let allowed = allowed_auth_types.unwrap_or(&default_types);
-
-    let ip = headers
-        .get("X-Forwarded-For")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.split(',').next().unwrap_or(s).trim().to_string())
-        .unwrap_or_else(|| "unknown".to_string());
-
-    // Check if this looks like an OAuth request (has DPoP header and DPoP auth scheme)
-    if is_oauth_token_request(headers) {
-        if !allowed.contains(&AuthType::Oauth) {
-            logger().info(&format!(
-                "[AUTH] ip={} type=oauth authenticated=false error=oauth_not_allowed",
-                ip
-            ));
-            return AuthResult {
-                is_authenticated: false,
-                user_did: None,
-                error: Some("OAuth authentication not allowed for this endpoint".to_string()),
-                is_expired: false,
-            };
-        }
-
-        return check_oauth_auth(state, headers, http_method, request_path);
-    }
-
-    // Check if this looks like a Service Auth request (ES256 JWT with lxm claim)
-    if is_service_auth_request(headers) {
-        if !allowed.contains(&AuthType::Service) {
-            logger().info(&format!(
-                "[AUTH] ip={} type=service authenticated=false error=service_auth_not_allowed",
-                ip
-            ));
-            return AuthResult {
-                is_authenticated: false,
-                user_did: None,
-                error: Some("Service authentication not allowed for this endpoint".to_string()),
-                is_expired: false,
-            };
-        }
-
-        // Use async version for service auth to avoid blocking
-        return check_service_auth_async(state, headers, expected_lxm).await;
-    }
-
-    // Otherwise try legacy auth
-    if allowed.contains(&AuthType::Legacy) {
-        return check_legacy_auth(state, headers);
-    }
-
-    // No valid auth type
-    logger().info(&format!(
-        "[AUTH] ip={} authenticated=false error=no_valid_auth_type",
-        ip
-    ));
-    AuthResult {
-        is_authenticated: false,
-        user_did: None,
-        error: Some("No valid authentication provided".to_string()),
-        is_expired: false,
-    }
-}
