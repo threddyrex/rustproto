@@ -68,6 +68,47 @@ pub const DELEGATION_TOKEN_TYP: &str = "atproto-space-delegation+jwt";
 /// Default lifetime of a delegation token, in seconds (spec default).
 pub const DELEGATION_TOKEN_TTL_SECS: i64 = 60;
 
+/// The `typ` header value identifying a space credential.
+pub const SPACE_CREDENTIAL_TYP: &str = "atproto-space-credential+jwt";
+
+/// Default lifetime of a space credential, in seconds (spec default, 2 hours).
+pub const SPACE_CREDENTIAL_TTL_SECS: i64 = 7200;
+
+/// JWT header for space credentials.
+///
+/// Credentials carry a distinguishing `typ` and a `kid` naming the space
+/// authority's signing key.
+#[derive(Serialize)]
+struct SpaceCredentialJwtHeader {
+    alg: &'static str,
+    typ: &'static str,
+    kid: &'static str,
+}
+
+/// DPoP confirmation claim (RFC 7800), binding a credential to a key.
+#[derive(Serialize)]
+struct Confirmation {
+    /// JWK thumbprint (RFC 7638) of the bound key.
+    jkt: String,
+}
+
+/// JWT payload for space credentials (AT Protocol permissioned spaces).
+#[derive(Serialize)]
+struct SpaceCredentialPayload {
+    /// Issuer - the space authority's DID.
+    iss: String,
+    /// Subject - the target space URI (`at://{authority}/space/{type}/{skey}`).
+    sub: String,
+    /// Confirmation - binds the credential to the application's DPoP key.
+    cnf: Confirmation,
+    /// Issued at timestamp.
+    iat: i64,
+    /// Expiration timestamp.
+    exp: i64,
+    /// Random single-use identifier.
+    jti: String,
+}
+
 /// JWT payload for service auth tokens.
 #[derive(Serialize)]
 struct ServiceAuthPayload {
@@ -174,6 +215,70 @@ pub fn sign_delegation_token(
         iss: issuer.to_string(),
         sub: space_uri.to_string(),
         aud: format!("{}#atproto_space_host", authority),
+        iat: now,
+        exp: now + expires_in_seconds,
+        jti: uuid::Uuid::new_v4().to_string(),
+    };
+
+    // Encode header and payload
+    let header_json = serde_json::to_string(&header)
+        .map_err(|e| SignerError::EncodingError(format!("Header serialization failed: {}", e)))?;
+    let payload_json = serde_json::to_string(&payload)
+        .map_err(|e| SignerError::EncodingError(format!("Payload serialization failed: {}", e)))?;
+
+    sign_es256_jwt(&signing_key, &header_json, &payload_json)
+}
+
+/// Sign a space credential using ES256 (ECDSA with P-256).
+///
+/// The space authority mints this token in exchange for a delegation token
+/// (`com.atproto.space.getSpaceCredential`). It grants whole-space read/sync
+/// access and is DPoP-bound to the requesting application via its `cnf.jkt`
+/// claim, so it can be presented to any repo host serving a repo in the space.
+///
+/// # Arguments
+///
+/// * `private_key_multibase` - The space authority's private signing key in
+///   multibase format. When the authority publishes no dedicated
+///   `#atproto_space` key, this is the account's `#atproto` signing key.
+/// * `authority` - The space authority DID (`iss` claim).
+/// * `space_uri` - The target space URI (`sub` claim), in the form
+///   `at://{authority}/space/{spaceType}/{skey}`.
+/// * `dpop_jkt` - JWK thumbprint (RFC 7638) of the application's DPoP key, copied
+///   into the credential's `cnf.jkt` to bind it to that key.
+/// * `expires_in_seconds` - Token lifetime in seconds.
+///
+/// # Returns
+///
+/// A signed JWT space credential string.
+pub fn sign_space_credential(
+    private_key_multibase: &str,
+    authority: &str,
+    space_uri: &str,
+    dpop_jkt: &str,
+    expires_in_seconds: i64,
+) -> Result<String, SignerError> {
+    // Load the P-256 signing key from the multibase-encoded private key.
+    let signing_key = load_p256_signing_key(private_key_multibase)?;
+
+    // Create header. The credential is signed by the account's `#atproto` key,
+    // which is the fallback space signing key when no `#atproto_space` key is
+    // published.
+    let header = SpaceCredentialJwtHeader {
+        alg: "ES256",
+        typ: SPACE_CREDENTIAL_TYP,
+        kid: "#atproto",
+    };
+
+    // Create payload. A space credential has no `aud`: it is presented to any
+    // repo host serving a repo in the space, not to a single recipient.
+    let now = chrono::Utc::now().timestamp();
+    let payload = SpaceCredentialPayload {
+        iss: authority.to_string(),
+        sub: space_uri.to_string(),
+        cnf: Confirmation {
+            jkt: dpop_jkt.to_string(),
+        },
         iat: now,
         exp: now + expires_in_seconds,
         jti: uuid::Uuid::new_v4().to_string(),
@@ -522,5 +627,60 @@ mod tests {
         let jti_a = decode_jwt_part(first.split('.').nth(1).unwrap())["jti"].clone();
         let jti_b = decode_jwt_part(second.split('.').nth(1).unwrap())["jti"].clone();
         assert_ne!(jti_a, jti_b);
+    }
+
+    #[test]
+    fn test_sign_space_credential_invalid_key() {
+        let result = sign_space_credential(
+            "not-multibase",
+            "did:plc:authority",
+            "at://did:plc:authority/space/my.bulletin.board/self",
+            "0ZcOCORZNYy-DWpqq30jZyJGHTN0d2HglBV3uiguA4I",
+            SPACE_CREDENTIAL_TTL_SECS,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_sign_space_credential_header_and_claims() {
+        let signing_key = SigningKey::from_slice(&[0x42u8; 32]).unwrap();
+        let private_key = multibase_private_key(&signing_key);
+        let space_uri = "at://did:plc:authority/space/my.bulletin.board/self";
+        let jkt = "0ZcOCORZNYy-DWpqq30jZyJGHTN0d2HglBV3uiguA4I";
+
+        let token = sign_space_credential(
+            &private_key,
+            "did:plc:authority",
+            space_uri,
+            jkt,
+            SPACE_CREDENTIAL_TTL_SECS,
+        )
+        .expect("space credential mints");
+
+        let parts: Vec<&str> = token.split('.').collect();
+        assert_eq!(parts.len(), 3);
+
+        let header = decode_jwt_part(parts[0]);
+        assert_eq!(header["alg"], "ES256");
+        assert_eq!(header["typ"], SPACE_CREDENTIAL_TYP);
+        assert_eq!(header["kid"], "#atproto");
+
+        let claims = decode_jwt_part(parts[1]);
+        assert_eq!(claims["iss"], "did:plc:authority");
+        assert_eq!(claims["sub"], space_uri);
+        assert_eq!(claims["cnf"]["jkt"], jkt);
+        // A space credential is presented to any repo host, so it carries no aud.
+        assert!(claims.get("aud").is_none());
+        assert!(claims["jti"].is_string());
+        let iat = claims["iat"].as_i64().unwrap();
+        let exp = claims["exp"].as_i64().unwrap();
+        assert_eq!(exp - iat, SPACE_CREDENTIAL_TTL_SECS);
+
+        // The signature verifies against the authority's public key.
+        let verifying_key = signing_key.verifying_key();
+        let mut pub_bytes = vec![0x80u8, 0x24u8];
+        pub_bytes.extend_from_slice(verifying_key.to_encoded_point(true).as_bytes());
+        let public_key = format!("z{}", bs58::encode(pub_bytes).into_string());
+        assert!(verify_service_auth_token(&token, &public_key).unwrap());
     }
 }
