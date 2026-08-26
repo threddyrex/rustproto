@@ -92,7 +92,13 @@ pub async fn admin_sessions(
     .sessions-table th.sortable.desc::after {{ content: ' \2193'; opacity: 1; }}
     .sessions-table td {{ padding: 10px 16px; border-bottom: 1px solid #444; font-size: 14px; }}
     .ip-address {{ font-weight: bold; color: #1d9bf0; }}
-    .scope {{ font-family: monospace; font-size: 12px; color: #8899a6; max-width: 320px; word-break: break-all; }}
+    .scope-cell {{ max-width: 340px; }}
+    .scope-cell summary {{ cursor: pointer; color: #1d9bf0; font-size: 13px; user-select: none; white-space: nowrap; }}
+    .scope-cell summary:hover {{ color: #e7e9ea; }}
+    .scope-list {{ margin-top: 6px; max-height: 260px; overflow-y: auto; }}
+    .scope-item {{ font-family: monospace; font-size: 12px; color: #8899a6; overflow-wrap: anywhere; padding: 2px 0; border-bottom: 1px solid #3a3d41; }}
+    .scope-item:last-child {{ border-bottom: none; }}
+    .scope-empty {{ color: #8899a6; font-style: italic; font-size: 13px; }}
     .sessions-table tr:last-child td {{ border-bottom: none; }}
     .sessions-table tr:hover {{ background-color: #3a3d41; }}
     .challenge-text {{ font-family: monospace; font-size: 12px; }}
@@ -145,8 +151,8 @@ pub async fn admin_sessions(
             <th class="sortable" data-col="2" data-type="number" style="text-align: right;">Created</th>
             <th class="sortable" data-col="3" data-type="string">Client ID</th>
             <th class="sortable" data-col="4" data-type="string">Auth Type</th>
-            <th class="sortable" data-col="5" data-type="string">Scope</th>
-            <th class="sortable" data-col="6" data-type="string">Requested Scope</th>
+            <th>Scope</th>
+            <th>Requested Scope</th>
             <th>Action</th>
         </tr>
     </thead>
@@ -453,6 +459,44 @@ fn build_legacy_sessions_html(sessions: &[LegacySession]) -> String {
         .join("\n")
 }
 
+/// Render a scope string as a collapsible cell.
+///
+/// The full scope string can be very long (permission-set expansions produce
+/// dozens of tokens), so by default the cell shows just a count and expands on
+/// click into a readable list with one space-separated scope per line.
+fn format_scope_cell(scope: &str) -> String {
+    let tokens: Vec<&str> = scope.split_whitespace().collect();
+    if tokens.is_empty() {
+        return r#"<span class="scope-empty">(none)</span>"#.to_string();
+    }
+
+    let items = tokens
+        .iter()
+        .map(|token| {
+            // Add soft-wrap opportunities after separators so long single tokens
+            // (e.g. `space:...?a=1&b=2`) wrap at sensible points rather than
+            // being broken mid-word.
+            let encoded = html_encode(token)
+                .replace("&amp;", "&amp;<wbr>")
+                .replace('?', "?<wbr>");
+            format!(r#"<div class="scope-item">{}</div>"#, encoded)
+        })
+        .collect::<Vec<_>>()
+        .join("");
+
+    let label = if tokens.len() == 1 {
+        "1 scope".to_string()
+    } else {
+        format!("{} scopes", tokens.len())
+    };
+
+    format!(
+        r#"<details class="scope-cell"><summary>{label}</summary><div class="scope-list">{items}</div></details>"#,
+        label = label,
+        items = items,
+    )
+}
+
 /// Build HTML rows for OAuth sessions.
 fn build_oauth_sessions_html(sessions: &[OauthSession]) -> String {
     if sessions.is_empty() {
@@ -471,8 +515,8 @@ fn build_oauth_sessions_html(sessions: &[OauthSession]) -> String {
                     <td style="text-align: right;" data-sort="{sort_minutes}">{created}</td>
                     <td>{client_id}</td>
                     <td>{auth_type}</td>
-                    <td class="scope">{scope}</td>
-                    <td class="scope">{requested_scope}</td>
+                    <td>{scope}</td>
+                    <td>{requested_scope}</td>
                     <td>
                         <form method="post" action="/admin/deleteoauthsession" style="display:inline;">
                             <input type="hidden" name="sessionId" value="{session_id}" />
@@ -487,8 +531,8 @@ fn build_oauth_sessions_html(sessions: &[OauthSession]) -> String {
                 sort_minutes = sort_minutes,
                 client_id = html_encode(&s.client_id),
                 auth_type = html_encode(&s.auth_type),
-                scope = html_encode(&s.scope),
-                requested_scope = html_encode(&s.requested_scope),
+                scope = format_scope_cell(&s.scope),
+                requested_scope = format_scope_cell(&s.requested_scope),
                 session_id = html_encode(&s.session_id),
             )
         })
