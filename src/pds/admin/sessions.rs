@@ -89,6 +89,10 @@ pub async fn admin_sessions(
     {navbar_css}
     .delete-btn {{ background-color: #4caf50; color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500; }}
     .delete-btn:hover {{ background-color: #388e3c; }}
+    .delete-all-btn {{ background-color: #4caf50; color: white; border: none; padding: 6px 12px; border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: 500; font-family: inherit; }}
+    .delete-all-btn:hover {{ background-color: #388e3c; }}
+    .section-header {{ display: flex; justify-content: space-between; align-items: center; }}
+    .section-header h2 {{ margin: 0; }}
     .session-count {{ color: #8899a6; font-size: 14px; margin-left: 8px; }}
     .sessions-table {{ width: 100%; border-collapse: collapse; background-color: #2f3336; border-radius: 8px; overflow: hidden; margin-bottom: 24px; }}
     .sessions-table th {{ background-color: #1d1f23; color: #8899a6; text-align: left; padding: 12px 16px; font-size: 14px; font-weight: 500; }}
@@ -197,7 +201,12 @@ pub async fn admin_sessions(
     </tbody>
 </table>
 
-<h2>Space Credentials <span class="session-count">({space_credential_count})</span></h2>
+<div class="section-header">
+    <h2>Space Credentials <span class="session-count">({space_credential_count})</span></h2>
+    <form method="post" action="/admin/deleteallspacecredentials" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete all space credentials?');">
+        <button type="submit" class="delete-all-btn">Delete All</button>
+    </form>
+</div>
 <table class="sessions-table" id="spaceCredentialsTable">
     <thead>
         <tr>
@@ -559,9 +568,41 @@ pub async fn admin_delete_space_credential(
     Redirect::to("/admin/sessions").into_response()
 }
 
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
+/// Handle POST /admin/deleteallspacecredentials - Delete all space credentials.
+pub async fn admin_delete_all_space_credentials(
+    State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    cookies: Cookies,
+) -> impl IntoResponse {
+    // Extract caller info first for IP-based session validation
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
+    // Check if admin dashboard is enabled
+    if !is_admin_enabled(&state.db) {
+        return Redirect::to("/admin/login").into_response();
+    }
+
+    // Check authentication with IP verification
+    if !is_authenticated(&state.db, &cookies, &ip_address) {
+        return Redirect::to("/admin/login").into_response();
+    }
+
+    // Increment statistics
+    let stat_key = StatisticKey {
+        name: "admin/deleteallspacecredentials".to_string(),
+        ip_address,
+        user_agent,
+    };
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
+
+    // Delete all credentials
+    if let Err(e) = state.db.delete_all_space_credentials() {
+        state.log.error(&format!("Failed to delete all space credentials: {}", e));
+    }
+
+    Redirect::to("/admin/sessions").into_response()
+}
 
 /// Calculate a human-friendly "time ago" from a created date string.
 ///

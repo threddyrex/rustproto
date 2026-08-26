@@ -2575,6 +2575,13 @@ impl PdsDb {
         Ok(())
     }
 
+    /// Delete all space credentials.
+    pub fn delete_all_space_credentials(&self) -> Result<(), PdsDbError> {
+        let conn = self.get_connection()?;
+        conn.execute("DELETE FROM SpaceCredential", [])?;
+        Ok(())
+    }
+
     // =========================================================================
     // SPACE NOTIFY REGISTRATION
     // =========================================================================
