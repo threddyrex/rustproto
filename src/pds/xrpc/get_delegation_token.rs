@@ -217,3 +217,36 @@ pub async fn get_delegation_token(
 
     Json(GetDelegationTokenResponse { token }).into_response()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_valid_space_uri() {
+        let space = parse_space_uri("at://did:web:testuser.rustproto.com/space/my.bulletin.board/self")
+            .expect("valid space uri");
+        assert_eq!(space.authority, "did:web:testuser.rustproto.com");
+        assert_eq!(space.space_type, "my.bulletin.board");
+        assert_eq!(space.skey, "self");
+        assert_eq!(
+            space.uri(),
+            "at://did:web:testuser.rustproto.com/space/my.bulletin.board/self"
+        );
+    }
+
+    #[test]
+    fn rejects_public_at_uri() {
+        // A public at-uri has a collection NSID where the `space` marker belongs.
+        assert!(parse_space_uri("at://did:plc:abc/app.bsky.feed.post/3kabc").is_none());
+    }
+
+    #[test]
+    fn rejects_missing_prefix_and_wrong_shape() {
+        assert!(parse_space_uri("did:plc:abc/space/my.type/self").is_none());
+        assert!(parse_space_uri("at://did:plc:abc/space/my.type").is_none());
+        assert!(parse_space_uri("at://did:plc:abc/space/my.type/self/extra").is_none());
+        assert!(parse_space_uri("at://did:plc:abc/notspace/my.type/self").is_none());
+        assert!(parse_space_uri("at:///space/my.type/self").is_none());
+    }
+}
