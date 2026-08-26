@@ -139,6 +139,19 @@ pub async fn unregister_notify(
     };
     let _ = state.db.increment_statistic_for_endpoint(&stat_key);
 
+    // Authenticate the caller.
+    let auth_result = check_user_auth(
+        &state,
+        &headers,
+        Some(&[AuthType::Oauth, AuthType::SpaceCredential]),
+        "POST",
+        "/xrpc/com.atproto.space.unregisterNotify",
+    );
+    if !auth_result.is_authenticated {
+        return auth_failure_response(&auth_result);
+    }
+
+
     // Validate and parse the required space parameter.
     let space_uri = match body.space {
         Some(space) if !space.is_empty() => space,
@@ -198,19 +211,6 @@ pub async fn unregister_notify(
             "SpaceNotFound",
             "This service is not the authority for the requested space",
         );
-    }
-
-    // Authenticate the caller: OAuth (the account that owns the space on this
-    // host).
-    let auth_result = check_user_auth(
-        &state,
-        &headers,
-        Some(&[AuthType::Oauth]),
-        "POST",
-        "/xrpc/com.atproto.space.unregisterNotify",
-    );
-    if !auth_result.is_authenticated {
-        return auth_failure_response(&auth_result);
     }
 
     // Remove the notify registration. This is idempotent: deleting a
