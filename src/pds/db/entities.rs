@@ -209,16 +209,6 @@ pub struct DbRepoRecord {
     pub dag_cbor_bytes: Vec<u8>,
 }
 
-#[derive(Debug, Clone)]
-pub struct SimpleSpace {
-    pub authority: String,
-    pub space_type: String,
-    pub skey: String,
-    pub policy_json: String,
-    pub app_access_json: String,
-    pub created_date: String,
-}
-
 /// Format a DateTime for database storage.
 ///
 /// Uses ISO 8601 format with milliseconds: `yyyy-MM-ddTHH:mm:ss.fffZ`

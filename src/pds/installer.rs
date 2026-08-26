@@ -129,7 +129,6 @@ impl Installer {
         PdsDb::create_table_passkey_challenge(&conn, log)?;
         PdsDb::create_table_statistic(&conn, log)?;
         PdsDb::create_table_config_property(&conn, log)?;
-        PdsDb::create_table_simple_space(&conn, log)?;
 
         log.info("Database installation complete.");
         Ok(())
