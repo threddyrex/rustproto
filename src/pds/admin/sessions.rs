@@ -150,8 +150,8 @@ pub async fn admin_sessions(
             <th class="sortable" data-col="2" data-type="number" style="text-align: right;">Created</th>
             <th class="sortable" data-col="3" data-type="string">Client ID</th>
             <th class="sortable" data-col="4" data-type="string">Auth Type</th>
-            <th>Scope</th>
-            <th>Requested Scope</th>
+            <th>Requested Scopes</th>
+            <th>Actual Scopes</th>
             <th>Action</th>
         </tr>
     </thead>
@@ -530,8 +530,8 @@ fn build_oauth_sessions_html(sessions: &[OauthSession]) -> String {
                     <td style="text-align: right;" data-sort="{sort_minutes}">{created}</td>
                     <td>{client_id}</td>
                     <td>{auth_type}</td>
-                    <td>{scope}</td>
                     <td>{requested_scope}</td>
+                    <td>{scope}</td>
                     <td>
                         <form method="post" action="/admin/deleteoauthsession" style="display:inline;">
                             <input type="hidden" name="sessionId" value="{session_id}" />
