@@ -92,12 +92,11 @@ pub async fn admin_sessions(
     .sessions-table th.sortable.desc::after {{ content: ' \2193'; opacity: 1; }}
     .sessions-table td {{ padding: 10px 16px; border-bottom: 1px solid #444; font-size: 14px; }}
     .ip-address {{ font-weight: bold; color: #1d9bf0; }}
-    .scope-cell {{ max-width: 340px; }}
-    .scope-cell summary {{ cursor: pointer; color: #1d9bf0; font-size: 13px; user-select: none; white-space: nowrap; }}
-    .scope-cell summary:hover {{ color: #e7e9ea; }}
-    .scope-list {{ margin-top: 6px; max-height: 260px; overflow-y: auto; }}
-    .scope-item {{ font-family: monospace; font-size: 12px; color: #8899a6; overflow-wrap: anywhere; padding: 2px 0; border-bottom: 1px solid #3a3d41; }}
-    .scope-item:last-child {{ border-bottom: none; }}
+    .scope-cell {{ max-width: 340px; display: inline-flex; align-items: center; gap: 6px; }}
+    .scope-count {{ color: #1d9bf0; font-size: 13px; white-space: nowrap; cursor: default; }}
+    .scope-copy {{ background: none; border: none; padding: 0; cursor: pointer; color: #8899a6; font-size: 14px; line-height: 1; }}
+    .scope-copy:hover {{ color: #e7e9ea; }}
+    .scope-copy.copied {{ color: #4caf50; }}
     .scope-empty {{ color: #8899a6; font-style: italic; font-size: 13px; }}
     .sessions-table tr:last-child td {{ border-bottom: none; }}
     .sessions-table tr:hover {{ background-color: #3a3d41; }}
@@ -227,6 +226,29 @@ pub async fn admin_sessions(
         
         rows.forEach(row => tbody.appendChild(row));
     }}
+}})();
+
+// Copy full scope string to clipboard from the scope cell copy buttons.
+(function() {{
+    document.querySelectorAll('.scope-copy').forEach(btn => {{
+        btn.addEventListener('click', function() {{
+            const scope = this.dataset.scope || '';
+            const done = () => {{
+                this.classList.add('copied');
+                setTimeout(() => this.classList.remove('copied'), 1200);
+            }};
+            if (navigator.clipboard && navigator.clipboard.writeText) {{
+                navigator.clipboard.writeText(scope).then(done).catch(() => {{}});
+            }} else {{
+                const ta = document.createElement('textarea');
+                ta.value = scope;
+                document.body.appendChild(ta);
+                ta.select();
+                try {{ document.execCommand('copy'); done(); }} catch (e) {{}}
+                document.body.removeChild(ta);
+            }}
+        }});
+    }});
 }})();
 </script>
 </body>
@@ -459,30 +481,17 @@ fn build_legacy_sessions_html(sessions: &[LegacySession]) -> String {
         .join("\n")
 }
 
-/// Render a scope string as a collapsible cell.
+/// Render a scope string as a compact count with a copy button and tooltip.
 ///
 /// The full scope string can be very long (permission-set expansions produce
-/// dozens of tokens), so by default the cell shows just a count and expands on
-/// click into a readable list with one space-separated scope per line.
+/// dozens of tokens), so the cell shows just a count (e.g. `5 scopes`). Hovering
+/// reveals the full list via a native tooltip (one scope per line), and a copy
+/// button places the full space-separated scope string on the clipboard.
 fn format_scope_cell(scope: &str) -> String {
     let tokens: Vec<&str> = scope.split_whitespace().collect();
     if tokens.is_empty() {
         return r#"<span class="scope-empty">(none)</span>"#.to_string();
     }
-
-    let items = tokens
-        .iter()
-        .map(|token| {
-            // Add soft-wrap opportunities after separators so long single tokens
-            // (e.g. `space:...?a=1&b=2`) wrap at sensible points rather than
-            // being broken mid-word.
-            let encoded = html_encode(token)
-                .replace("&amp;", "&amp;<wbr>")
-                .replace('?', "?<wbr>");
-            format!(r#"<div class="scope-item">{}</div>"#, encoded)
-        })
-        .collect::<Vec<_>>()
-        .join("");
 
     let label = if tokens.len() == 1 {
         "1 scope".to_string()
@@ -490,10 +499,16 @@ fn format_scope_cell(scope: &str) -> String {
         format!("{} scopes", tokens.len())
     };
 
+    // Tooltip: one scope per line. Newlines are preserved by native title tooltips.
+    let tooltip = html_encode(&tokens.join("\n"));
+    // Full space-separated scope string for the copy button.
+    let copy_value = html_encode(&tokens.join(" "));
+
     format!(
-        r#"<details class="scope-cell"><summary>{label}</summary><div class="scope-list">{items}</div></details>"#,
+        r#"<span class="scope-cell"><span class="scope-count" title="{tooltip}">{label}</span><button type="button" class="scope-copy" data-scope="{copy_value}" title="Copy scopes" aria-label="Copy scopes">&#128203;</button></span>"#,
+        tooltip = tooltip,
         label = label,
-        items = items,
+        copy_value = copy_value,
     )
 }
 
