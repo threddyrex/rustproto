@@ -118,6 +118,59 @@ pub async fn admin_delete_space(
     Redirect::to("/admin/spaces").into_response()
 }
 
+/// Form data for deleting a notify registration.
+#[derive(Deserialize)]
+pub struct DeleteNotifyRegistrationForm {
+    space_uri: Option<String>,
+    service: Option<String>,
+}
+
+/// Handle POST /admin/deletenotifyregistration - Delete a notify registration.
+pub async fn admin_delete_notify_registration(
+    State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    cookies: Cookies,
+    Form(form): Form<DeleteNotifyRegistrationForm>,
+) -> impl IntoResponse {
+    // Extract caller info first for IP-based session validation
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
+    // Check if admin dashboard is enabled
+    if !is_admin_enabled(&state.db) {
+        return Redirect::to("/admin/login").into_response();
+    }
+
+    // Check authentication with IP verification
+    if !is_authenticated(&state.db, &cookies, &ip_address) {
+        return Redirect::to("/admin/login").into_response();
+    }
+
+    // Increment statistics
+    let stat_key = StatisticKey {
+        name: "admin/deletenotifyregistration".to_string(),
+        ip_address,
+        user_agent,
+    };
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
+
+    // Delete the notify registration
+    if let (Some(space_uri), Some(service)) = (form.space_uri, form.service) {
+        if !space_uri.is_empty() && !service.is_empty() {
+            if let Err(e) = state
+                .db
+                .delete_space_notify_registration(&space_uri, &service)
+            {
+                state
+                    .log
+                    .error(&format!("Failed to delete notify registration: {}", e));
+            }
+        }
+    }
+
+    Redirect::to("/admin/spaces").into_response()
+}
+
 /// Build the spaces page HTML showing every space in one table.
 fn build_spaces_page(
     hostname: &str,
@@ -192,6 +245,7 @@ fn build_spaces_page(
             <th class="sortable" data-col="0" data-type="string">Space URI</th>
             <th class="sortable" data-col="1" data-type="string">Service</th>
             <th class="sortable desc" data-col="2" data-type="string">Created</th>
+            <th>Actions</th>
         </tr>
     </thead>
     <tbody>
@@ -251,7 +305,7 @@ fn build_spaces_rows_html(spaces: &[DbSpace]) -> String {
 /// Build HTML rows for the notify registrations table.
 fn build_registrations_rows_html(registrations: &[DbSpaceNotifyRegistration]) -> String {
     if registrations.is_empty() {
-        return r#"<tr><td colspan="3" style="text-align: center; color: #8899a6;">No registrations</td></tr>"#.to_string();
+        return r#"<tr><td colspan="4" style="text-align: center; color: #8899a6;">No registrations</td></tr>"#.to_string();
     }
 
     registrations
@@ -262,6 +316,13 @@ fn build_registrations_rows_html(registrations: &[DbSpaceNotifyRegistration]) ->
                     <td>{space_uri}</td>
                     <td>{service}</td>
                     <td>{created}</td>
+                    <td>
+                        <form method="post" action="/admin/deletenotifyregistration" style="display:inline;" onsubmit="return confirm('Delete this notify registration?');">
+                            <input type="hidden" name="space_uri" value="{space_uri}" />
+                            <input type="hidden" name="service" value="{service}" />
+                            <button type="submit" class="delete-btn">Delete</button>
+                        </form>
+                    </td>
                 </tr>"#,
                 space_uri = html_encode(&r.space_uri),
                 service = html_encode(&r.service),
