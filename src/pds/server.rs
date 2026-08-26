@@ -184,6 +184,8 @@ impl PdsRunner {
             .route("/xrpc/com.atproto.sync.listRepos", axum::routing::get(xrpc::sync_list_repos))
             .route("/xrpc/com.atproto.sync.getRepoStatus", axum::routing::get(xrpc::sync_get_repo_status))
             .route("/xrpc/com.atproto.sync.subscribeRepos", axum::routing::get(xrpc::subscribe_repos))
+            // Permissioned spaces
+            .route("/xrpc/com.atproto.space.getDelegationToken", axum::routing::get(xrpc::get_delegation_token))
             // App.bsky endpoints (preferences are handled locally, others proxy to AppView)
             .route("/xrpc/app.bsky.actor.getPreferences", axum::routing::get(xrpc::get_preferences))
             .route("/xrpc/app.bsky.actor.putPreferences", axum::routing::post(xrpc::put_preferences))

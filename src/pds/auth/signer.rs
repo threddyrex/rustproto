@@ -34,6 +34,40 @@ struct JwtHeader {
     typ: &'static str,
 }
 
+/// JWT header for space delegation tokens.
+///
+/// Delegation tokens carry a distinguishing `typ` and a `kid` naming the
+/// account's `#atproto` signing key.
+#[derive(Serialize)]
+struct DelegationJwtHeader {
+    alg: &'static str,
+    typ: &'static str,
+    kid: &'static str,
+}
+
+/// JWT payload for space delegation tokens (AT Protocol permissioned spaces).
+#[derive(Serialize)]
+struct DelegationPayload {
+    /// Issuer - the user's DID.
+    iss: String,
+    /// Subject - the target space URI (`at://{authority}/space/{type}/{skey}`).
+    sub: String,
+    /// Audience - the space authority's space host (`{authority}#atproto_space_host`).
+    aud: String,
+    /// Issued at timestamp.
+    iat: i64,
+    /// Expiration timestamp.
+    exp: i64,
+    /// Random single-use identifier.
+    jti: String,
+}
+
+/// The `typ` header value identifying a space delegation token.
+pub const DELEGATION_TOKEN_TYP: &str = "atproto-space-delegation+jwt";
+
+/// Default lifetime of a delegation token, in seconds (spec default).
+pub const DELEGATION_TOKEN_TTL_SECS: i64 = 60;
+
 /// JWT payload for service auth tokens.
 #[derive(Serialize)]
 struct ServiceAuthPayload {
@@ -70,6 +104,93 @@ pub fn sign_service_auth_token(
     lxm: Option<&str>,
     expires_in_seconds: i64,
 ) -> Result<String, SignerError> {
+    // Load the P-256 signing key from the multibase-encoded private key.
+    let signing_key = load_p256_signing_key(private_key_multibase)?;
+
+    // Create header
+    let header = JwtHeader {
+        alg: "ES256",
+        typ: "JWT",
+    };
+
+    // Create payload
+    let now = chrono::Utc::now().timestamp();
+    let payload = ServiceAuthPayload {
+        iss: issuer.to_string(),
+        aud: audience.to_string(),
+        iat: now,
+        exp: now + expires_in_seconds,
+        lxm: lxm.map(|s| s.to_string()),
+    };
+
+    // Encode header and payload
+    let header_json = serde_json::to_string(&header)
+        .map_err(|e| SignerError::EncodingError(format!("Header serialization failed: {}", e)))?;
+    let payload_json = serde_json::to_string(&payload)
+        .map_err(|e| SignerError::EncodingError(format!("Payload serialization failed: {}", e)))?;
+
+    sign_es256_jwt(&signing_key, &header_json, &payload_json)
+}
+
+/// Sign a space delegation token using ES256 (ECDSA with P-256).
+///
+/// Mints the single-use, short-lived JWT a client presents to a space
+/// authority to prove it is acting on the user's behalf when requesting a
+/// space credential (`com.atproto.space.getDelegationToken`).
+///
+/// # Arguments
+///
+/// * `private_key_multibase` - The user's private signing key in multibase format.
+/// * `issuer` - The user's DID (`iss` claim).
+/// * `space_uri` - The target space URI (`sub` claim), in the form
+///   `at://{authority}/space/{spaceType}/{skey}`.
+/// * `authority` - The space authority DID; the token's audience is
+///   `{authority}#atproto_space_host`.
+/// * `expires_in_seconds` - Token lifetime in seconds.
+///
+/// # Returns
+///
+/// A signed JWT delegation token string.
+pub fn sign_delegation_token(
+    private_key_multibase: &str,
+    issuer: &str,
+    space_uri: &str,
+    authority: &str,
+    expires_in_seconds: i64,
+) -> Result<String, SignerError> {
+    // Load the P-256 signing key from the multibase-encoded private key.
+    let signing_key = load_p256_signing_key(private_key_multibase)?;
+
+    // Create header
+    let header = DelegationJwtHeader {
+        alg: "ES256",
+        typ: DELEGATION_TOKEN_TYP,
+        kid: "#atproto",
+    };
+
+    // Create payload
+    let now = chrono::Utc::now().timestamp();
+    let payload = DelegationPayload {
+        iss: issuer.to_string(),
+        sub: space_uri.to_string(),
+        aud: format!("{}#atproto_space_host", authority),
+        iat: now,
+        exp: now + expires_in_seconds,
+        jti: uuid::Uuid::new_v4().to_string(),
+    };
+
+    // Encode header and payload
+    let header_json = serde_json::to_string(&header)
+        .map_err(|e| SignerError::EncodingError(format!("Header serialization failed: {}", e)))?;
+    let payload_json = serde_json::to_string(&payload)
+        .map_err(|e| SignerError::EncodingError(format!("Payload serialization failed: {}", e)))?;
+
+    sign_es256_jwt(&signing_key, &header_json, &payload_json)
+}
+
+/// Decode a multibase (base58btc, `z` prefix) P-256 private key and construct a
+/// [`SigningKey`].
+fn load_p256_signing_key(private_key_multibase: &str) -> Result<SigningKey, SignerError> {
     // Decode the multibase private key (z prefix = base58btc)
     if !private_key_multibase.starts_with('z') {
         return Err(SignerError::InvalidKey(
@@ -101,32 +222,19 @@ pub fn sign_service_auth_token(
         )));
     }
 
-    // Create signing key
-    let signing_key = SigningKey::from_slice(private_key_bytes)
-        .map_err(|e| SignerError::InvalidKey(format!("Invalid P-256 key: {}", e)))?;
+    SigningKey::from_slice(private_key_bytes)
+        .map_err(|e| SignerError::InvalidKey(format!("Invalid P-256 key: {}", e)))
+}
 
-    // Create header
-    let header = JwtHeader {
-        alg: "ES256",
-        typ: "JWT",
-    };
-
-    // Create payload
-    let now = chrono::Utc::now().timestamp();
-    let payload = ServiceAuthPayload {
-        iss: issuer.to_string(),
-        aud: audience.to_string(),
-        iat: now,
-        exp: now + expires_in_seconds,
-        lxm: lxm.map(|s| s.to_string()),
-    };
-
-    // Encode header and payload
-    let header_json = serde_json::to_string(&header)
-        .map_err(|e| SignerError::EncodingError(format!("Header serialization failed: {}", e)))?;
-    let payload_json = serde_json::to_string(&payload)
-        .map_err(|e| SignerError::EncodingError(format!("Payload serialization failed: {}", e)))?;
-
+/// Sign a JWT (`header.payload.signature`) with a P-256 key using ES256.
+///
+/// The signature is computed over `sha256(header_b64.payload_b64)` and
+/// normalized to low-S form per the atproto convention.
+fn sign_es256_jwt(
+    signing_key: &SigningKey,
+    header_json: &str,
+    payload_json: &str,
+) -> Result<String, SignerError> {
     let header_b64 = BASE64URL.encode(header_json.as_bytes());
     let payload_b64 = BASE64URL.encode(payload_json.as_bytes());
 
@@ -336,5 +444,83 @@ mod tests {
         let short = vec![0x01, 0x02];
         let result = normalize_low_s(&short);
         assert_eq!(result, short);
+    }
+
+    /// Encode a P-256 signing key as a multibase (base58btc) private key with
+    /// the `0x86 0x26` multicodec prefix, as stored in `UserPrivateKeyMultibase`.
+    fn multibase_private_key(signing_key: &SigningKey) -> String {
+        let mut bytes = vec![0x86u8, 0x26u8];
+        bytes.extend_from_slice(&signing_key.to_bytes());
+        format!("z{}", bs58::encode(bytes).into_string())
+    }
+
+    fn decode_jwt_part(part: &str) -> serde_json::Value {
+        let bytes = BASE64URL.decode(part).expect("valid base64url");
+        serde_json::from_slice(&bytes).expect("valid json")
+    }
+
+    #[test]
+    fn test_sign_delegation_token_invalid_key() {
+        let result = sign_delegation_token(
+            "not-multibase",
+            "did:plc:user",
+            "at://did:plc:authority/space/my.bulletin.board/self",
+            "did:plc:authority",
+            60,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_sign_delegation_token_header_and_claims() {
+        let signing_key = SigningKey::from_slice(&[0x42u8; 32]).unwrap();
+        let private_key = multibase_private_key(&signing_key);
+        let space_uri = "at://did:plc:authority/space/my.bulletin.board/self";
+
+        let token = sign_delegation_token(
+            &private_key,
+            "did:plc:user",
+            space_uri,
+            "did:plc:authority",
+            DELEGATION_TOKEN_TTL_SECS,
+        )
+        .expect("delegation token mints");
+
+        let parts: Vec<&str> = token.split('.').collect();
+        assert_eq!(parts.len(), 3);
+
+        let header = decode_jwt_part(parts[0]);
+        assert_eq!(header["alg"], "ES256");
+        assert_eq!(header["typ"], DELEGATION_TOKEN_TYP);
+        assert_eq!(header["kid"], "#atproto");
+
+        let claims = decode_jwt_part(parts[1]);
+        assert_eq!(claims["iss"], "did:plc:user");
+        assert_eq!(claims["sub"], space_uri);
+        assert_eq!(claims["aud"], "did:plc:authority#atproto_space_host");
+        assert!(claims["jti"].is_string());
+        let iat = claims["iat"].as_i64().unwrap();
+        let exp = claims["exp"].as_i64().unwrap();
+        assert_eq!(exp - iat, DELEGATION_TOKEN_TTL_SECS);
+
+        // The signature verifies against the account's public key.
+        let verifying_key = signing_key.verifying_key();
+        let mut pub_bytes = vec![0x80u8, 0x24u8];
+        pub_bytes.extend_from_slice(verifying_key.to_encoded_point(true).as_bytes());
+        let public_key = format!("z{}", bs58::encode(pub_bytes).into_string());
+        assert!(verify_service_auth_token(&token, &public_key).unwrap());
+    }
+
+    #[test]
+    fn test_delegation_token_jti_is_unique() {
+        let signing_key = SigningKey::from_slice(&[0x42u8; 32]).unwrap();
+        let private_key = multibase_private_key(&signing_key);
+        let space_uri = "at://did:plc:authority/space/my.bulletin.board/self";
+
+        let first = sign_delegation_token(&private_key, "did:plc:user", space_uri, "did:plc:authority", 60).unwrap();
+        let second = sign_delegation_token(&private_key, "did:plc:user", space_uri, "did:plc:authority", 60).unwrap();
+        let jti_a = decode_jwt_part(first.split('.').nth(1).unwrap())["jti"].clone();
+        let jti_b = decode_jwt_part(second.split('.').nth(1).unwrap())["jti"].clone();
+        assert_ne!(jti_a, jti_b);
     }
 }
