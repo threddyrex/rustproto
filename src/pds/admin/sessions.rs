@@ -779,7 +779,7 @@ fn build_delegation_tokens_html(tokens: &[DbSpaceDelegationToken]) -> String {
                     <td>{space_uri}</td>
                     <td style="text-align: right;" data-sort="{sort_minutes}">{created}</td>
                     <td style="text-align: right;">{expires}</td>
-                    <td class="challenge-text">{token}</td>
+                    <td class="challenge-text" title="{token_value}">{token}</td>
                     <td>
                         <form method="post" action="/admin/deletespacedelegationtoken" style="display:inline;">
                             <input type="hidden" name="token" value="{token_value}" />
@@ -791,7 +791,7 @@ fn build_delegation_tokens_html(tokens: &[DbSpaceDelegationToken]) -> String {
                 created = html_encode(&created_display),
                 sort_minutes = sort_minutes,
                 expires = html_encode(&t.expires_date),
-                token = html_encode(&t.token),
+                token = html_encode(&abbreviate_token(&t.token)),
                 token_value = html_encode(&t.token),
             )
         })
@@ -814,8 +814,8 @@ fn build_space_credentials_html(credentials: &[DbSpaceCredential]) -> String {
                     <td>{space_uri}</td>
                     <td style="text-align: right;" data-sort="{sort_minutes}">{created}</td>
                     <td style="text-align: right;">{expires}</td>
-                    <td class="challenge-text">{dpop_jkt}</td>
-                    <td class="challenge-text">{credential}</td>
+                    <td class="challenge-text" title="{dpop_jkt_value}">{dpop_jkt}</td>
+                    <td class="challenge-text" title="{credential_value}">{credential}</td>
                     <td>
                         <form method="post" action="/admin/deletespacecredential" style="display:inline;">
                             <input type="hidden" name="spaceUri" value="{space_uri_value}" />
@@ -828,10 +828,11 @@ fn build_space_credentials_html(credentials: &[DbSpaceCredential]) -> String {
                 created = html_encode(&created_display),
                 sort_minutes = sort_minutes,
                 expires = html_encode(&c.expires_date),
-                dpop_jkt = html_encode(&c.dpop_jkt),
-                credential = html_encode(&c.credential),
+                dpop_jkt = html_encode(&abbreviate_token(&c.dpop_jkt)),
+                credential = html_encode(&abbreviate_token(&c.credential)),
                 space_uri_value = html_encode(&c.space_uri),
                 dpop_jkt_value = html_encode(&c.dpop_jkt),
+                credential_value = html_encode(&c.credential),
             )
         })
         .collect::<Vec<_>>()
@@ -839,6 +840,24 @@ fn build_space_credentials_html(credentials: &[DbSpaceCredential]) -> String {
 }
 
 /// HTML encode a string to prevent XSS.
+/// Abbreviate a long token-like string for compact display.
+///
+/// Shows the first 4 and last 4 characters with a count of the hidden middle
+/// characters, e.g. `abcd…120…wxyz`. Strings short enough that abbreviating
+/// wouldn't save space are returned unchanged. Character counts are based on
+/// Unicode scalar values so multi-byte characters are handled correctly.
+fn abbreviate_token(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    let len = chars.len();
+    // Only abbreviate when there is at least one hidden middle character.
+    if len <= 9 {
+        return s.to_string();
+    }
+    let first: String = chars[..4].iter().collect();
+    let last: String = chars[len - 4..].iter().collect();
+    format!("{}…{}…{}", first, len - 8, last)
+}
+
 fn html_encode(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
