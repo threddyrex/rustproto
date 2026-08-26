@@ -4,7 +4,7 @@
 //!
 //! Handles token exchange for authorization_code and refresh_token grants.
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use axum::{
     Json,
@@ -26,8 +26,10 @@ use super::dpop::validate_dpop;
 use super::helpers::{get_caller_info, get_form_value, get_hostname, is_oauth_enabled, token_fp};
 use super::scope_resolution::resolve_scopes;
 
-/// Lock for OAuth refresh operations to prevent race conditions.
-static OAUTH_REFRESH_LOCK: Mutex<()> = Mutex::new(());
+/// Lock for OAuth refresh operations to prevent race conditions. This is a
+/// `tokio` mutex so the guard can be held across the `.await` in scope
+/// re-resolution during refresh.
+static OAUTH_REFRESH_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 /// Token success response.
 #[derive(Serialize)]
@@ -241,6 +243,7 @@ async fn handle_authorization_code(
         session_id: session_id.clone(),
         client_id: client_id.clone(),
         scope: scope.clone(),
+        requested_scope: raw_scope.clone(),
         dpop_jwk_thumbprint: jwk_thumbprint.clone(),
         refresh_token: refresh_token.clone(),
         refresh_token_expires_date: refresh_expires.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
@@ -336,7 +339,7 @@ async fn handle_refresh_token(
     body_str: &str,
 ) -> impl IntoResponse {
     // Acquire lock to prevent concurrent refresh races.
-    let _guard = OAUTH_REFRESH_LOCK.lock().unwrap();
+    let _guard = OAUTH_REFRESH_LOCK.lock().await;
 
     let (ip_address, _) = get_caller_info(headers, None);
 
@@ -412,6 +415,18 @@ async fn handle_refresh_token(
 
     oauth_session.refresh_token = new_refresh_token.clone();
     oauth_session.refresh_token_expires_date = refresh_expires.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+    // Re-resolve the originally-requested scopes so that any `include:`
+    // permission sets pick up upstream changes on refresh. The requested scope
+    // remains the immutable grant boundary; only the derived effective scope is
+    // recomputed and persisted.
+    let app_view_host_name = state
+        .db
+        .get_config_property("AppViewHostName")
+        .unwrap_or_else(|_| DEFAULT_APP_VIEW_HOST_NAME.to_string());
+    let bluesky_client = BlueskyClient::new(&app_view_host_name);
+    oauth_session.scope =
+        resolve_scopes(&oauth_session.requested_scope, &bluesky_client, state.log).await;
 
     if let Err(e) = state.db.update_oauth_session(&oauth_session) {
         state.log.error(&format!(

@@ -40,8 +40,14 @@ pub struct OauthSession {
     pub session_id: String,
     /// OAuth client identifier.
     pub client_id: String,
-    /// Granted scopes.
+    /// Effective (resolved) scopes, recomputed from `requested_scope` at each
+    /// token issuance. Any `include:<nsid>` permission sets in the request are
+    /// expanded into concrete granular scopes here.
     pub scope: String,
+    /// The scopes as originally requested by the client (with any `include:`
+    /// permission-set references intact). This is the immutable authorization
+    /// boundary the user consented to; `scope` is derived from it.
+    pub requested_scope: String,
     /// DPoP JWK thumbprint for token binding.
     pub dpop_jwk_thumbprint: String,
     /// Refresh token value.

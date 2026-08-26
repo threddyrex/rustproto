@@ -521,7 +521,7 @@ Scopes declared in authorization server metadata:
 | `transition:generic` | Generic capability transition scope |
 | `transition:chat.bsky` | Bluesky chat service scope |
 
-Scopes are resolved and stored in the `OauthSession` and included in the access token's `scope` claim. At session-creation time (in the `authorization_code` token grant), any `include:<nsid>` permission-set references are resolved via Lexicon resolution and expanded into concrete granular scopes (`rpc:*`, `repo:*`, ...); all other tokens pass through unchanged. The expanded scope string is what gets persisted, so it is the single source of truth for the session and is reused verbatim on refresh — the granted permissions are frozen at consent time. The current implementation performs no per-endpoint enforcement.
+Scopes are resolved and stored in the `OauthSession` and included in the access token's `scope` claim. The session stores both the client's originally-requested scopes (`RequestedScope`, the immutable authorization boundary the user consented to) and the derived effective `Scope`. At each token issuance — both the `authorization_code` grant and every `refresh_token` grant — any `include:<nsid>` permission-set references in the requested scopes are resolved via Lexicon resolution and expanded into concrete granular scopes (`rpc:*`, `repo:*`, `space:*`, ...); all other tokens pass through unchanged. Because expansion re-runs on refresh, a session picks up upstream permission-set changes without re-authenticating, while remaining strictly bounded by the requested scopes. The current implementation performs no per-endpoint enforcement.
 
 ### PKCE
 

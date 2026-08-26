@@ -92,6 +92,7 @@ pub async fn admin_sessions(
     .sessions-table th.sortable.desc::after {{ content: ' \2193'; opacity: 1; }}
     .sessions-table td {{ padding: 10px 16px; border-bottom: 1px solid #444; font-size: 14px; }}
     .ip-address {{ font-weight: bold; color: #1d9bf0; }}
+    .scope {{ font-family: monospace; font-size: 12px; color: #8899a6; max-width: 320px; word-break: break-all; }}
     .sessions-table tr:last-child td {{ border-bottom: none; }}
     .sessions-table tr:hover {{ background-color: #3a3d41; }}
     .challenge-text {{ font-family: monospace; font-size: 12px; }}
@@ -144,6 +145,8 @@ pub async fn admin_sessions(
             <th class="sortable" data-col="2" data-type="number" style="text-align: right;">Created</th>
             <th class="sortable" data-col="3" data-type="string">Client ID</th>
             <th class="sortable" data-col="4" data-type="string">Auth Type</th>
+            <th class="sortable" data-col="5" data-type="string">Scope</th>
+            <th class="sortable" data-col="6" data-type="string">Requested Scope</th>
             <th>Action</th>
         </tr>
     </thead>
@@ -453,7 +456,7 @@ fn build_legacy_sessions_html(sessions: &[LegacySession]) -> String {
 /// Build HTML rows for OAuth sessions.
 fn build_oauth_sessions_html(sessions: &[OauthSession]) -> String {
     if sessions.is_empty() {
-        return r#"<tr><td colspan="6" style="text-align: center; color: #8899a6;">No OAuth sessions</td></tr>"#.to_string();
+        return r#"<tr><td colspan="8" style="text-align: center; color: #8899a6;">No OAuth sessions</td></tr>"#.to_string();
     }
 
     sessions
@@ -468,6 +471,8 @@ fn build_oauth_sessions_html(sessions: &[OauthSession]) -> String {
                     <td style="text-align: right;" data-sort="{sort_minutes}">{created}</td>
                     <td>{client_id}</td>
                     <td>{auth_type}</td>
+                    <td class="scope">{scope}</td>
+                    <td class="scope">{requested_scope}</td>
                     <td>
                         <form method="post" action="/admin/deleteoauthsession" style="display:inline;">
                             <input type="hidden" name="sessionId" value="{session_id}" />
@@ -482,6 +487,8 @@ fn build_oauth_sessions_html(sessions: &[OauthSession]) -> String {
                 sort_minutes = sort_minutes,
                 client_id = html_encode(&s.client_id),
                 auth_type = html_encode(&s.auth_type),
+                scope = html_encode(&s.scope),
+                requested_scope = html_encode(&s.requested_scope),
                 session_id = html_encode(&s.session_id),
             )
         })

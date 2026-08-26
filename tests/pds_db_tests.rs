@@ -651,6 +651,7 @@ fn oauth_session_insert_get() {
         session_id: session_id.clone(),
         client_id: "clientId".to_string(),
         scope: "scope".to_string(),
+        requested_scope: "requestedScope".to_string(),
         dpop_jwk_thumbprint: "dpopJwkThumbprint".to_string(),
         refresh_token: "refreshToken".to_string(),
         refresh_token_expires_date: format_datetime_for_db(Utc::now() + Duration::minutes(5)),
@@ -666,6 +667,7 @@ fn oauth_session_insert_get() {
     assert_eq!(retrieved.session_id, session.session_id);
     assert_eq!(retrieved.client_id, session.client_id);
     assert_eq!(retrieved.scope, session.scope);
+    assert_eq!(retrieved.requested_scope, session.requested_scope);
     assert_eq!(retrieved.dpop_jwk_thumbprint, session.dpop_jwk_thumbprint);
     assert_eq!(retrieved.refresh_token, session.refresh_token);
     assert_eq!(retrieved.auth_type, session.auth_type);
@@ -681,6 +683,7 @@ fn oauth_session_delete_old() {
         session_id: session_id.clone(),
         client_id: "clientId".to_string(),
         scope: "scope".to_string(),
+        requested_scope: "requestedScope".to_string(),
         dpop_jwk_thumbprint: "dpopJwkThumbprint".to_string(),
         refresh_token: "refreshToken".to_string(),
         refresh_token_expires_date: format_datetime_for_db(Utc::now() - Duration::minutes(5)),
