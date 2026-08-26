@@ -164,7 +164,6 @@ impl PdsRunner {
             .route("/xrpc/com.atproto.server.deactivateAccount", axum::routing::post(xrpc::deactivate_account))
             // Space endpoints
             .route("/xrpc/com.atproto.space.getDelegationToken", axum::routing::get(xrpc::get_delegation_token))
-            .route("/xrpc/com.atproto.space.getSpaceCredential", axum::routing::post(xrpc::get_space_credential))
             // Repo operation endpoints
             .route("/xrpc/com.atproto.repo.describeRepo", axum::routing::get(xrpc::describe_repo))
             .route("/xrpc/com.atproto.repo.getRecord", axum::routing::get(xrpc::get_record))
