@@ -276,6 +276,24 @@ pub struct DbSpaceCredential {
     pub expires_date: String,
 }
 
+/// A registration recording that a service wants to be notified about activity
+/// in a permissioned space.
+///
+/// Created by `com.atproto.space.registerNotify` and removed by
+/// `com.atproto.space.unregisterNotify`. This only records the intent to be
+/// notified; delivering the notifications themselves is handled elsewhere.
+///
+/// A registration is keyed by the space URI plus the service identifier.
+#[derive(Debug, Clone)]
+pub struct DbSpaceNotifyRegistration {
+    /// Canonical space URI the service wants to be notified about.
+    pub space_uri: String,
+    /// Identifier of the service to notify (e.g. `did:web:bulletin.my#bulletin`).
+    pub service: String,
+    /// Creation timestamp (ISO 8601).
+    pub created_date: String,
+}
+
 /// Format a DateTime for database storage.
 ///
 /// Uses ISO 8601 format with milliseconds: `yyyy-MM-ddTHH:mm:ss.fffZ`

@@ -15,7 +15,7 @@ use serde::Deserialize;
 use tower_cookies::Cookies;
 
 use super::{get_base_styles, get_caller_info, get_navbar_css, get_navbar_html, is_admin_enabled, is_authenticated};
-use crate::pds::db::{DbSpace, StatisticKey};
+use crate::pds::db::{DbSpace, DbSpaceNotifyRegistration, StatisticKey};
 use crate::pds::server::PdsState;
 
 /// Handle GET /admin/spaces - Show spaces page.
@@ -60,7 +60,13 @@ pub async fn admin_spaces(
     // Get all spaces (already sorted newest first by the query).
     let spaces = state.db.get_all_spaces().unwrap_or_default();
 
-    let html = build_spaces_page(&hostname, &spaces);
+    // Get all notify registrations (already sorted newest first by the query).
+    let registrations = state
+        .db
+        .get_all_space_notify_registrations()
+        .unwrap_or_default();
+
+    let html = build_spaces_page(&hostname, &spaces, &registrations);
 
     Html(html).into_response()
 }
@@ -113,9 +119,15 @@ pub async fn admin_delete_space(
 }
 
 /// Build the spaces page HTML showing every space in one table.
-fn build_spaces_page(hostname: &str, spaces: &[DbSpace]) -> String {
+fn build_spaces_page(
+    hostname: &str,
+    spaces: &[DbSpace],
+    registrations: &[DbSpaceNotifyRegistration],
+) -> String {
     let total_rows = spaces.len();
     let spaces_rows = build_spaces_rows_html(spaces);
+    let registrations_count = registrations.len();
+    let registrations_rows = build_registrations_rows_html(registrations);
 
     format!(
         r#"<!DOCTYPE html>
@@ -170,6 +182,22 @@ fn build_spaces_page(hostname: &str, spaces: &[DbSpace]) -> String {
         {spaces_rows}
     </tbody>
 </table>
+
+<div class="section-header" style="margin-top: 32px;">
+    <h2>Notify Registrations <span class="session-count">({registrations_count} rows)</span></h2>
+</div>
+<table class="stats-table filterable-table" id="registrationsTable">
+    <thead>
+        <tr>
+            <th class="sortable" data-col="0" data-type="string">Space URI</th>
+            <th class="sortable" data-col="1" data-type="string">Service</th>
+            <th class="sortable desc" data-col="2" data-type="string">Created</th>
+        </tr>
+    </thead>
+    <tbody>
+        {registrations_rows}
+    </tbody>
+</table>
 </div>
 {sort_and_filter_script}
 </body>
@@ -180,6 +208,8 @@ fn build_spaces_page(hostname: &str, spaces: &[DbSpace]) -> String {
         navbar = get_navbar_html("spaces"),
         total_rows = total_rows,
         spaces_rows = spaces_rows,
+        registrations_count = registrations_count,
+        registrations_rows = registrations_rows,
         sort_and_filter_script = get_sort_and_filter_script(),
     )
 }
@@ -212,6 +242,30 @@ fn build_spaces_rows_html(spaces: &[DbSpace]) -> String {
                 space_type = html_encode(&s.space_type),
                 skey = html_encode(&s.skey),
                 created = html_encode(&s.created_date),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Build HTML rows for the notify registrations table.
+fn build_registrations_rows_html(registrations: &[DbSpaceNotifyRegistration]) -> String {
+    if registrations.is_empty() {
+        return r#"<tr><td colspan="3" style="text-align: center; color: #8899a6;">No registrations</td></tr>"#.to_string();
+    }
+
+    registrations
+        .iter()
+        .map(|r| {
+            format!(
+                r#"<tr>
+                    <td>{space_uri}</td>
+                    <td>{service}</td>
+                    <td>{created}</td>
+                </tr>"#,
+                space_uri = html_encode(&r.space_uri),
+                service = html_encode(&r.service),
+                created = html_encode(&r.created_date),
             )
         })
         .collect::<Vec<_>>()

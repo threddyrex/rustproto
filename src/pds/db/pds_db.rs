@@ -2574,4 +2574,114 @@ impl PdsDb {
         )?;
         Ok(())
     }
+
+    // =========================================================================
+    // SPACE NOTIFY REGISTRATION
+    // =========================================================================
+
+    /// Create the SpaceNotifyRegistration table.
+    ///
+    /// Records that a service wants to be notified about activity in a
+    /// permissioned space, as requested via `com.atproto.space.registerNotify`
+    /// and removed via `com.atproto.space.unregisterNotify`. A registration is
+    /// keyed by the space URI plus the service identifier.
+    pub fn create_table_space_notify_registration(
+        conn: &Connection,
+        log: &Logger,
+    ) -> Result<(), PdsDbError> {
+        log.info("table: SpaceNotifyRegistration");
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS SpaceNotifyRegistration (
+                SpaceUri TEXT NOT NULL,
+                Service TEXT NOT NULL,
+                CreatedDate TEXT NOT NULL,
+                PRIMARY KEY (SpaceUri, Service)
+            )",
+            [],
+        )?;
+        Ok(())
+    }
+
+    /// Insert (or replace) a space notify registration record.
+    pub fn insert_space_notify_registration(
+        &self,
+        registration: &DbSpaceNotifyRegistration,
+    ) -> Result<(), PdsDbError> {
+        if registration.space_uri.is_empty() || registration.service.is_empty() {
+            return Err(PdsDbError::InvalidInput(
+                "Space notify registration space uri and service cannot be empty.".to_string(),
+            ));
+        }
+
+        let conn = self.get_connection()?;
+        conn.execute(
+            "INSERT OR REPLACE INTO SpaceNotifyRegistration (SpaceUri, Service, CreatedDate)
+             VALUES (?1, ?2, ?3)",
+            rusqlite::params![
+                registration.space_uri,
+                registration.service,
+                registration.created_date,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Check whether a space notify registration exists for the given space and
+    /// service.
+    pub fn space_notify_registration_exists(
+        &self,
+        space_uri: &str,
+        service: &str,
+    ) -> Result<bool, PdsDbError> {
+        let conn = self.get_connection_read_only()?;
+        let result: Result<i32, rusqlite::Error> = conn.query_row(
+            "SELECT 1 FROM SpaceNotifyRegistration WHERE SpaceUri = ?1 AND Service = ?2 LIMIT 1",
+            rusqlite::params![space_uri, service],
+            |row| row.get(0),
+        );
+
+        match result {
+            Ok(_) => Ok(true),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
+            Err(e) => Err(PdsDbError::SqliteError(e)),
+        }
+    }
+
+    /// Delete a space notify registration record by its space URI and service.
+    pub fn delete_space_notify_registration(
+        &self,
+        space_uri: &str,
+        service: &str,
+    ) -> Result<(), PdsDbError> {
+        let conn = self.get_connection()?;
+        conn.execute(
+            "DELETE FROM SpaceNotifyRegistration WHERE SpaceUri = ?1 AND Service = ?2",
+            rusqlite::params![space_uri, service],
+        )?;
+        Ok(())
+    }
+
+    /// Get all space notify registration records.
+    pub fn get_all_space_notify_registrations(
+        &self,
+    ) -> Result<Vec<DbSpaceNotifyRegistration>, PdsDbError> {
+        let conn = self.get_connection_read_only()?;
+        let mut stmt = conn.prepare(
+            "SELECT SpaceUri, Service, CreatedDate
+             FROM SpaceNotifyRegistration ORDER BY CreatedDate DESC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(DbSpaceNotifyRegistration {
+                space_uri: row.get(0)?,
+                service: row.get(1)?,
+                created_date: row.get(2)?,
+            })
+        })?;
+
+        let mut registrations = Vec::new();
+        for registration in rows {
+            registrations.push(registration?);
+        }
+        Ok(registrations)
+    }
 }
