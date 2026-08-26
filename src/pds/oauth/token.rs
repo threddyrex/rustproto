@@ -20,9 +20,11 @@ use uuid::Uuid;
 
 use crate::pds::db::{OauthSession, StatisticKey};
 use crate::pds::server::PdsState;
+use crate::ws::{BlueskyClient, DEFAULT_APP_VIEW_HOST_NAME};
 
 use super::dpop::validate_dpop;
 use super::helpers::{get_caller_info, get_form_value, get_hostname, is_oauth_enabled, token_fp};
+use super::scope_resolution::resolve_scopes;
 
 /// Lock for OAuth refresh operations to prevent race conditions.
 static OAUTH_REFRESH_LOCK: Mutex<()> = Mutex::new(());
@@ -211,8 +213,17 @@ async fn handle_authorization_code(
         return (StatusCode::BAD_REQUEST, Json(serde_json::json!({}))).into_response();
     }
 
-    // Get scope and auth type from original request
-    let scope = get_form_value(&oauth_request.body, "scope").unwrap_or_default();
+    // Get scope and auth type from original request. `include:<nsid>` permission
+    // sets are resolved and expanded into concrete granular scopes here, at
+    // session creation time; the expanded string is what gets stored on the
+    // session and used for the access token (and reused verbatim on refresh).
+    let raw_scope = get_form_value(&oauth_request.body, "scope").unwrap_or_default();
+    let app_view_host_name = state
+        .db
+        .get_config_property("AppViewHostName")
+        .unwrap_or_else(|_| DEFAULT_APP_VIEW_HOST_NAME.to_string());
+    let bluesky_client = BlueskyClient::new(&app_view_host_name);
+    let scope = resolve_scopes(&raw_scope, &bluesky_client, state.log).await;
     let auth_type = oauth_request.auth_type.clone().unwrap_or_else(|| "Unknown".to_string());
 
     // Get caller info for session
@@ -240,8 +251,8 @@ async fn handle_authorization_code(
     };
 
     state.log.info(&format!(
-        "[AUTH] [OAUTH] authorization_code: Scope from PAR: '{}'",
-        scope
+        "[AUTH] [OAUTH] authorization_code: Scope from PAR: '{}' -> resolved: '{}'",
+        raw_scope, scope
     ));
 
     if let Err(e) = state.db.insert_oauth_session(&oauth_session) {

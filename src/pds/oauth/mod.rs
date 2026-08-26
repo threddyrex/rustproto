@@ -25,6 +25,7 @@ mod par;
 mod passkey_auth_options;
 mod protected_resource;
 mod revoke;
+mod scope_resolution;
 mod token;
 
 pub use authenticate_passkey::authenticate_passkey;
