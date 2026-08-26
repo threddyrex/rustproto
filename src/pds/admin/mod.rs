@@ -11,6 +11,7 @@ mod passkey_auth;
 mod passkeys;
 mod register_passkey;
 mod sessions;
+mod spaces;
 mod stats;
 mod stats_ip;
 mod stats_writes;
@@ -31,6 +32,7 @@ pub use stats::{
     admin_delete_old_statistics,
 };
 pub use stats_ip::admin_stats_ip;
+pub use spaces::admin_spaces;
 pub use stats_writes::admin_stats_writes;
 pub use actions::{admin_actions_get, admin_actions_post};
 pub use passkey_auth::{admin_passkey_authentication_options, admin_authenticate_passkey};
@@ -81,6 +83,7 @@ pub fn get_navbar_html(active_page: &str) -> String {
             <a href="/admin/stats" class="nav-btn{stats}">Stats</a>
             <a href="/admin/stats_ip" class="nav-btn{stats_ip}">Stats (ip)</a>
             <a href="/admin/stats_writes" class="nav-btn{stats_writes}">Stats (writes)</a>
+            <a href="/admin/spaces" class="nav-btn{spaces}">Spaces</a>
             <div class="nav-spacer"></div>
             <a href="/admin/config" class="nav-btn-destructive{config}">Config</a>
             <a href="/admin/actions" class="nav-btn-destructive{actions}">Actions</a>
@@ -94,6 +97,7 @@ pub fn get_navbar_html(active_page: &str) -> String {
         stats = active_class("stats", active_page),
         stats_writes = active_class("stats_writes", active_page),
         stats_ip = active_class("stats_ip", active_page),
+        spaces = active_class("spaces", active_page),
         config = active_class("config", active_page),
         actions = active_class("actions", active_page),
         passkeys = active_class("passkeys", active_page),

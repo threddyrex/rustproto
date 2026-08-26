@@ -2308,6 +2308,32 @@ impl PdsDb {
         }
     }
 
+    /// Get all space records.
+    pub fn get_all_spaces(&self) -> Result<Vec<DbSpace>, PdsDbError> {
+        let conn = self.get_connection_read_only()?;
+        let mut stmt = conn.prepare(
+            "SELECT Uri, OwnerDid, SpaceType, Skey, PolicyJson, AppAccessJson, CreatedDate
+             FROM Space ORDER BY CreatedDate DESC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(DbSpace {
+                uri: row.get(0)?,
+                owner_did: row.get(1)?,
+                space_type: row.get(2)?,
+                skey: row.get(3)?,
+                policy_json: row.get(4)?,
+                app_access_json: row.get(5)?,
+                created_date: row.get(6)?,
+            })
+        })?;
+
+        let mut spaces = Vec::new();
+        for space in rows {
+            spaces.push(space?);
+        }
+        Ok(spaces)
+    }
+
     /// Check whether a space with the given URI exists.
     pub fn space_exists(&self, uri: &str) -> Result<bool, PdsDbError> {
         let conn = self.get_connection_read_only()?;
