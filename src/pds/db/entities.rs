@@ -215,6 +215,27 @@ pub struct DbRepoRecord {
     pub dag_cbor_bytes: Vec<u8>,
 }
 
+/// A record stored in a permissioned space's repository.
+///
+/// This is the space-scoped parallel of [`DbRepoRecord`]: records created
+/// through `com.atproto.space.createRecord` are stored here, keyed by the space
+/// they belong to (`space_uri`) in addition to their collection and record key.
+/// Like repo records, the record body is persisted as DAG-CBOR bytes.
+#[derive(Debug, Clone)]
+pub struct DbSpaceRepoRecord {
+    /// Canonical space URI the record belongs to
+    /// (`at://{authority}/space/{spaceType}/{skey}`).
+    pub space_uri: String,
+    /// Collection name (NSID).
+    pub collection: String,
+    /// Record key.
+    pub rkey: String,
+    /// CID of the record (base32 encoded).
+    pub cid: String,
+    /// DAG-CBOR serialized record data.
+    pub dag_cbor_bytes: Vec<u8>,
+}
+
 /// A permissioned space managed by the `simplespace` implementation.
 ///
 /// Spaces are not implicit: they come into existence through

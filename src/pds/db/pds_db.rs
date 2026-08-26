@@ -60,6 +60,9 @@ pub enum PdsDbError {
     #[error("Space not found: {0}")]
     SpaceNotFound(String),
 
+    #[error("Space repo record not found: {0} {1}/{2}")]
+    SpaceRepoRecordNotFound(String, String, String),
+
     #[error("Invalid repo commit: {0}")]
     InvalidRepoCommit(String),
 
@@ -2690,5 +2693,118 @@ impl PdsDb {
             registrations.push(registration?);
         }
         Ok(registrations)
+    }
+
+    // =========================================================================
+    // SPACE REPO RECORD
+    // =========================================================================
+
+    /// Create the SpaceRepoRecord table.
+    ///
+    /// This is the space-scoped parallel of the `RepoRecord` table. Records are
+    /// keyed by `(SpaceUri, Collection, Rkey)` so that the same collection and
+    /// record key can exist independently across different spaces.
+    pub fn create_table_space_repo_record(
+        conn: &Connection,
+        log: &Logger,
+    ) -> Result<(), PdsDbError> {
+        log.info("table: SpaceRepoRecord");
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS SpaceRepoRecord (
+                SpaceUri TEXT NOT NULL,
+                Collection TEXT NOT NULL,
+                Rkey TEXT NOT NULL,
+                Cid TEXT NOT NULL,
+                DagCborObject BLOB NOT NULL,
+                PRIMARY KEY (SpaceUri, Collection, Rkey)
+            )",
+            [],
+        )?;
+        Ok(())
+    }
+
+    /// Insert a space repo record.
+    pub fn insert_space_repo_record(
+        &self,
+        space_uri: &str,
+        collection: &str,
+        rkey: &str,
+        cid: &str,
+        dag_cbor_bytes: &[u8],
+    ) -> Result<(), PdsDbError> {
+        if space_uri.is_empty() || collection.is_empty() || rkey.is_empty() {
+            return Err(PdsDbError::InvalidInput(
+                "SpaceUri, Collection and Rkey cannot be empty.".to_string(),
+            ));
+        }
+
+        let conn = self.get_connection()?;
+        conn.execute(
+            "INSERT INTO SpaceRepoRecord (SpaceUri, Collection, Rkey, Cid, DagCborObject)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![space_uri, collection, rkey, cid, dag_cbor_bytes],
+        )?;
+        Ok(())
+    }
+
+    /// Get a space repo record.
+    pub fn get_space_repo_record(
+        &self,
+        space_uri: &str,
+        collection: &str,
+        rkey: &str,
+    ) -> Result<DbSpaceRepoRecord, PdsDbError> {
+        if space_uri.is_empty() || collection.is_empty() || rkey.is_empty() {
+            return Err(PdsDbError::InvalidInput(
+                "SpaceUri, Collection and Rkey cannot be empty.".to_string(),
+            ));
+        }
+
+        let conn = self.get_connection_read_only()?;
+        let result = conn.query_row(
+            "SELECT SpaceUri, Collection, Rkey, Cid, DagCborObject FROM SpaceRepoRecord
+             WHERE SpaceUri = ?1 AND Collection = ?2 AND Rkey = ?3 LIMIT 1",
+            rusqlite::params![space_uri, collection, rkey],
+            |row| {
+                Ok(DbSpaceRepoRecord {
+                    space_uri: row.get(0)?,
+                    collection: row.get(1)?,
+                    rkey: row.get(2)?,
+                    cid: row.get(3)?,
+                    dag_cbor_bytes: row.get(4)?,
+                })
+            },
+        );
+
+        match result {
+            Ok(record) => Ok(record),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Err(PdsDbError::SpaceRepoRecordNotFound(
+                space_uri.to_string(),
+                collection.to_string(),
+                rkey.to_string(),
+            )),
+            Err(e) => Err(PdsDbError::SqliteError(e)),
+        }
+    }
+
+    /// Check whether a space repo record exists.
+    pub fn space_repo_record_exists(
+        &self,
+        space_uri: &str,
+        collection: &str,
+        rkey: &str,
+    ) -> Result<bool, PdsDbError> {
+        let conn = self.get_connection_read_only()?;
+        let result: Result<i32, rusqlite::Error> = conn.query_row(
+            "SELECT 1 FROM SpaceRepoRecord WHERE SpaceUri = ?1 AND Collection = ?2 AND Rkey = ?3 LIMIT 1",
+            rusqlite::params![space_uri, collection, rkey],
+            |row| row.get(0),
+        );
+
+        match result {
+            Ok(_) => Ok(true),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
+            Err(e) => Err(PdsDbError::SqliteError(e)),
+        }
     }
 }

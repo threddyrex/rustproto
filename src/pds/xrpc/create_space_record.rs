@@ -1,0 +1,398 @@
+//! com.atproto.space.createRecord endpoint.
+//!
+//! Creates a record in a permissioned space's repository. This is the
+//! space-scoped parallel of `com.atproto.repo.createRecord`: instead of writing
+//! into the caller's public repo (MST + signed commit + firehose), the record is
+//! stored in the `SpaceRepoRecord` table, keyed by the space it belongs to.
+//!
+//! Like repo records, the record body is persisted as DAG-CBOR bytes with its
+//! computed CID.
+//!
+//! Authentication is OAuth: the account that owns the space on this host.
+
+use std::net::SocketAddr;
+use std::sync::Arc;
+
+use axum::{
+    Json,
+    extract::{ConnectInfo, State},
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
+};
+use serde::{Deserialize, Serialize};
+
+use crate::pds::db::StatisticKey;
+use crate::pds::server::PdsState;
+use crate::pds::user_repo::{parse_json_to_dag_cbor, UserRepo};
+use crate::repo::{CidV1, DagCborObject, DagCborValue};
+
+use super::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info, AuthType};
+
+/// The fixed marker segment identifying a permissioned-space URI.
+const SPACE_MARKER: &str = "space";
+
+/// Request body for createRecord.
+#[derive(Deserialize)]
+pub struct CreateSpaceRecordRequest {
+    /// Repository DID (must match the authenticated user).
+    repo: Option<String>,
+    /// Reference to the space (`at://{authority}/space/{spaceType}/{skey}`).
+    space: Option<String>,
+    /// Collection NSID.
+    collection: Option<String>,
+    /// Record key (optional, auto-generated if not provided).
+    rkey: Option<String>,
+    /// The record data.
+    record: Option<serde_json::Value>,
+    /// Whether the record should be validated against its lexicon. This
+    /// implementation does not perform lexicon validation; the flag only affects
+    /// the reported `validationStatus`.
+    #[allow(dead_code)]
+    validate: Option<bool>,
+}
+
+/// Successful response for createRecord.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateSpaceRecordResponse {
+    /// AT URI of the created record.
+    uri: String,
+    /// CID of the created record.
+    cid: String,
+    /// Validation status.
+    validation_status: String,
+}
+
+/// Error response for createRecord.
+#[derive(Serialize)]
+pub struct CreateSpaceRecordError {
+    error: String,
+    message: String,
+}
+
+/// A parsed permissioned-space identity.
+struct SpaceId {
+    authority: String,
+    space_type: String,
+    skey: String,
+}
+
+impl SpaceId {
+    /// `at://{authority}/space/{spaceType}/{skey}`
+    fn uri(&self) -> String {
+        format!(
+            "at://{}/{}/{}/{}",
+            self.authority, SPACE_MARKER, self.space_type, self.skey
+        )
+    }
+}
+
+/// Parse a permissioned-space URI (`at://{authority}/space/{spaceType}/{skey}`).
+fn parse_space_uri(uri: &str) -> Option<SpaceId> {
+    let rest = uri.strip_prefix("at://")?;
+    let parts: Vec<&str> = rest.split('/').collect();
+    if parts.len() != 4 || parts[1] != SPACE_MARKER {
+        return None;
+    }
+    if parts[0].is_empty() || parts[2].is_empty() || parts[3].is_empty() {
+        return None;
+    }
+    Some(SpaceId {
+        authority: parts[0].to_string(),
+        space_type: parts[2].to_string(),
+        skey: parts[3].to_string(),
+    })
+}
+
+fn error_response(status: StatusCode, error: &str, message: &str) -> Response {
+    (
+        status,
+        Json(CreateSpaceRecordError {
+            error: error.to_string(),
+            message: message.to_string(),
+        }),
+    )
+        .into_response()
+}
+
+/// POST /xrpc/com.atproto.space.createRecord - Create a record in a space.
+///
+/// # Headers
+///
+/// * `Authorization` - Required (OAuth).
+///
+/// # Request Body
+///
+/// * `repo` - Required. Repository DID (must match the authenticated user).
+/// * `space` - Required. Reference to the space.
+/// * `collection` - Required. Collection NSID.
+/// * `rkey` - Optional record key (auto-generated if not provided).
+/// * `record` - Required. The record data.
+/// * `validate` - Optional. Affects the reported `validationStatus` only.
+///
+/// # Returns
+///
+/// * `200 OK` with `{uri, cid, validationStatus}` on success
+/// * `400 Bad Request` for malformed input or a space this host is not the
+///   authority for
+/// * `401 Unauthorized` if authentication is missing
+pub async fn create_space_record(
+    State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(body): Json<CreateSpaceRecordRequest>,
+) -> Response {
+    // Get caller info for statistics
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
+    // Increment statistics
+    let stat_key = StatisticKey {
+        name: "xrpc/com.atproto.space.createRecord".to_string(),
+        ip_address,
+        user_agent,
+    };
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
+
+    // Authenticate the caller. Per the lexicon, auth is OAuth only.
+    let auth_result = check_user_auth(
+        &state,
+        &headers,
+        Some(&[AuthType::Oauth]),
+        "POST",
+        "/xrpc/com.atproto.space.createRecord",
+    );
+    if !auth_result.is_authenticated {
+        return auth_failure_response(&auth_result);
+    }
+
+    // Validate and parse the required space parameter.
+    let space_uri = match body.space {
+        Some(space) if !space.is_empty() => space,
+        _ => {
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                "InvalidRequest",
+                "Missing required parameter: space",
+            );
+        }
+    };
+    let space_id = match parse_space_uri(&space_uri) {
+        Some(space_id) => space_id,
+        None => {
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                "InvalidRequest",
+                &format!("Invalid space uri: {}", space_uri),
+            );
+        }
+    };
+    let canonical_uri = space_id.uri();
+
+    // Validate the required collection parameter.
+    let collection = match body.collection {
+        Some(collection) if !collection.is_empty() => collection,
+        _ => {
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                "InvalidRequest",
+                "Missing required parameter: collection",
+            );
+        }
+    };
+
+    // Validate the required record parameter.
+    let record_json = match body.record {
+        Some(record) => record,
+        None => {
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                "InvalidRequest",
+                "Missing required parameter: record",
+            );
+        }
+    };
+
+    // This host is only the authority for spaces anchored on its own account.
+    let user_did = match state.db.get_config_property("UserDid") {
+        Ok(did) => did,
+        Err(_) => {
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "ServerError",
+                "User DID not configured",
+            );
+        }
+    };
+    if space_id.authority != user_did {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "SpaceNotFound",
+            "This service is not the authority for the requested space",
+        );
+    }
+
+    // If provided, the repo must match the authenticated user.
+    if let Some(repo) = &body.repo {
+        if !repo.is_empty() && repo != &user_did {
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                "InvalidRequest",
+                "repo does not match the authenticated user",
+            );
+        }
+    }
+
+    // The space must exist (created via com.atproto.simplespace.createSpace).
+    if let Err(e) = state.db.get_space(&canonical_uri) {
+        state.log.info(&format!(
+            "[SPACE] [CREATE_RECORD] Space not found {}: {}",
+            canonical_uri, e
+        ));
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "SpaceNotFound",
+            "The requested space does not exist",
+        );
+    }
+
+    // Generate an rkey if none was provided.
+    let rkey = body.rkey.unwrap_or_else(UserRepo::generate_tid);
+
+    // Reject a collision with an existing record in this space.
+    match state
+        .db
+        .space_repo_record_exists(&canonical_uri, &collection, &rkey)
+    {
+        Ok(true) => {
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                "InvalidRequest",
+                "Record already exists.",
+            );
+        }
+        Ok(false) => {}
+        Err(e) => {
+            state
+                .log
+                .error(&format!("[SPACE] [CREATE_RECORD] existence check failed: {}", e));
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "ServerError",
+                "Failed to check for existing record",
+            );
+        }
+    }
+
+    // Parse the record JSON to DAG-CBOR and stamp its $type with the collection,
+    // matching how repo records are stored.
+    let mut record = match parse_json_to_dag_cbor(&record_json) {
+        Ok(r) => r,
+        Err(e) => {
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                "InvalidRequest",
+                &format!("Failed to parse record: {}", e),
+            );
+        }
+    };
+    if let DagCborValue::Map(ref mut map) = record.value {
+        map.insert(
+            "$type".to_string(),
+            DagCborObject::new_text(collection.clone()),
+        );
+    }
+
+    // Compute the record CID and serialize to DAG-CBOR bytes.
+    let record_cid = match CidV1::compute_cid_for_dag_cbor(&record) {
+        Ok(cid) => cid,
+        Err(e) => {
+            state
+                .log
+                .error(&format!("[SPACE] [CREATE_RECORD] CID computation failed: {}", e));
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "ServerError",
+                "Failed to compute record CID",
+            );
+        }
+    };
+    let record_bytes = match record.to_bytes() {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            state
+                .log
+                .error(&format!("[SPACE] [CREATE_RECORD] serialization failed: {}", e));
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "ServerError",
+                "Failed to serialize record",
+            );
+        }
+    };
+
+    // Persist the space record.
+    if let Err(e) = state.db.insert_space_repo_record(
+        &canonical_uri,
+        &collection,
+        &rkey,
+        &record_cid.base32,
+        &record_bytes,
+    ) {
+        state
+            .log
+            .error(&format!("[SPACE] [CREATE_RECORD] insert failed: {}", e));
+        return error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "ServerError",
+            "Failed to persist space record",
+        );
+    }
+
+    let uri = format!("{}/{}/{}", canonical_uri, collection, rkey);
+
+    state.log.info(&format!(
+        "[SPACE] [CREATE_RECORD] Created {} ({})",
+        uri, record_cid.base32
+    ));
+
+    // We do not perform lexicon validation; report accordingly.
+    let validation_status = if body.validate == Some(false) {
+        "unknown"
+    } else {
+        "valid"
+    };
+
+    Json(CreateSpaceRecordResponse {
+        uri,
+        cid: record_cid.base32,
+        validation_status: validation_status.to_string(),
+    })
+    .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_valid_space_uri() {
+        let space =
+            parse_space_uri("at://did:web:testuser.rustproto.com/space/my.bulletin.board/self")
+                .expect("valid space uri");
+        assert_eq!(space.authority, "did:web:testuser.rustproto.com");
+        assert_eq!(space.space_type, "my.bulletin.board");
+        assert_eq!(space.skey, "self");
+        assert_eq!(
+            space.uri(),
+            "at://did:web:testuser.rustproto.com/space/my.bulletin.board/self"
+        );
+    }
+
+    #[test]
+    fn rejects_malformed_space_uri() {
+        assert!(parse_space_uri("at://did:plc:abc/app.bsky.feed.post/3kabc").is_none());
+        assert!(parse_space_uri("at://did:plc:abc/space/my.type").is_none());
+        assert!(parse_space_uri("at://did:plc:abc/space/my.type/self/extra").is_none());
+        assert!(parse_space_uri("did:plc:abc/space/my.type/self").is_none());
+    }
+}

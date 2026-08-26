@@ -132,6 +132,7 @@ impl Installer {
         PdsDb::create_table_space_delegation_token(&conn, log)?;
         PdsDb::create_table_space_credential(&conn, log)?;
         PdsDb::create_table_space_notify_registration(&conn, log)?;
+        PdsDb::create_table_space_repo_record(&conn, log)?;
         PdsDb::create_table_config_property(&conn, log)?;
 
         log.info("Database installation complete.");

@@ -1027,3 +1027,99 @@ fn space_credential_expired_not_returned() {
         .unwrap()
         .is_none());
 }
+
+// =========================================================================
+// SPACE REPO RECORD TESTS
+// =========================================================================
+
+#[test]
+fn space_repo_record_insert_and_retrieve() {
+    let (pds_db, _, _) = setup_test_db();
+
+    let space_uri = "at://did:example:testuser/space/my.bulletin.board/self";
+    let dag_cbor_bytes = vec![0xA1, 0x67, 0x65, 0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65];
+
+    pds_db
+        .insert_space_repo_record(space_uri, "my.bulletin.post", "rkey1", "cid1", &dag_cbor_bytes)
+        .unwrap();
+
+    let retrieved = pds_db
+        .get_space_repo_record(space_uri, "my.bulletin.post", "rkey1")
+        .unwrap();
+    assert_eq!(retrieved.space_uri, space_uri);
+    assert_eq!(retrieved.collection, "my.bulletin.post");
+    assert_eq!(retrieved.rkey, "rkey1");
+    assert_eq!(retrieved.cid, "cid1");
+    assert_eq!(retrieved.dag_cbor_bytes, dag_cbor_bytes);
+}
+
+#[test]
+fn space_repo_record_exists() {
+    let (pds_db, _, _) = setup_test_db();
+
+    let space_uri = "at://did:example:testuser/space/my.bulletin.board/self";
+    pds_db
+        .insert_space_repo_record(space_uri, "my.bulletin.post", "rkey1", "cid1", &[0xA1])
+        .unwrap();
+
+    assert!(pds_db
+        .space_repo_record_exists(space_uri, "my.bulletin.post", "rkey1")
+        .unwrap());
+    assert!(!pds_db
+        .space_repo_record_exists(space_uri, "my.bulletin.post", "rkey2")
+        .unwrap());
+}
+
+#[test]
+fn space_repo_record_scoped_by_space() {
+    let (pds_db, _, _) = setup_test_db();
+
+    let space_a = "at://did:example:testuser/space/my.bulletin.board/one";
+    let space_b = "at://did:example:testuser/space/my.bulletin.board/two";
+
+    // Same collection + rkey can coexist across different spaces.
+    pds_db
+        .insert_space_repo_record(space_a, "my.bulletin.post", "rkey1", "cidA", &[0xA1])
+        .unwrap();
+    pds_db
+        .insert_space_repo_record(space_b, "my.bulletin.post", "rkey1", "cidB", &[0xA2])
+        .unwrap();
+
+    assert_eq!(
+        pds_db
+            .get_space_repo_record(space_a, "my.bulletin.post", "rkey1")
+            .unwrap()
+            .cid,
+        "cidA"
+    );
+    assert_eq!(
+        pds_db
+            .get_space_repo_record(space_b, "my.bulletin.post", "rkey1")
+            .unwrap()
+            .cid,
+        "cidB"
+    );
+}
+
+#[test]
+fn space_repo_record_not_found() {
+    let (pds_db, _, _) = setup_test_db();
+
+    let result = pds_db.get_space_repo_record(
+        "at://did:example:testuser/space/my.bulletin.board/self",
+        "my.bulletin.post",
+        "missing",
+    );
+    assert!(matches!(
+        result,
+        Err(PdsDbError::SpaceRepoRecordNotFound(_, _, _))
+    ));
+}
+
+#[test]
+fn space_repo_record_empty_input_rejected() {
+    let (pds_db, _, _) = setup_test_db();
+
+    let result = pds_db.insert_space_repo_record("", "my.bulletin.post", "rkey1", "cid1", &[0xA1]);
+    assert!(matches!(result, Err(PdsDbError::InvalidInput(_))));
+}
