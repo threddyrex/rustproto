@@ -26,6 +26,9 @@ pub enum LocalFileSystemError {
     #[error("Actor info not found or expired: {0}")]
     ActorInfoNotFound(String),
 
+    #[error("Lexicon schema not found or expired: {0}")]
+    LexiconSchemaNotFound(String),
+
     #[error("JSON parse error: {0}")]
     JsonError(#[from] serde_json::Error),
 }
@@ -33,6 +36,7 @@ pub enum LocalFileSystemError {
 /// Subdirectories to create in the data directory.
 const SUBDIRS: &[&str] = &[
     "actors",
+    "lexicons",
     "backups",
     "blobs",
     "repos",
@@ -154,6 +158,24 @@ impl LocalFileSystem {
         Ok(actor_file)
     }
 
+    /// Gets the path to the lexicon schema cache file for the given NSID.
+    ///
+    /// Returns a path like `{data_dir}/lexicons/{safe_nsid}.json`
+    pub fn get_path_lexicon_file(&self, nsid: &str) -> Result<PathBuf, LocalFileSystemError> {
+        if nsid.is_empty() {
+            return Err(LocalFileSystemError::InvalidArgument(
+                "nsid is null or empty".to_string(),
+            ));
+        }
+
+        let safe_nsid = Self::get_safe_string(nsid);
+        let lexicon_file = self
+            .data_dir
+            .join("lexicons")
+            .join(format!("{}.json", safe_nsid));
+        Ok(lexicon_file)
+    }
+
     /// Gets the path to the account backup directory for the given DID.
     ///
     /// Returns a path like `{data_dir}/backups/{safe_did}/`
@@ -250,6 +272,8 @@ impl LocalFileSystem {
 
     /// Default cache expiry time in minutes for actor info files.
     pub const DEFAULT_CACHE_EXPIRY_MINUTES: u64 = 15;
+    /// Default cache expiry time in minutes for lexicon schemas.
+    pub const DEFAULT_LEXICON_CACHE_EXPIRY_MINUTES: u64 = 5;
 
     /// Resolves actor info, checking the local cache first and falling back
     /// to BlueskyClient if the file does not exist or is stale.
@@ -362,6 +386,84 @@ impl LocalFileSystem {
         Ok(actor_info)
     }
 
+    /// Resolves a lexicon schema, checking the local cache first and falling back
+    /// to BlueskyClient if the file does not exist or is stale.
+    ///
+    /// On a successful remote resolve, the result is saved to the cache.
+    pub async fn resolve_lexicon_schema(
+        &self,
+        nsid: &str,
+        cache_expiry_minutes: Option<u64>,
+        app_view_host_name: &str,
+    ) -> Result<serde_json::Value, LocalFileSystemError> {
+        let start_time = Instant::now();
+
+        if nsid.is_empty() {
+            logger().error("[LEXICON] [LFS] nsid is null or empty");
+            return Err(LocalFileSystemError::InvalidArgument(
+                "nsid is null or empty".to_string(),
+            ));
+        }
+
+        let cache_expiry = cache_expiry_minutes.unwrap_or(Self::DEFAULT_LEXICON_CACHE_EXPIRY_MINUTES);
+        let lexicon_file = self.get_path_lexicon_file(nsid)?;
+
+        if lexicon_file.exists() {
+            let metadata = fs::metadata(&lexicon_file)?;
+            let modified = metadata.modified()?;
+            let age = SystemTime::now()
+                .duration_since(modified)
+                .unwrap_or(Duration::MAX);
+            let age_minutes = age.as_secs() / 60;
+            let age_minutes_f = age.as_secs_f64() / 60.0;
+            let file_old = age_minutes > cache_expiry;
+
+            if file_old {
+                logger().info(&format!(
+                    "[LEXICON] [LFS] nsid={} fileExists=true fileAgeMinutes={:.1} cacheExpiryMinutes={} fileOld=true",
+                    nsid, age_minutes_f, cache_expiry
+                ));
+            } else {
+                let json = fs::read_to_string(&lexicon_file)?;
+                let value: serde_json::Value = serde_json::from_str(&json)?;
+                let elapsed_ms = start_time.elapsed().as_secs_f64() * 1000.0;
+                logger().info(&format!(
+                    "[LEXICON] [LFS] nsid={} fileExists=true fileAgeMinutes={:.1} cacheExpiryMinutes={} fileOld=false [{:.2}ms]",
+                    nsid, age_minutes_f, cache_expiry, elapsed_ms
+                ));
+                return Ok(value);
+            }
+        } else {
+            logger().info(&format!(
+                "[LEXICON] [LFS] nsid={} fileExists=false",
+                nsid
+            ));
+        }
+
+        let client = BlueskyClient::new(app_view_host_name);
+        let schema = client.resolve_lexicon_schema(nsid).await.map_err(|e| {
+            let elapsed_ms = start_time.elapsed().as_secs_f64() * 1000.0;
+            logger().error(&format!(
+                "[LEXICON] [LFS] nsid={} resolve=true resolveFailed=true error={} [{:.2}ms]",
+                nsid, e, elapsed_ms
+            ));
+            LocalFileSystemError::LexiconSchemaNotFound(format!(
+                "Failed to resolve lexicon schema: {}",
+                e
+            ))
+        })?;
+
+        let _ = self.save_lexicon_schema(nsid, &schema);
+
+        let elapsed_ms = start_time.elapsed().as_secs_f64() * 1000.0;
+        logger().info(&format!(
+            "[LEXICON] [LFS] nsid={} resolve=true [{:.2}ms]",
+            nsid, elapsed_ms
+        ));
+
+        Ok(schema)
+    }
+
     /// Saves actor info to the local cache (file system).
     ///
     /// # Arguments
@@ -384,6 +486,24 @@ impl LocalFileSystem {
         let json = info.to_json_string()?;
         fs::write(&actor_file, json)?;
 
+        Ok(())
+    }
+
+    /// Saves a lexicon schema JSON response to the local cache (file system).
+    pub fn save_lexicon_schema(
+        &self,
+        nsid: &str,
+        schema: &serde_json::Value,
+    ) -> Result<(), LocalFileSystemError> {
+        if nsid.is_empty() {
+            return Err(LocalFileSystemError::InvalidArgument(
+                "nsid is null or empty".to_string(),
+            ));
+        }
+
+        let lexicon_file = self.get_path_lexicon_file(nsid)?;
+        let json = serde_json::to_string_pretty(schema)?;
+        fs::write(&lexicon_file, json)?;
         Ok(())
     }
 
@@ -527,6 +647,23 @@ mod tests {
         let _ = fs::remove_dir_all(&temp_dir);
     }
 
+    #[test]
+    fn test_get_path_lexicon_file() {
+        let temp_dir = env::temp_dir().join("rustproto_test_lfs_lexicon");
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        let lfs = LocalFileSystem::initialize(&temp_dir).unwrap();
+        let lexicon_path = lfs.get_path_lexicon_file("my.bulletin.permissions").unwrap();
+
+        assert!(lexicon_path.to_string_lossy().contains("lexicons"));
+        assert!(lexicon_path
+            .to_string_lossy()
+            .contains("my_bulletin_permissions.json"));
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
     #[tokio::test]
     async fn test_save_and_resolve_actor_info() {
         let temp_dir = env::temp_dir().join("rustproto_test_actor_info");
@@ -562,6 +699,33 @@ mod tests {
         // Try to resolve a truly non-existent actor (will attempt network call which will fail)
         let result = lfs.resolve_actor_info("this-handle-does-not-exist-xyz123.invalid", None, "public.api.bsky.app").await;
         assert!(result.is_err());
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[tokio::test]
+    async fn test_save_and_resolve_lexicon_schema_from_cache() {
+        let temp_dir = env::temp_dir().join("rustproto_test_lexicon_cache");
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        let lfs = LocalFileSystem::initialize(&temp_dir).unwrap();
+        let nsid = "my.bulletin.permissions";
+        let schema_json = serde_json::json!({
+            "uri": "at://did:plc:abc/com.atproto.lexicon.schema/my.bulletin.permissions",
+            "value": {
+                "id": "my.bulletin.permissions",
+                "lexicon": 1
+            }
+        });
+
+        lfs.save_lexicon_schema(nsid, &schema_json).unwrap();
+
+        let resolved = lfs
+            .resolve_lexicon_schema(nsid, Some(5), "public.api.bsky.app")
+            .await
+            .unwrap();
+        assert_eq!(resolved["value"]["id"], "my.bulletin.permissions");
 
         let _ = fs::remove_dir_all(&temp_dir);
     }

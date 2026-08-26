@@ -879,6 +879,188 @@ impl BlueskyClient {
         Ok(json)
     }
 
+    /// Resolves a lexicon schema by NSID using authoritative DNS + DID + PDS routing.
+    ///
+    /// Resolution flow:
+    /// 1. Convert NSID to authority domain (drop final name segment, then reverse labels)
+    /// 2. Resolve `_lexicon.{authority}` TXT and read `did=...`
+    /// 3. Resolve DID doc, extract PDS service endpoint
+    /// 4. Fetch `com.atproto.lexicon.schema/{nsid}` via `com.atproto.repo.getRecord`
+    pub async fn get_lexicon_schema(&self, schema: &str) -> Result<Value, BlueskyClientError> {
+        self.resolve_lexicon_schema(schema).await
+    }
+
+    /// Resolves a lexicon schema by NSID using DNS TXT `_lexicon` authority records.
+    pub async fn resolve_lexicon_schema(&self, nsid: &str) -> Result<Value, BlueskyClientError> {
+        let authority = Self::lexicon_authority_from_nsid(nsid)?;
+        let dns_name = format!("_lexicon.{}", authority);
+        let txt_values = self.resolve_dns_txt_values(&dns_name).await?;
+
+        let did = Self::extract_did_from_dns_txt_values(&txt_values).ok_or_else(|| {
+            BlueskyClientError::ResolutionFailed(format!(
+                "No DID found in TXT records for {}",
+                dns_name
+            ))
+        })?;
+
+        let did_doc = self.resolve_did_to_did_doc(&did).await?;
+        let pds = Self::extract_pds_from_did_doc(&did_doc)?;
+
+        self.repo_get_record_json(&pds, &did, "com.atproto.lexicon.schema", nsid)
+            .await
+    }
+
+    async fn repo_get_record_json(
+        &self,
+        pds: &str,
+        repo: &str,
+        collection: &str,
+        rkey: &str,
+    ) -> Result<Value, BlueskyClientError> {
+        if pds.is_empty() || repo.is_empty() || collection.is_empty() || rkey.is_empty() {
+            return Err(BlueskyClientError::InvalidActor(
+                "PDS, repo, collection, and rkey are required".to_string(),
+            ));
+        }
+
+        let url = format!(
+            "https://{}/xrpc/com.atproto.repo.getRecord?repo={}&collection={}&rkey={}",
+            pds,
+            urlencoding::encode(repo),
+            urlencoding::encode(collection),
+            urlencoding::encode(rkey)
+        );
+        logger().trace(&format!("[SEND REQUEST] {}", url));
+
+        let response = self.client.get(&url).send().await?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(BlueskyClientError::ResolutionFailed(format!(
+                "HTTP {} from PDS: {}",
+                status, body
+            )));
+        }
+
+        let json: Value = response.json().await?;
+        Ok(json)
+    }
+
+    async fn resolve_dns_txt_values(
+        &self,
+        name: &str,
+    ) -> Result<Vec<String>, BlueskyClientError> {
+        let url = format!(
+            "https://cloudflare-dns.com/dns-query?name={}&type=TXT",
+            name
+        );
+        logger().trace(&format!("[SEND REQUEST] {}", url));
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Accept", "application/dns-json")
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(BlueskyClientError::ResolutionFailed(format!(
+                "DNS query failed for {} with HTTP {}",
+                name,
+                response.status()
+            )));
+        }
+
+        let json: Value = response.json().await?;
+        let mut txt_values = Vec::new();
+        if let Some(answers) = json["Answer"].as_array() {
+            for answer in answers {
+                if let Some(data) = answer["data"].as_str() {
+                    txt_values.push(data.to_string());
+                }
+            }
+        }
+
+        if txt_values.is_empty() {
+            return Err(BlueskyClientError::ResolutionFailed(format!(
+                "No TXT answers found for {}",
+                name
+            )));
+        }
+
+        Ok(txt_values)
+    }
+
+    fn extract_did_from_dns_txt_values(values: &[String]) -> Option<String> {
+        for value in values {
+            let raw = value.trim().trim_matches('"');
+            for token in raw.split_whitespace() {
+                let candidate = token.strip_prefix("did=").unwrap_or(token);
+                if candidate.starts_with("did:") && Self::is_valid_did(candidate) {
+                    return Some(candidate.to_string());
+                }
+            }
+        }
+        None
+    }
+
+    fn lexicon_authority_from_nsid(nsid: &str) -> Result<String, BlueskyClientError> {
+        if nsid.trim().is_empty() {
+            return Err(BlueskyClientError::InvalidActor(
+                "NSID is required".to_string(),
+            ));
+        }
+
+        if nsid.contains('#') {
+            return Err(BlueskyClientError::InvalidActor(
+                "NSID must not contain a fragment".to_string(),
+            ));
+        }
+
+        let labels: Vec<&str> = nsid.split('.').collect();
+        if labels.len() < 3 {
+            return Err(BlueskyClientError::InvalidActor(format!(
+                "Invalid NSID: {}",
+                nsid
+            )));
+        }
+
+        if labels.iter().any(|l| l.is_empty()) {
+            return Err(BlueskyClientError::InvalidActor(format!(
+                "Invalid NSID: {}",
+                nsid
+            )));
+        }
+
+        let name = labels.last().unwrap_or(&"");
+        if !name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+        {
+            return Err(BlueskyClientError::InvalidActor(format!(
+                "Invalid NSID name segment: {}",
+                nsid
+            )));
+        }
+
+        let authority_labels = &labels[..labels.len() - 1];
+        let authority = authority_labels
+            .iter()
+            .rev()
+            .map(|s| s.to_ascii_lowercase())
+            .collect::<Vec<String>>()
+            .join(".");
+
+        if !Self::is_valid_handle(&authority) {
+            return Err(BlueskyClientError::InvalidActor(format!(
+                "Invalid authority domain derived from NSID: {}",
+                authority
+            )));
+        }
+
+        Ok(authority)
+    }
+
     /// Downloads a repository (CAR file) for the given DID from a PDS.
     ///
     /// Calls `com.atproto.sync.getRepo` on the PDS.
@@ -1305,5 +1487,36 @@ mod tests {
         assert!(BlueskyClient::build_did_web_doc_url("did:web:example.com:..:alice").is_err());
         assert!(BlueskyClient::build_did_web_doc_url("did:web:example.com:%zz").is_err());
         assert!(BlueskyClient::build_did_web_doc_url("did:web:example.com:alice%2Fbob").is_ok());
+    }
+
+    #[test]
+    fn test_lexicon_authority_from_nsid() {
+        let authority = BlueskyClient::lexicon_authority_from_nsid(
+            "edu.university.dept.lab.blogging.getBlogPost",
+        )
+        .unwrap();
+        assert_eq!(authority, "blogging.lab.dept.university.edu");
+
+        let authority_simple = BlueskyClient::lexicon_authority_from_nsid("app.toy.record").unwrap();
+        assert_eq!(authority_simple, "toy.app");
+    }
+
+    #[test]
+    fn test_lexicon_authority_from_nsid_invalid() {
+        assert!(BlueskyClient::lexicon_authority_from_nsid("").is_err());
+        assert!(BlueskyClient::lexicon_authority_from_nsid("a.b").is_err());
+        assert!(BlueskyClient::lexicon_authority_from_nsid("a..b.c").is_err());
+        assert!(BlueskyClient::lexicon_authority_from_nsid("a.b.c#frag").is_err());
+    }
+
+    #[test]
+    fn test_extract_did_from_dns_txt_values() {
+        let txt_values = vec![
+            "\"v=spf1 include:example.org\"".to_string(),
+            "\"did=did:plc:ewvi7nxzyoun6zhxrhs64oiz\"".to_string(),
+        ];
+
+        let did = BlueskyClient::extract_did_from_dns_txt_values(&txt_values);
+        assert_eq!(did, Some("did:plc:ewvi7nxzyoun6zhxrhs64oiz".to_string()));
     }
 }

@@ -15,6 +15,7 @@ use rustproto::cli::{
     backup_account::cmd_backup_account,
     create_session::cmd_create_session,
     get_blob::cmd_get_blob,
+    get_lexicon_schema::cmd_get_lexicon_schema,
     get_pds_info::cmd_get_pds_info,
     get_plc_history::cmd_get_plc_history,
     get_post::cmd_get_post,
@@ -83,6 +84,7 @@ async fn main() {
         "backupaccount" => cmd_backup_account(&arguments).await,
         "createsession" => cmd_create_session(&arguments).await,
         "getblob" => cmd_get_blob(&arguments).await,
+        "getlexiconschema" | "get_lexicon_schema" => cmd_get_lexicon_schema(&arguments).await,
         "getpdsinfo" => cmd_get_pds_info(&arguments).await,
         "getplchistory" => cmd_get_plc_history(&arguments).await,
         "getpost" => cmd_get_post(&arguments).await,
@@ -130,6 +132,7 @@ fn print_usage() {
     println!("  GetPlcHistory          Get PLC history for an actor and check repo status");
     println!("  GetPdsInfo             Get PDS info (health, description, repos)");
     println!("  GetBlob                Download a blob by CID for an actor");
+    println!("  GetLexiconSchema       Resolve a lexicon schema via DNS/DID/PDS");
     println!("  GetPost                Get a post and print all URIs found");
     println!("  SyncGetRecord         Get a record from a remote PDS and verify the proof chain");
     println!("  SyncGetRecordLocal     Get a record from local pds.db and print details");
@@ -148,6 +151,7 @@ fn print_usage() {
     println!("  /command <name>       Command to run");
     println!("  /actor <handle>       Handle or DID to resolve");
     println!("  /uri <at_uri>         AT URI or bsky.app URL (for GetPost)");
+    println!("  /schema <lexicon_id>  Lexicon schema ID (for GetLexiconSchema)");
     println!("  /all <true|false>     Use all resolution methods");
     println!("  /dataDir <path>       Path to data directory");
     println!("  /repoFile <path>      Path to CAR file (for repo commands)");
@@ -185,6 +189,7 @@ fn print_usage() {
     println!("  rustproto /command GetPlcHistory /actor alice.bsky.social");
     println!("  rustproto /command GetPdsInfo /actor alice.bsky.social");
     println!("  rustproto /command GetPost /uri at://did:plc:xxx/app.bsky.feed.post/abc123");
+    println!("  rustproto /command GetLexiconSchema /schema my.bulletin.permissions");
     println!("  rustproto /command InstallDb /dataDir ./data");
     println!("  rustproto /command InstallConfig /dataDir ./data /listenScheme https /listenHost example.com /listenPort 443");
     println!("  rustproto /command RunPds /dataDir ./data");
@@ -197,6 +202,4 @@ fn print_usage() {
     println!("  rustproto /command GetBlob /actor alice.bsky.social /blobCid bafkrei... /dataDir ./data");
     println!("  rustproto /command CreateSession /actor alice.bsky.social /dataDir ./data /password mypass");
 }
-
-
 

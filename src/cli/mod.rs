@@ -3,6 +3,7 @@
 pub mod backup_account;
 pub mod create_session;
 pub mod get_blob;
+pub mod get_lexicon_schema;
 pub mod get_pds_info;
 pub mod get_plc_history;
 pub mod get_post;
@@ -187,4 +188,3 @@ pub async fn resolve_repo_file(args: &HashMap<String, String>) -> Option<std::pa
         }
     }
 }
-
