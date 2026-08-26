@@ -227,6 +227,8 @@ impl PdsRunner {
             .route("/admin/deletelegacysession", axum::routing::post(admin::admin_delete_legacy_session))
             .route("/admin/deleteoauthsession", axum::routing::post(admin::admin_delete_oauth_session))
             .route("/admin/deleteadminsession", axum::routing::post(admin::admin_delete_admin_session))
+            .route("/admin/deletespacedelegationtoken", axum::routing::post(admin::admin_delete_space_delegation_token))
+            .route("/admin/deletespacecredential", axum::routing::post(admin::admin_delete_space_credential))
             .route("/admin/stats", axum::routing::get(admin::admin_stats))
             .route("/admin/stats/", axum::routing::get(admin::admin_stats))
             .route("/admin/stats_writes", axum::routing::get(admin::admin_stats_writes))

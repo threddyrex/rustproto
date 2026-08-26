@@ -239,6 +239,43 @@ pub struct DbSpace {
     pub created_date: String,
 }
 
+/// A minted space delegation token, persisted so it can be validated as
+/// single-use when later swapped for a space credential.
+///
+/// A token is stored by `com.atproto.space.getDelegationToken` when it is
+/// minted and removed by `com.atproto.space.getSpaceCredential` once it has been
+/// exchanged.
+#[derive(Debug, Clone)]
+pub struct DbSpaceDelegationToken {
+    /// The delegation token (JWT). Primary key.
+    pub token: String,
+    /// Canonical space URI the token was minted for.
+    pub space_uri: String,
+    /// Creation timestamp (ISO 8601).
+    pub created_date: String,
+    /// Expiration timestamp (ISO 8601).
+    pub expires_date: String,
+}
+
+/// A space credential issued by this authority, cached so that subsequent
+/// exchanges for the same space and bound key can be served from storage.
+///
+/// A credential is keyed by the space URI plus the DPoP JWK thumbprint it is
+/// bound to (`cnf.jkt`).
+#[derive(Debug, Clone)]
+pub struct DbSpaceCredential {
+    /// Canonical space URI the credential was issued for.
+    pub space_uri: String,
+    /// DPoP JWK thumbprint the credential is bound to (`cnf.jkt`).
+    pub dpop_jkt: String,
+    /// The signed JWT space credential.
+    pub credential: String,
+    /// Creation timestamp (ISO 8601).
+    pub created_date: String,
+    /// Expiration timestamp (ISO 8601).
+    pub expires_date: String,
+}
+
 /// Format a DateTime for database storage.
 ///
 /// Uses ISO 8601 format with milliseconds: `yyyy-MM-ddTHH:mm:ss.fffZ`

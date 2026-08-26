@@ -28,7 +28,9 @@ use crate::pds::auth::{
     sign_space_credential, verify_service_auth_token, DELEGATION_TOKEN_TYP,
     SPACE_CREDENTIAL_TTL_SECS,
 };
-use crate::pds::db::StatisticKey;
+use crate::pds::db::{
+    format_datetime_for_db, get_current_datetime_for_db, DbSpaceCredential, StatisticKey,
+};
 use crate::pds::oauth::{get_hostname, validate_dpop};
 use crate::pds::server::PdsState;
 
@@ -259,6 +261,56 @@ pub async fn get_space_credential(
         return error_response(StatusCode::BAD_REQUEST, "InvalidDelegationToken", &message);
     }
 
+    // Ensure the delegation token was minted by this authority and has not
+    // already been consumed. Delegation tokens are single-use: they are stored
+    // when minted and removed once swapped for a space credential.
+    match state.db.space_delegation_token_exists(&delegation_token) {
+        Ok(true) => {}
+        Ok(false) => {
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                "InvalidDelegationToken",
+                "Delegation token is unknown or has already been used",
+            );
+        }
+        Err(e) => {
+            state.log.error(&format!(
+                "[SPACE] [CREDENTIAL] Failed to look up delegation token: {}",
+                e
+            ));
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "ServerError",
+                "Failed to validate delegation token",
+            );
+        }
+    }
+
+    // Serve a previously issued credential for this space and bound key from
+    // storage when one is still valid, swapping (deleting) the delegation token.
+    let now = get_current_datetime_for_db();
+    match state
+        .db
+        .get_valid_space_credential(&space_id.uri(), &dpop_jkt, &now)
+    {
+        Ok(Some(credential)) => {
+            if let Err(e) = state.db.delete_space_delegation_token(&delegation_token) {
+                state.log.error(&format!(
+                    "[SPACE] [CREDENTIAL] Failed to delete delegation token: {}",
+                    e
+                ));
+            }
+            return Json(GetSpaceCredentialResponse { credential }).into_response();
+        }
+        Ok(None) => {}
+        Err(e) => {
+            state.log.error(&format!(
+                "[SPACE] [CREDENTIAL] Failed to look up cached space credential: {}",
+                e
+            ));
+        }
+    }
+
     // The user-to-app delegation is proven. Authorization of the user and app
     // against the space's policy is deferred to a space-management implementation
     // (`simplespace`), which is not yet configured; personal-data spaces anchored
@@ -296,6 +348,33 @@ pub async fn get_space_credential(
             );
         }
     };
+
+    // Cache the issued credential so subsequent exchanges for the same space and
+    // bound key can be served from storage.
+    let expires_date = format_datetime_for_db(
+        chrono::Utc::now() + chrono::Duration::seconds(SPACE_CREDENTIAL_TTL_SECS),
+    );
+    if let Err(e) = state.db.insert_space_credential(&DbSpaceCredential {
+        space_uri: space_id.uri(),
+        dpop_jkt: dpop_jkt.clone(),
+        credential: credential.clone(),
+        created_date: now,
+        expires_date,
+    }) {
+        state.log.error(&format!(
+            "[SPACE] [CREDENTIAL] Failed to store space credential: {}",
+            e
+        ));
+    }
+
+    // The delegation token has now been swapped for a space credential; remove
+    // it so it cannot be used again.
+    if let Err(e) = state.db.delete_space_delegation_token(&delegation_token) {
+        state.log.error(&format!(
+            "[SPACE] [CREDENTIAL] Failed to delete delegation token: {}",
+            e
+        ));
+    }
 
     Json(GetSpaceCredentialResponse { credential }).into_response()
 }

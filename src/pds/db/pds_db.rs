@@ -2356,4 +2356,222 @@ impl PdsDb {
             Err(e) => Err(PdsDbError::SqliteError(e)),
         }
     }
+
+    // =========================================================================
+    // SPACE DELEGATION TOKEN
+    // =========================================================================
+
+    /// Create the SpaceDelegationToken table.
+    ///
+    /// Stores delegation tokens minted by `com.atproto.space.getDelegationToken`
+    /// so they can be enforced as single-use when swapped for a space credential
+    /// by `com.atproto.space.getSpaceCredential`.
+    pub fn create_table_space_delegation_token(
+        conn: &Connection,
+        log: &Logger,
+    ) -> Result<(), PdsDbError> {
+        log.info("table: SpaceDelegationToken");
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS SpaceDelegationToken (
+                Token TEXT NOT NULL PRIMARY KEY,
+                SpaceUri TEXT NOT NULL,
+                CreatedDate TEXT NOT NULL,
+                ExpiresDate TEXT NOT NULL
+            )",
+            [],
+        )?;
+        Ok(())
+    }
+
+    /// Insert a new delegation token record.
+    pub fn insert_space_delegation_token(
+        &self,
+        delegation_token: &DbSpaceDelegationToken,
+    ) -> Result<(), PdsDbError> {
+        if delegation_token.token.is_empty() || delegation_token.space_uri.is_empty() {
+            return Err(PdsDbError::InvalidInput(
+                "Delegation token and space uri cannot be empty.".to_string(),
+            ));
+        }
+
+        let conn = self.get_connection()?;
+        conn.execute(
+            "INSERT OR REPLACE INTO SpaceDelegationToken (Token, SpaceUri, CreatedDate, ExpiresDate)
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![
+                delegation_token.token,
+                delegation_token.space_uri,
+                delegation_token.created_date,
+                delegation_token.expires_date,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Check whether a delegation token exists in storage.
+    pub fn space_delegation_token_exists(&self, token: &str) -> Result<bool, PdsDbError> {
+        let conn = self.get_connection_read_only()?;
+        let result: Result<i32, rusqlite::Error> = conn.query_row(
+            "SELECT 1 FROM SpaceDelegationToken WHERE Token = ?1 LIMIT 1",
+            [token],
+            |row| row.get(0),
+        );
+
+        match result {
+            Ok(_) => Ok(true),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
+            Err(e) => Err(PdsDbError::SqliteError(e)),
+        }
+    }
+
+    /// Delete a delegation token record.
+    pub fn delete_space_delegation_token(&self, token: &str) -> Result<(), PdsDbError> {
+        let conn = self.get_connection()?;
+        conn.execute(
+            "DELETE FROM SpaceDelegationToken WHERE Token = ?1",
+            [token],
+        )?;
+        Ok(())
+    }
+
+    /// Get all delegation token records.
+    pub fn get_all_space_delegation_tokens(
+        &self,
+    ) -> Result<Vec<DbSpaceDelegationToken>, PdsDbError> {
+        let conn = self.get_connection_read_only()?;
+        let mut stmt = conn.prepare(
+            "SELECT Token, SpaceUri, CreatedDate, ExpiresDate
+             FROM SpaceDelegationToken ORDER BY CreatedDate DESC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(DbSpaceDelegationToken {
+                token: row.get(0)?,
+                space_uri: row.get(1)?,
+                created_date: row.get(2)?,
+                expires_date: row.get(3)?,
+            })
+        })?;
+
+        let mut tokens = Vec::new();
+        for token in rows {
+            tokens.push(token?);
+        }
+        Ok(tokens)
+    }
+
+    // =========================================================================
+    // SPACE CREDENTIAL
+    // =========================================================================
+
+    /// Create the SpaceCredential table.
+    ///
+    /// Caches space credentials issued by `com.atproto.space.getSpaceCredential`,
+    /// keyed by the space URI plus the DPoP JWK thumbprint the credential is
+    /// bound to, so repeat exchanges can be served from storage.
+    pub fn create_table_space_credential(
+        conn: &Connection,
+        log: &Logger,
+    ) -> Result<(), PdsDbError> {
+        log.info("table: SpaceCredential");
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS SpaceCredential (
+                SpaceUri TEXT NOT NULL,
+                DpopJkt TEXT NOT NULL,
+                Credential TEXT NOT NULL,
+                CreatedDate TEXT NOT NULL,
+                ExpiresDate TEXT NOT NULL,
+                PRIMARY KEY (SpaceUri, DpopJkt)
+            )",
+            [],
+        )?;
+        Ok(())
+    }
+
+    /// Insert (or replace) a space credential record.
+    pub fn insert_space_credential(
+        &self,
+        credential: &DbSpaceCredential,
+    ) -> Result<(), PdsDbError> {
+        if credential.space_uri.is_empty() || credential.dpop_jkt.is_empty() {
+            return Err(PdsDbError::InvalidInput(
+                "Space credential space uri and DPoP thumbprint cannot be empty.".to_string(),
+            ));
+        }
+
+        let conn = self.get_connection()?;
+        conn.execute(
+            "INSERT OR REPLACE INTO SpaceCredential (SpaceUri, DpopJkt, Credential, CreatedDate, ExpiresDate)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![
+                credential.space_uri,
+                credential.dpop_jkt,
+                credential.credential,
+                credential.created_date,
+                credential.expires_date,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Get a cached space credential for the given space and bound key that has
+    /// not yet expired at `now` (ISO 8601). Returns `None` when no valid
+    /// credential is stored.
+    pub fn get_valid_space_credential(
+        &self,
+        space_uri: &str,
+        dpop_jkt: &str,
+        now: &str,
+    ) -> Result<Option<String>, PdsDbError> {
+        let conn = self.get_connection_read_only()?;
+        let result = conn.query_row(
+            "SELECT Credential FROM SpaceCredential
+             WHERE SpaceUri = ?1 AND DpopJkt = ?2 AND ExpiresDate > ?3 LIMIT 1",
+            rusqlite::params![space_uri, dpop_jkt, now],
+            |row| row.get::<_, String>(0),
+        );
+
+        match result {
+            Ok(credential) => Ok(Some(credential)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(PdsDbError::SqliteError(e)),
+        }
+    }
+
+    /// Get all space credential records.
+    pub fn get_all_space_credentials(&self) -> Result<Vec<DbSpaceCredential>, PdsDbError> {
+        let conn = self.get_connection_read_only()?;
+        let mut stmt = conn.prepare(
+            "SELECT SpaceUri, DpopJkt, Credential, CreatedDate, ExpiresDate
+             FROM SpaceCredential ORDER BY CreatedDate DESC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(DbSpaceCredential {
+                space_uri: row.get(0)?,
+                dpop_jkt: row.get(1)?,
+                credential: row.get(2)?,
+                created_date: row.get(3)?,
+                expires_date: row.get(4)?,
+            })
+        })?;
+
+        let mut credentials = Vec::new();
+        for credential in rows {
+            credentials.push(credential?);
+        }
+        Ok(credentials)
+    }
+
+    /// Delete a space credential record by its space URI and bound key.
+    pub fn delete_space_credential(
+        &self,
+        space_uri: &str,
+        dpop_jkt: &str,
+    ) -> Result<(), PdsDbError> {
+        let conn = self.get_connection()?;
+        conn.execute(
+            "DELETE FROM SpaceCredential WHERE SpaceUri = ?1 AND DpopJkt = ?2",
+            rusqlite::params![space_uri, dpop_jkt],
+        )?;
+        Ok(())
+    }
 }

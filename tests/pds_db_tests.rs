@@ -29,6 +29,7 @@ use rustproto::pds::db::{
     LegacySession, OauthRequest, OauthSession, Passkey, PasskeyChallenge, PdsDb, PdsDbError,
     StatisticKey,
 };
+use rustproto::pds::db::{DbSpaceCredential, DbSpaceDelegationToken};
 use rustproto::pds::installer::{Installer};
 use rustproto::pds::db::{format_datetime_for_db, get_current_datetime_for_db};
 use chrono::{Duration, Utc};
@@ -913,4 +914,116 @@ fn stats_insert_exact_and_retrieve() {
     assert_eq!(stats[0].ip_address, "userip");
     assert_eq!(stats[0].user_agent, "useragent");
     assert_eq!(stats[0].value, 3);
+}
+
+// =========================================================================
+// SPACE DELEGATION TOKEN TESTS
+// =========================================================================
+
+#[test]
+fn space_delegation_token_insert_exists_and_delete() {
+    let (pds_db, _, _) = setup_test_db();
+
+    let now = get_current_datetime_for_db();
+    let expires = format_datetime_for_db(Utc::now() + Duration::seconds(60));
+    let token = DbSpaceDelegationToken {
+        token: "header.payload.sig".to_string(),
+        space_uri: "at://did:example:testuser/space/my.type/self".to_string(),
+        created_date: now,
+        expires_date: expires,
+    };
+
+    assert!(!pds_db.space_delegation_token_exists(&token.token).unwrap());
+
+    pds_db.insert_space_delegation_token(&token).unwrap();
+    assert!(pds_db.space_delegation_token_exists(&token.token).unwrap());
+
+    let all = pds_db.get_all_space_delegation_tokens().unwrap();
+    assert_eq!(all.len(), 1);
+    assert_eq!(all[0].token, "header.payload.sig");
+
+    pds_db.delete_space_delegation_token(&token.token).unwrap();
+    assert!(!pds_db.space_delegation_token_exists(&token.token).unwrap());
+    assert!(pds_db.get_all_space_delegation_tokens().unwrap().is_empty());
+}
+
+#[test]
+fn space_delegation_token_empty_input_rejected() {
+    let (pds_db, _, _) = setup_test_db();
+    let now = get_current_datetime_for_db();
+    let token = DbSpaceDelegationToken {
+        token: String::new(),
+        space_uri: "at://did:example:testuser/space/my.type/self".to_string(),
+        created_date: now.clone(),
+        expires_date: now,
+    };
+    let result = pds_db.insert_space_delegation_token(&token);
+    assert!(matches!(result, Err(PdsDbError::InvalidInput(_))));
+}
+
+// =========================================================================
+// SPACE CREDENTIAL TESTS
+// =========================================================================
+
+#[test]
+fn space_credential_insert_and_get_valid() {
+    let (pds_db, _, _) = setup_test_db();
+
+    let now = get_current_datetime_for_db();
+    let expires = format_datetime_for_db(Utc::now() + Duration::seconds(7200));
+    let cred = DbSpaceCredential {
+        space_uri: "at://did:example:testuser/space/my.type/self".to_string(),
+        dpop_jkt: "thumbprint123".to_string(),
+        credential: "space.credential.jwt".to_string(),
+        created_date: now,
+        expires_date: expires,
+    };
+
+    let lookup_now = get_current_datetime_for_db();
+    assert!(pds_db
+        .get_valid_space_credential(&cred.space_uri, &cred.dpop_jkt, &lookup_now)
+        .unwrap()
+        .is_none());
+
+    pds_db.insert_space_credential(&cred).unwrap();
+
+    let found = pds_db
+        .get_valid_space_credential(&cred.space_uri, &cred.dpop_jkt, &lookup_now)
+        .unwrap();
+    assert_eq!(found.as_deref(), Some("space.credential.jwt"));
+
+    let all = pds_db.get_all_space_credentials().unwrap();
+    assert_eq!(all.len(), 1);
+    assert_eq!(all[0].credential, "space.credential.jwt");
+
+    pds_db
+        .delete_space_credential(&cred.space_uri, &cred.dpop_jkt)
+        .unwrap();
+    assert!(pds_db.get_all_space_credentials().unwrap().is_empty());
+    assert!(pds_db
+        .get_valid_space_credential(&cred.space_uri, &cred.dpop_jkt, &lookup_now)
+        .unwrap()
+        .is_none());
+}
+
+#[test]
+fn space_credential_expired_not_returned() {
+    let (pds_db, _, _) = setup_test_db();
+
+    let created = format_datetime_for_db(Utc::now() - Duration::seconds(7200));
+    let expires = format_datetime_for_db(Utc::now() - Duration::seconds(10));
+    let cred = DbSpaceCredential {
+        space_uri: "at://did:example:testuser/space/my.type/self".to_string(),
+        dpop_jkt: "thumbprint123".to_string(),
+        credential: "space.credential.jwt".to_string(),
+        created_date: created,
+        expires_date: expires,
+    };
+    pds_db.insert_space_credential(&cred).unwrap();
+
+    let lookup_now = get_current_datetime_for_db();
+    assert!(pds_db
+        .get_valid_space_credential(&cred.space_uri, &cred.dpop_jkt, &lookup_now)
+        .unwrap()
+        .is_none());
 }

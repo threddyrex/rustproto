@@ -16,7 +16,7 @@ use serde::Deserialize;
 use tower_cookies::Cookies;
 
 use super::{get_base_styles, get_caller_info, get_navbar_css, get_navbar_html, is_admin_enabled, is_authenticated};
-use crate::pds::db::{AdminSession, LegacySession, OauthSession, PasskeyChallenge, StatisticKey};
+use crate::pds::db::{AdminSession, DbSpaceCredential, DbSpaceDelegationToken, LegacySession, OauthSession, PasskeyChallenge, StatisticKey};
 use crate::pds::server::PdsState;
 
 /// Handle GET /admin/sessions - Show sessions page.
@@ -70,6 +70,13 @@ pub async fn admin_sessions(
     // Get all passkey challenges sorted by newest first
     let mut challenges = state.db.get_all_passkey_challenges().unwrap_or_default();
     challenges.sort_by(|a, b| b.created_date.cmp(&a.created_date));
+
+    // Get all space delegation tokens and credentials sorted by newest first
+    let mut delegation_tokens = state.db.get_all_space_delegation_tokens().unwrap_or_default();
+    delegation_tokens.sort_by(|a, b| b.created_date.cmp(&a.created_date));
+
+    let mut space_credentials = state.db.get_all_space_credentials().unwrap_or_default();
+    space_credentials.sort_by(|a, b| b.created_date.cmp(&a.created_date));
     let html = format!(
         r#"<!DOCTYPE html>
 <html>
@@ -173,6 +180,39 @@ pub async fn admin_sessions(
         {challenge_rows}
     </tbody>
 </table>
+
+<h2>Space Delegation Tokens <span class="session-count">({delegation_token_count})</span></h2>
+<table class="sessions-table" id="spaceDelegationTokensTable">
+    <thead>
+        <tr>
+            <th class="sortable" data-col="0" data-type="string">Space URI</th>
+            <th class="sortable desc" data-col="1" data-type="number" style="text-align: right;">Created</th>
+            <th class="sortable" data-col="2" data-type="string" style="text-align: right;">Expires</th>
+            <th>Token</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody>
+        {delegation_token_rows}
+    </tbody>
+</table>
+
+<h2>Space Credentials <span class="session-count">({space_credential_count})</span></h2>
+<table class="sessions-table" id="spaceCredentialsTable">
+    <thead>
+        <tr>
+            <th class="sortable" data-col="0" data-type="string">Space URI</th>
+            <th class="sortable desc" data-col="1" data-type="number" style="text-align: right;">Created</th>
+            <th class="sortable" data-col="2" data-type="string" style="text-align: right;">Expires</th>
+            <th>DPoP Thumbprint</th>
+            <th>Credential</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody>
+        {space_credential_rows}
+    </tbody>
+</table>
 </div>
 <script>
 // Table sorting for multiple tables
@@ -265,6 +305,10 @@ pub async fn admin_sessions(
         admin_rows = build_admin_sessions_html(&admin_sessions),
         challenge_count = challenges.len(),
         challenge_rows = build_challenges_html(&challenges),
+        delegation_token_count = delegation_tokens.len(),
+        delegation_token_rows = build_delegation_tokens_html(&delegation_tokens),
+        space_credential_count = space_credentials.len(),
+        space_credential_rows = build_space_credentials_html(&space_credentials),
     );
 
     Html(html).into_response()
@@ -411,6 +455,103 @@ pub async fn admin_delete_admin_session(
         if !session_id.is_empty() {
             if let Err(e) = state.db.delete_admin_session(&session_id) {
                 state.log.error(&format!("Failed to delete admin session: {}", e));
+            }
+        }
+    }
+
+    Redirect::to("/admin/sessions").into_response()
+}
+
+/// Form data for deleting a space delegation token.
+#[derive(Deserialize)]
+pub struct DeleteSpaceDelegationTokenForm {
+    token: Option<String>,
+}
+
+/// Handle POST /admin/deletespacedelegationtoken - Delete a space delegation token.
+pub async fn admin_delete_space_delegation_token(
+    State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    cookies: Cookies,
+    Form(form): Form<DeleteSpaceDelegationTokenForm>,
+) -> impl IntoResponse {
+    // Extract caller info first for IP-based session validation
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
+    // Check if admin dashboard is enabled
+    if !is_admin_enabled(&state.db) {
+        return Redirect::to("/admin/login").into_response();
+    }
+
+    // Check authentication with IP verification
+    if !is_authenticated(&state.db, &cookies, &ip_address) {
+        return Redirect::to("/admin/login").into_response();
+    }
+
+    // Increment statistics
+    let stat_key = StatisticKey {
+        name: "admin/deletespacedelegationtoken".to_string(),
+        ip_address,
+        user_agent,
+    };
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
+
+    // Delete the delegation token
+    if let Some(token) = form.token {
+        if !token.is_empty() {
+            if let Err(e) = state.db.delete_space_delegation_token(&token) {
+                state.log.error(&format!("Failed to delete space delegation token: {}", e));
+            }
+        }
+    }
+
+    Redirect::to("/admin/sessions").into_response()
+}
+
+/// Form data for deleting a space credential.
+#[derive(Deserialize)]
+pub struct DeleteSpaceCredentialForm {
+    #[serde(rename = "spaceUri")]
+    space_uri: Option<String>,
+    #[serde(rename = "dpopJkt")]
+    dpop_jkt: Option<String>,
+}
+
+/// Handle POST /admin/deletespacecredential - Delete a space credential.
+pub async fn admin_delete_space_credential(
+    State(state): State<Arc<PdsState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    cookies: Cookies,
+    Form(form): Form<DeleteSpaceCredentialForm>,
+) -> impl IntoResponse {
+    // Extract caller info first for IP-based session validation
+    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
+
+    // Check if admin dashboard is enabled
+    if !is_admin_enabled(&state.db) {
+        return Redirect::to("/admin/login").into_response();
+    }
+
+    // Check authentication with IP verification
+    if !is_authenticated(&state.db, &cookies, &ip_address) {
+        return Redirect::to("/admin/login").into_response();
+    }
+
+    // Increment statistics
+    let stat_key = StatisticKey {
+        name: "admin/deletespacecredential".to_string(),
+        ip_address,
+        user_agent,
+    };
+    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
+
+    // Delete the credential
+    if let (Some(space_uri), Some(dpop_jkt)) = (form.space_uri, form.dpop_jkt) {
+        if !space_uri.is_empty() && !dpop_jkt.is_empty() {
+            if let Err(e) = state.db.delete_space_credential(&space_uri, &dpop_jkt) {
+                state.log.error(&format!("Failed to delete space credential: {}", e));
             }
         }
     }
@@ -617,6 +758,80 @@ fn build_challenges_html(challenges: &[PasskeyChallenge]) -> String {
                 challenge = html_encode(&c.challenge),
                 created = html_encode(&c.created_date),
                 challenge_value = html_encode(&c.challenge),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Build HTML rows for space delegation tokens.
+fn build_delegation_tokens_html(tokens: &[DbSpaceDelegationToken]) -> String {
+    if tokens.is_empty() {
+        return r#"<tr><td colspan="5" style="text-align: center; color: #8899a6;">No space delegation tokens</td></tr>"#.to_string();
+    }
+
+    tokens
+        .iter()
+        .map(|t| {
+            let (created_display, sort_minutes) = calculate_time_ago(&t.created_date);
+            format!(
+                r#"<tr>
+                    <td>{space_uri}</td>
+                    <td style="text-align: right;" data-sort="{sort_minutes}">{created}</td>
+                    <td style="text-align: right;">{expires}</td>
+                    <td class="challenge-text">{token}</td>
+                    <td>
+                        <form method="post" action="/admin/deletespacedelegationtoken" style="display:inline;">
+                            <input type="hidden" name="token" value="{token_value}" />
+                            <button type="submit" class="delete-btn">Delete</button>
+                        </form>
+                    </td>
+                </tr>"#,
+                space_uri = html_encode(&t.space_uri),
+                created = html_encode(&created_display),
+                sort_minutes = sort_minutes,
+                expires = html_encode(&t.expires_date),
+                token = html_encode(&t.token),
+                token_value = html_encode(&t.token),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Build HTML rows for space credentials.
+fn build_space_credentials_html(credentials: &[DbSpaceCredential]) -> String {
+    if credentials.is_empty() {
+        return r#"<tr><td colspan="6" style="text-align: center; color: #8899a6;">No space credentials</td></tr>"#.to_string();
+    }
+
+    credentials
+        .iter()
+        .map(|c| {
+            let (created_display, sort_minutes) = calculate_time_ago(&c.created_date);
+            format!(
+                r#"<tr>
+                    <td>{space_uri}</td>
+                    <td style="text-align: right;" data-sort="{sort_minutes}">{created}</td>
+                    <td style="text-align: right;">{expires}</td>
+                    <td class="challenge-text">{dpop_jkt}</td>
+                    <td class="challenge-text">{credential}</td>
+                    <td>
+                        <form method="post" action="/admin/deletespacecredential" style="display:inline;">
+                            <input type="hidden" name="spaceUri" value="{space_uri_value}" />
+                            <input type="hidden" name="dpopJkt" value="{dpop_jkt_value}" />
+                            <button type="submit" class="delete-btn">Delete</button>
+                        </form>
+                    </td>
+                </tr>"#,
+                space_uri = html_encode(&c.space_uri),
+                created = html_encode(&created_display),
+                sort_minutes = sort_minutes,
+                expires = html_encode(&c.expires_date),
+                dpop_jkt = html_encode(&c.dpop_jkt),
+                credential = html_encode(&c.credential),
+                space_uri_value = html_encode(&c.space_uri),
+                dpop_jkt_value = html_encode(&c.dpop_jkt),
             )
         })
         .collect::<Vec<_>>()
