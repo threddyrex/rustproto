@@ -120,42 +120,103 @@ fn permissions_from_lexicon(lexicon: &Value) -> Option<&Vec<Value>> {
 
 /// Expands a permission-set `permissions` array into granular scope strings.
 fn expand_permissions(permissions: &[Value], inherited_aud: Option<&str>) -> Vec<String> {
-    let mut scopes = Vec::new();
-    for permission in permissions {
-        permission_to_scopes(permission, inherited_aud, &mut scopes);
-    }
-    scopes
+    permissions
+        .iter()
+        .filter_map(|permission| permission_to_scope(permission, inherited_aud))
+        .collect()
 }
 
-/// Converts a single permission object into zero or more granular scope strings.
+/// Converts a single permission object into its granular scope string.
 ///
-/// Only the resource types that are valid inside a permission set (`rpc`, `repo`)
-/// are expanded. Unknown resources, and permissions with invalid `aud`
-/// configuration, are ignored per the spec.
-fn permission_to_scopes(permission: &Value, inherited_aud: Option<&str>, out: &mut Vec<String>) {
-    let resource = permission.get("resource").and_then(|r| r.as_str());
-
-    match resource {
-        Some("rpc") => {
-            let aud = match resolve_rpc_aud(permission, inherited_aud) {
-                Some(aud) => aud,
-                // Invalid aud configuration: ignore this permission entirely.
-                None => return,
-            };
-            for lxm in string_array(permission.get("lxm")) {
-                out.push(format!("rpc:{}?aud={}", lxm, aud));
-            }
-        }
+/// Each permission entry becomes exactly one scope token (a permission set does
+/// not get to decide how many scopes it becomes). Only the resource types that
+/// are valid inside a permission set are expanded (`repo`, `rpc`, and `space`).
+/// Unknown resources, and permissions with invalid configuration, are ignored
+/// per the spec so the permission model can evolve.
+fn permission_to_scope(permission: &Value, inherited_aud: Option<&str>) -> Option<String> {
+    match permission.get("resource").and_then(|r| r.as_str()) {
         Some("repo") => {
-            let action_suffix = action_suffix(permission.get("action"));
-            for collection in string_array(permission.get("collection")) {
-                out.push(format!("repo:{}{}", collection, action_suffix));
+            let collection = string_array(permission.get("collection"));
+            if collection.is_empty() {
+                return None;
             }
+            Some(format_scope(
+                "repo",
+                "collection",
+                &[
+                    ("collection", collection),
+                    ("action", string_array(permission.get("action"))),
+                ],
+            ))
+        }
+        Some("rpc") => {
+            let lxm = string_array(permission.get("lxm"));
+            if lxm.is_empty() {
+                return None;
+            }
+            // Invalid aud configuration means the whole permission is ignored.
+            let aud = resolve_rpc_aud(permission, inherited_aud)?;
+            Some(format_scope(
+                "rpc",
+                "lxm",
+                &[("lxm", lxm), ("aud", vec![aud])],
+            ))
+        }
+        Some("space") => {
+            // A space grant with no space type names no spaces, so it grants none.
+            let space_type = permission.get("spaceType").and_then(|v| v.as_str())?;
+            Some(format_scope(
+                "space",
+                "spaceType",
+                &[
+                    ("spaceType", vec![space_type]),
+                    ("authority", string_array(permission.get("authority"))),
+                    ("skey", string_array(permission.get("skey"))),
+                    ("collection", string_array(permission.get("collection"))),
+                    ("action", string_array(permission.get("action"))),
+                    ("manage", string_array(permission.get("manage"))),
+                ],
+            ))
         }
         // `blob`, `account`, and `identity` can not appear in permission sets, and
         // unknown resources must be ignored so the permission model can evolve.
-        _ => {}
+        _ => None,
     }
+}
+
+/// Formats a single permission as an atproto scope string.
+///
+/// The `positional` field, when it carries exactly one value, is rendered as the
+/// positional segment (`prefix:value`); otherwise every field is rendered as
+/// repeated `key=value` query parameters. Empty fields are omitted. Field order
+/// is preserved as given by the caller.
+fn format_scope(prefix: &str, positional_key: &str, fields: &[(&str, Vec<&str>)]) -> String {
+    let mut positional: Option<&str> = None;
+    let mut params: Vec<String> = Vec::new();
+
+    for (key, values) in fields {
+        if values.is_empty() {
+            continue;
+        }
+        if *key == positional_key && values.len() == 1 {
+            positional = Some(values[0]);
+        } else {
+            for value in values {
+                params.push(format!("{}={}", key, value));
+            }
+        }
+    }
+
+    let mut scope = prefix.to_string();
+    if let Some(value) = positional {
+        scope.push(':');
+        scope.push_str(value);
+    }
+    if !params.is_empty() {
+        scope.push('?');
+        scope.push_str(&params.join("&"));
+    }
+    scope
 }
 
 /// Determines the effective `aud` for an `rpc` permission inside a set.
@@ -163,7 +224,7 @@ fn permission_to_scopes(permission: &Value, inherited_aud: Option<&str>, out: &m
 /// Returns `None` (meaning: ignore the permission) for invalid configurations:
 /// `inheritAud` combined with an explicit `aud`, `inheritAud` without an
 /// inherited value, or a plain permission missing its required `aud`.
-fn resolve_rpc_aud(permission: &Value, inherited_aud: Option<&str>) -> Option<String> {
+fn resolve_rpc_aud<'a>(permission: &'a Value, inherited_aud: Option<&'a str>) -> Option<&'a str> {
     let inherit = permission
         .get("inheritAud")
         .and_then(|v| v.as_bool())
@@ -174,20 +235,10 @@ fn resolve_rpc_aud(permission: &Value, inherited_aud: Option<&str>) -> Option<St
         if own_aud.is_some() {
             return None;
         }
-        inherited_aud.map(|a| a.to_string())
+        inherited_aud
     } else {
-        own_aud.map(|a| a.to_string())
+        own_aud
     }
-}
-
-/// Builds the `?action=...` suffix for a `repo` permission, preserving order.
-fn action_suffix(action: Option<&Value>) -> String {
-    let actions = string_array(action);
-    if actions.is_empty() {
-        return String::new();
-    }
-    let params: Vec<String> = actions.iter().map(|a| format!("action={}", a)).collect();
-    format!("?{}", params.join("&"))
 }
 
 /// Reads a JSON value that may be a string array (or a single string) into a
@@ -244,12 +295,27 @@ mod tests {
             "lxm": ["app.bsky.feed.getPosts", "app.bsky.feed.searchPosts"]
         })];
         let scopes = expand_permissions(&permissions, Some("did:web:api.bsky.app%23bsky_appview"));
+        // Multiple lxm values -> a single token with repeated params.
         assert_eq!(
             scopes,
             vec![
-                "rpc:app.bsky.feed.getPosts?aud=did:web:api.bsky.app%23bsky_appview",
-                "rpc:app.bsky.feed.searchPosts?aud=did:web:api.bsky.app%23bsky_appview",
+                "rpc?lxm=app.bsky.feed.getPosts&lxm=app.bsky.feed.searchPosts&aud=did:web:api.bsky.app%23bsky_appview",
             ]
+        );
+    }
+
+    #[test]
+    fn expand_rpc_single_lxm_uses_positional() {
+        let permissions = vec![json!({
+            "type": "permission",
+            "resource": "rpc",
+            "inheritAud": true,
+            "lxm": ["app.bsky.feed.searchPosts"]
+        })];
+        let scopes = expand_permissions(&permissions, Some("did:web:api.bsky.app%23bsky_appview"));
+        assert_eq!(
+            scopes,
+            vec!["rpc:app.bsky.feed.searchPosts?aud=did:web:api.bsky.app%23bsky_appview"]
         );
     }
 
@@ -298,17 +364,17 @@ mod tests {
             "collection": ["app.bsky.feed.post", "app.bsky.feed.like"]
         })];
         let scopes = expand_permissions(&permissions, None);
+        // Multiple collections -> single token, collections as repeated params.
         assert_eq!(
             scopes,
             vec![
-                "repo:app.bsky.feed.post?action=create&action=update&action=delete",
-                "repo:app.bsky.feed.like?action=create&action=update&action=delete",
+                "repo?collection=app.bsky.feed.post&collection=app.bsky.feed.like&action=create&action=update&action=delete",
             ]
         );
     }
 
     #[test]
-    fn expand_repo_without_actions() {
+    fn expand_repo_single_collection_uses_positional() {
         let permissions = vec![json!({
             "type": "permission",
             "resource": "repo",
@@ -316,6 +382,49 @@ mod tests {
         })];
         let scopes = expand_permissions(&permissions, None);
         assert_eq!(scopes, vec!["repo:app.bsky.feed.post"]);
+    }
+
+    #[test]
+    fn expand_space_grant() {
+        // The real `my.bulletin.permissions` permission entry.
+        let permissions = vec![json!({
+            "type": "permission",
+            "resource": "space",
+            "spaceType": "my.bulletin.board",
+            "authority": "*",
+            "skey": "self",
+            "collection": ["my.bulletin.post", "my.bulletin.removal", "my.bulletin.position"],
+            "action": ["read", "create", "update", "delete"],
+            "manage": ["create", "update", "delete"]
+        })];
+        let scopes = expand_permissions(&permissions, None);
+        assert_eq!(
+            scopes,
+            vec![
+                "space:my.bulletin.board?authority=*&skey=self&collection=my.bulletin.post&collection=my.bulletin.removal&collection=my.bulletin.position&action=read&action=create&action=update&action=delete&manage=create&manage=update&manage=delete",
+            ]
+        );
+    }
+
+    #[test]
+    fn expand_bare_space_grant_needs_no_query() {
+        let permissions = vec![json!({
+            "type": "permission",
+            "resource": "space",
+            "spaceType": "app.bulleted.space"
+        })];
+        let scopes = expand_permissions(&permissions, None);
+        assert_eq!(scopes, vec!["space:app.bulleted.space"]);
+    }
+
+    #[test]
+    fn expand_space_without_space_type_is_ignored() {
+        let permissions = vec![json!({
+            "type": "permission",
+            "resource": "space",
+            "authority": "self"
+        })];
+        assert!(expand_permissions(&permissions, None).is_empty());
     }
 
     #[test]
