@@ -17,8 +17,8 @@
 
 use serde_json::Value;
 
+use crate::fs::LocalFileSystem;
 use crate::log::Logger;
-use crate::ws::BlueskyClient;
 
 /// Resolves an OAuth scope string, expanding any `include:<nsid>` permission-set
 /// references into concrete granular permission scopes.
@@ -29,15 +29,29 @@ use crate::ws::BlueskyClient;
 /// once several sets are expanded) are collapsed while preserving first-seen
 /// order.
 ///
+/// Lexicon resolution goes through `LocalFileSystem`, which caches permission-set
+/// schemas on disk (default 5-minute expiry). This keeps repeated resolutions
+/// cheap — notably, rendering the consent page and the subsequent token exchange
+/// share the cache, so the permissions shown to the user match what is granted
+/// without a second network round-trip.
+///
 /// Resolution is best-effort: if a permission set can not be resolved, the
 /// original `include:` token is preserved verbatim and a warning is logged,
 /// rather than failing the entire token request.
-pub async fn resolve_scopes(raw_scope: &str, client: &BlueskyClient, log: &Logger) -> String {
+pub async fn resolve_scopes(
+    raw_scope: &str,
+    lfs: &LocalFileSystem,
+    app_view_host_name: &str,
+    log: &Logger,
+) -> String {
     let mut resolved: Vec<String> = Vec::new();
 
     for token in raw_scope.split_whitespace() {
         if let Some((nsid, inherited_aud)) = parse_include_token(token) {
-            match client.resolve_lexicon_schema(nsid).await {
+            match lfs
+                .resolve_lexicon_schema(nsid, None, app_view_host_name)
+                .await
+            {
                 Ok(lexicon) => match permissions_from_lexicon(&lexicon) {
                     Some(permissions) => {
                         let expanded = expand_permissions(permissions, inherited_aud.as_deref());

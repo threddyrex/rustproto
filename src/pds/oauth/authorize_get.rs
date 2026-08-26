@@ -16,8 +16,10 @@ use serde::Deserialize;
 
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
+use crate::ws::DEFAULT_APP_VIEW_HOST_NAME;
 
 use super::helpers::{get_caller_info, get_form_value, html_encode, is_oauth_enabled, is_passkeys_enabled};
+use super::scope_resolution::resolve_scopes;
 
 /// Query parameters for authorization request.
 #[derive(Deserialize)]
@@ -82,8 +84,25 @@ pub async fn oauth_authorize_get(
     // Get scope from the original request body
     let scope = get_form_value(&oauth_request.body, "scope").unwrap_or_default();
 
+    // Resolve any `include:<nsid>` permission sets into concrete granular scopes
+    // so the consent page can show the user what will actually be granted. This
+    // goes through the LocalFileSystem lexicon cache, so it populates the cache
+    // that the subsequent token exchange reuses (no duplicate network fetch).
+    let app_view_host_name = state
+        .db
+        .get_config_property("AppViewHostName")
+        .unwrap_or_else(|_| DEFAULT_APP_VIEW_HOST_NAME.to_string());
+    let resolved_scope = resolve_scopes(&scope, &state.lfs, &app_view_host_name, state.log).await;
+
     // Generate HTML form
-    let html = generate_auth_form(&request_uri, &client_id, &scope, false, is_passkeys_enabled(&state.db));
+    let html = generate_auth_form(
+        &request_uri,
+        &client_id,
+        &scope,
+        &resolved_scope,
+        false,
+        is_passkeys_enabled(&state.db),
+    );
     Html(html).into_response()
 }
 
@@ -92,12 +111,31 @@ pub fn generate_auth_form(
     request_uri: &str,
     client_id: &str,
     scope: &str,
+    resolved_scope: &str,
     failed: bool,
     passkeys_enabled: bool,
 ) -> String {
     let safe_request_uri = html_encode(request_uri);
     let safe_client_id = html_encode(client_id);
     let safe_scope = html_encode(scope);
+
+    // Build the "will be granted" section. The requested scope can contain opaque
+    // `include:<nsid>` permission-set tokens; the resolved scope expands those into
+    // the concrete granular permissions actually granted. We only show the resolved
+    // breakdown when it differs from the raw request (i.e. something was expanded),
+    // to avoid redundant noise for already-concrete scopes.
+    let resolved_section = if !resolved_scope.is_empty() && resolved_scope != scope {
+        let items: String = resolved_scope
+            .split_whitespace()
+            .map(|s| format!("<li><code>{}</code></li>", html_encode(s)))
+            .collect();
+        format!(
+            r#"<p>These expand to the following permissions, which will be granted:</p>
+<ul class="scope-list">{items}</ul>"#
+        )
+    } else {
+        String::new()
+    };
 
     let failed_message = if failed {
         r#"<p class="auth-failed">Authentication failed. Please try again.</p>"#
@@ -247,6 +285,9 @@ pub fn generate_auth_form(
     h1 {{ color: #8899a6; margin-bottom: 24px; }}
     p {{ margin-bottom: 16px; line-height: 1.5; }}
     code {{ background-color: #2f3336; padding: 2px 6px; border-radius: 4px; }}
+    ul.scope-list {{ list-style: none; padding: 0; margin: 0 0 16px 0; }}
+    ul.scope-list li {{ margin-bottom: 8px; }}
+    ul.scope-list code {{ display: inline-block; word-break: break-all; }}
     a {{ color: #1d9bf0; text-decoration: none; }}
     a:hover {{ text-decoration: underline; }}
     label {{ display: block; margin-bottom: 6px; color: #8899a6; }}
@@ -275,6 +316,7 @@ pub fn generate_auth_form(
 {failed_message}
 <p><strong>{safe_client_id}</strong> is requesting access to your account.</p>
 <p>Requested permissions: <code>{safe_scope}</code></p>
+{resolved_section}
 
 {passkey_section}
 

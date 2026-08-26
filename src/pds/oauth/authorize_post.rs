@@ -25,6 +25,7 @@ use super::authorize_get::generate_auth_form;
 use super::helpers::{
     get_allowed_redirect_uris, get_caller_info, get_form_value, get_hostname, is_oauth_enabled, is_passkeys_enabled,
 };
+use super::scope_resolution::resolve_scopes;
 
 /// POST /oauth/authorize
 ///
@@ -136,10 +137,13 @@ pub async fn oauth_authorize_post(
 
         // Return the form with error
         let scope = get_form_value(&oauth_request.body, "scope").unwrap_or_default();
+        let resolved_scope =
+            resolve_scopes(&scope, &state.lfs, &app_view_host_name, state.log).await;
         let html = generate_auth_form(
             &request_uri,
             &client_id,
             &scope,
+            &resolved_scope,
             true,
             is_passkeys_enabled(&state.db),
         );

@@ -20,7 +20,7 @@ use uuid::Uuid;
 
 use crate::pds::db::{OauthSession, StatisticKey};
 use crate::pds::server::PdsState;
-use crate::ws::{BlueskyClient, DEFAULT_APP_VIEW_HOST_NAME};
+use crate::ws::DEFAULT_APP_VIEW_HOST_NAME;
 
 use super::dpop::validate_dpop;
 use super::helpers::{get_caller_info, get_form_value, get_hostname, is_oauth_enabled, token_fp};
@@ -224,8 +224,7 @@ async fn handle_authorization_code(
         .db
         .get_config_property("AppViewHostName")
         .unwrap_or_else(|_| DEFAULT_APP_VIEW_HOST_NAME.to_string());
-    let bluesky_client = BlueskyClient::new(&app_view_host_name);
-    let scope = resolve_scopes(&raw_scope, &bluesky_client, state.log).await;
+    let scope = resolve_scopes(&raw_scope, &state.lfs, &app_view_host_name, state.log).await;
     let auth_type = oauth_request.auth_type.clone().unwrap_or_else(|| "Unknown".to_string());
 
     // Get caller info for session
@@ -424,9 +423,8 @@ async fn handle_refresh_token(
         .db
         .get_config_property("AppViewHostName")
         .unwrap_or_else(|_| DEFAULT_APP_VIEW_HOST_NAME.to_string());
-    let bluesky_client = BlueskyClient::new(&app_view_host_name);
     oauth_session.scope =
-        resolve_scopes(&oauth_session.requested_scope, &bluesky_client, state.log).await;
+        resolve_scopes(&oauth_session.requested_scope, &state.lfs, &app_view_host_name, state.log).await;
 
     if let Err(e) = state.db.update_oauth_session(&oauth_session) {
         state.log.error(&format!(
