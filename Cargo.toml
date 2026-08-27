@@ -29,7 +29,7 @@ axum = { version = "0.8", features = ["ws"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors"] }
 tower-cookies = "0.11"
-uuid = { version = "1.24", features = ["v4"] }
+uuid = { version = "1.26", features = ["v4"] }
 pbkdf2 = { version = "0.12", features = ["simple"] }
 base64 = "0.22"
 hmac = "0.12"
