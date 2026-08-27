@@ -2787,6 +2787,37 @@ impl PdsDb {
         }
     }
 
+    /// Update an existing space repo record's CID and DAG-CBOR bytes.
+    pub fn update_space_repo_record(
+        &self,
+        space_uri: &str,
+        collection: &str,
+        rkey: &str,
+        cid: &str,
+        dag_cbor_bytes: &[u8],
+    ) -> Result<(), PdsDbError> {
+        if space_uri.is_empty() || collection.is_empty() || rkey.is_empty() {
+            return Err(PdsDbError::InvalidInput(
+                "SpaceUri, Collection and Rkey cannot be empty.".to_string(),
+            ));
+        }
+
+        let conn = self.get_connection()?;
+        let rows = conn.execute(
+            "UPDATE SpaceRepoRecord SET Cid = ?4, DagCborObject = ?5
+             WHERE SpaceUri = ?1 AND Collection = ?2 AND Rkey = ?3",
+            rusqlite::params![space_uri, collection, rkey, cid, dag_cbor_bytes],
+        )?;
+        if rows == 0 {
+            return Err(PdsDbError::SpaceRepoRecordNotFound(
+                space_uri.to_string(),
+                collection.to_string(),
+                rkey.to_string(),
+            ));
+        }
+        Ok(())
+    }
+
     /// Check whether a space repo record exists.
     pub fn space_repo_record_exists(
         &self,

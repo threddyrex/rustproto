@@ -188,6 +188,7 @@ impl PdsRunner {
             .route("/xrpc/com.atproto.space.getDelegationToken", axum::routing::get(xrpc::get_delegation_token))
             .route("/xrpc/com.atproto.space.getSpaceCredential", axum::routing::post(xrpc::get_space_credential))
             .route("/xrpc/com.atproto.space.createRecord", axum::routing::post(xrpc::create_space_record))
+            .route("/xrpc/com.atproto.space.putRecord", axum::routing::post(xrpc::put_space_record))
             .route("/xrpc/com.atproto.space.registerNotify", axum::routing::post(xrpc::register_notify))
             .route("/xrpc/com.atproto.space.unregisterNotify", axum::routing::post(xrpc::unregister_notify))
             // Simplespace management
