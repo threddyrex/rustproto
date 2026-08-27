@@ -431,18 +431,24 @@ pub fn verify_service_auth_token(
         return Err(SignerError::InvalidKey("Public key too short".to_string()));
     }
 
-    // Determine key format and extract bytes
-    let public_key_bytes = if public_key_with_prefix[0] == 0x80 && public_key_with_prefix[1] == 0x24 {
-        // Compressed P-256 public key with multicodec prefix
-        &public_key_with_prefix[2..]
-    } else {
-        // Try without prefix
-        &public_key_with_prefix[..]
-    };
-
-    // Create verifying key from bytes
-    let verifying_key = VerifyingKey::from_sec1_bytes(public_key_bytes)
-        .map_err(|e| SignerError::InvalidKey(format!("Invalid P-256 public key: {}", e)))?;
+    // Determine the curve from the multicodec prefix and extract the raw key
+    // bytes. atproto signing keys are either P-256 (multicodec 0x80 0x24) or
+    // secp256k1 (0xe7 0x01). did:plc accounts are predominantly secp256k1, so
+    // both must be supported or cross-account delegation tokens (whose issuer
+    // key is resolved from the issuer's DID document) fail to verify.
+    enum Curve {
+        P256,
+        K256,
+    }
+    let (curve, public_key_bytes) =
+        if public_key_with_prefix[0] == 0x80 && public_key_with_prefix[1] == 0x24 {
+            (Curve::P256, &public_key_with_prefix[2..])
+        } else if public_key_with_prefix[0] == 0xe7 && public_key_with_prefix[1] == 0x01 {
+            (Curve::K256, &public_key_with_prefix[2..])
+        } else {
+            // No recognized multicodec prefix: assume raw P-256 SEC1 bytes.
+            (Curve::P256, &public_key_with_prefix[..])
+        };
 
     // Parse the JWT parts
     let parts: Vec<&str> = token.split('.').collect();
@@ -463,22 +469,34 @@ pub fn verify_service_auth_token(
         )));
     }
 
-    // Create the signature from bytes
-    let signature = p256::ecdsa::Signature::from_slice(&signature_bytes)
-        .map_err(|e| SignerError::EncodingError(format!("Invalid signature format: {}", e)))?;
-
-    // Create signing input (header.payload)
+    // Create signing input (header.payload) and hash it. Both ES256 and ES256K
+    // sign the SHA-256 digest of the signing input.
     let signing_input = format!("{}.{}", parts[0], parts[1]);
-
-    // Hash the input
     let mut hasher = Sha256::new();
     hasher.update(signing_input.as_bytes());
     let hash: [u8; 32] = hasher.finalize().into();
 
-    // Verify the signature
-    match verifying_key.verify_prehash(&hash, &signature) {
-        Ok(()) => Ok(true),
-        Err(_) => Ok(false),
+    // Verify against the appropriate curve, normalizing to low-S first so a
+    // high-S signature (which some signers emit) is still accepted.
+    match curve {
+        Curve::P256 => {
+            let verifying_key = VerifyingKey::from_sec1_bytes(public_key_bytes)
+                .map_err(|e| SignerError::InvalidKey(format!("Invalid P-256 public key: {}", e)))?;
+            let signature = p256::ecdsa::Signature::from_slice(&signature_bytes)
+                .map_err(|e| SignerError::EncodingError(format!("Invalid signature format: {}", e)))?;
+            let signature = signature.normalize_s().unwrap_or(signature);
+            Ok(verifying_key.verify_prehash(&hash, &signature).is_ok())
+        }
+        Curve::K256 => {
+            let verifying_key = k256::ecdsa::VerifyingKey::from_sec1_bytes(public_key_bytes)
+                .map_err(|e| {
+                    SignerError::InvalidKey(format!("Invalid secp256k1 public key: {}", e))
+                })?;
+            let signature = k256::ecdsa::Signature::from_slice(&signature_bytes)
+                .map_err(|e| SignerError::EncodingError(format!("Invalid signature format: {}", e)))?;
+            let signature = signature.normalize_s().unwrap_or(signature);
+            Ok(verifying_key.verify_prehash(&hash, &signature).is_ok())
+        }
     }
 }
 
@@ -682,5 +700,41 @@ mod tests {
         pub_bytes.extend_from_slice(verifying_key.to_encoded_point(true).as_bytes());
         let public_key = format!("z{}", bs58::encode(pub_bytes).into_string());
         assert!(verify_service_auth_token(&token, &public_key).unwrap());
+    }
+
+    #[test]
+    fn verifies_secp256k1_signed_token() {
+        // did:plc accounts are predominantly secp256k1. A delegation token
+        // signed with such a key (issuer key resolved from the DID document)
+        // must verify, otherwise cross-account getSpaceCredential fails before
+        // authorization runs.
+        let signing_key = k256::ecdsa::SigningKey::from_slice(&[0x24u8; 32]).unwrap();
+
+        let header = BASE64URL
+            .encode(br##"{"alg":"ES256K","typ":"atproto-space-delegation+jwt","kid":"#atproto"}"##);
+        let payload = BASE64URL.encode(br#"{"iss":"did:plc:user"}"#);
+        let signing_input = format!("{}.{}", header, payload);
+
+        let mut hasher = Sha256::new();
+        hasher.update(signing_input.as_bytes());
+        let hash: [u8; 32] = hasher.finalize().into();
+        let signature: k256::ecdsa::Signature = signing_key.sign_prehash(&hash).unwrap();
+        let signature = signature.normalize_s().unwrap_or(signature);
+        let token = format!("{}.{}", signing_input, BASE64URL.encode(signature.to_bytes()));
+
+        // Encode the public key as multibase with the secp256k1 multicodec
+        // prefix (0xe7 0x01), exactly as it appears in a DID document.
+        let verifying_key = signing_key.verifying_key();
+        let mut pub_bytes = vec![0xe7u8, 0x01u8];
+        pub_bytes.extend_from_slice(verifying_key.to_encoded_point(true).as_bytes());
+        let public_key = format!("z{}", bs58::encode(pub_bytes).into_string());
+        assert!(verify_service_auth_token(&token, &public_key).unwrap());
+
+        // A different secp256k1 key must not verify the same token.
+        let other = k256::ecdsa::SigningKey::from_slice(&[0x25u8; 32]).unwrap();
+        let mut other_bytes = vec![0xe7u8, 0x01u8];
+        other_bytes.extend_from_slice(other.verifying_key().to_encoded_point(true).as_bytes());
+        let other_pub = format!("z{}", bs58::encode(other_bytes).into_string());
+        assert!(!verify_service_auth_token(&token, &other_pub).unwrap());
     }
 }
