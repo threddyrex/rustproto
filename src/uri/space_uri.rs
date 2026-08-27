@@ -1,27 +1,15 @@
-//! interacting with permissioned-space at:// uris
-//!
-//! Permissioned spaces use two related URI shapes:
-//!
-//! * A **space reference** identifies a space itself:
-//!   `at://{authority}/space/{spaceType}/{skey}`
-//! * A **space record URI** identifies a single record written to a member's
-//!   permissioned repo within a space:
-//!   `at://{authority}/space/{spaceType}/{skey}/{repoDid}/{collection}/{rkey}`
-//!
-//! The record URI is the space reference with the author (repo) DID, collection
-//! and record key appended. Space clients parse records back out of this shape,
-//! so the author-DID segment between the space reference and the collection is
-//! required.
+//! interacting with at:// uris for permissioned spaces and their records
+
 
 /// The fixed marker segment identifying a permissioned-space URI
-/// (`at://{authority}/space/...`).
-const SPACE_MARKER: &str = "space";
+pub const SPACE_MARKER: &str = "space";
 
-/// A reference to a permissioned space.
+
+/// URI for a permissioned space.
 ///
 /// Shape: `at://{authority}/space/{spaceType}/{skey}`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SpaceRef {
+pub struct SpaceUri {
     /// The DID the space is anchored on (its owner / authority).
     pub authority: String,
     /// The NSID of the space type (e.g. `my.bulletin.board`).
@@ -30,19 +18,21 @@ pub struct SpaceRef {
     pub skey: String,
 }
 
-impl SpaceRef {
+
+impl SpaceUri {
+
     pub fn new(authority: &str, space_type: &str, skey: &str) -> Self {
-        SpaceRef {
+        SpaceUri {
             authority: authority.to_string(),
             space_type: space_type.to_string(),
             skey: skey.to_string(),
         }
     }
 
-    /// Parses a space reference string into a `SpaceRef`.
+    /// Parses a space URI string into a `SpaceUri`.
     ///
     /// Example: `at://{authority}/space/{spaceType}/{skey}`.
-    pub fn from_space_ref(uri: &str) -> Option<Self> {
+    pub fn from_string(uri: &str) -> Option<Self> {
         if !uri.starts_with("at://") {
             return None;
         }
@@ -57,11 +47,11 @@ impl SpaceRef {
         if authority.is_empty() || space_type.is_empty() || skey.is_empty() {
             return None;
         }
-        Some(SpaceRef::new(authority, space_type, skey))
+        Some(SpaceUri::new(authority, space_type, skey))
     }
 
-    /// Converts the `SpaceRef` back into a space reference string.
-    pub fn to_space_ref(&self) -> String {
+    /// Converts the `SpaceUri` back into a space URI string.
+    pub fn to_string(&self) -> String {
         format!(
             "at://{}/{}/{}/{}",
             self.authority, SPACE_MARKER, self.space_type, self.skey
@@ -69,11 +59,12 @@ impl SpaceRef {
     }
 }
 
-/// A record within a permissioned space.
+
+/// URI for a record within a permissioned space.
 ///
 /// Shape: `at://{authority}/space/{spaceType}/{skey}/{repoDid}/{collection}/{rkey}`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SpaceAtUri {
+pub struct SpaceRecordUri {
     /// The DID the space is anchored on (its owner / authority).
     pub authority: String,
     /// The NSID of the space type (e.g. `my.bulletin.board`).
@@ -88,7 +79,7 @@ pub struct SpaceAtUri {
     pub rkey: String,
 }
 
-impl SpaceAtUri {
+impl SpaceRecordUri {
     pub fn new(
         authority: &str,
         space_type: &str,
@@ -97,7 +88,7 @@ impl SpaceAtUri {
         collection: &str,
         rkey: &str,
     ) -> Self {
-        SpaceAtUri {
+        SpaceRecordUri {
             authority: authority.to_string(),
             space_type: space_type.to_string(),
             skey: skey.to_string(),
@@ -109,13 +100,13 @@ impl SpaceAtUri {
 
     /// Builds a space record URI from a space reference plus the author (repo)
     /// DID, collection and record key.
-    pub fn from_space_ref(
-        space: &SpaceRef,
+    pub fn from_space_uri(
+        space: &SpaceUri,
         repo_did: &str,
         collection: &str,
         rkey: &str,
     ) -> Self {
-        SpaceAtUri::new(
+        SpaceRecordUri::new(
             &space.authority,
             &space.space_type,
             &space.skey,
@@ -125,10 +116,10 @@ impl SpaceAtUri {
         )
     }
 
-    /// Parses a full space record URI string into a `SpaceAtUri`.
+    /// Parses a full space record URI string into a `SpaceRecordUri`.
     ///
     /// Example: `at://{authority}/space/{spaceType}/{skey}/{repoDid}/{collection}/{rkey}`.
-    pub fn from_space_at_uri(uri: &str) -> Option<Self> {
+    pub fn from_string(uri: &str) -> Option<Self> {
         if !uri.starts_with("at://") {
             return None;
         }
@@ -152,13 +143,13 @@ impl SpaceAtUri {
         {
             return None;
         }
-        Some(SpaceAtUri::new(
+        Some(SpaceRecordUri::new(
             authority, space_type, skey, repo_did, collection, rkey,
         ))
     }
 
-    /// Converts the `SpaceAtUri` back into a full space record URI string.
-    pub fn to_space_at_uri(&self) -> String {
+    /// Converts the `SpaceRecordUri` back into a full space record URI string.
+    pub fn to_string(&self) -> String {
         format!(
             "at://{}/{}/{}/{}/{}/{}/{}",
             self.authority,
@@ -171,77 +162,81 @@ impl SpaceAtUri {
         )
     }
 
-    /// Returns the space reference this record belongs to.
-    pub fn space_ref(&self) -> SpaceRef {
-        SpaceRef::new(&self.authority, &self.space_type, &self.skey)
+    /// Returns the space URI this record belongs to.
+    pub fn space_uri(&self) -> SpaceUri {
+        SpaceUri::new(&self.authority, &self.space_type, &self.skey)
     }
 }
+
+
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_space_ref_roundtrip() {
+    fn test_space_uri_roundtrip() {
         let uri = "at://did:web:testuser.rustproto.com/space/my.bulletin.board/self";
-        let space = SpaceRef::from_space_ref(uri).unwrap();
+        let space = SpaceUri::from_string(uri).unwrap();
         assert_eq!(space.authority, "did:web:testuser.rustproto.com");
         assert_eq!(space.space_type, "my.bulletin.board");
         assert_eq!(space.skey, "self");
-        assert_eq!(space.to_space_ref(), uri);
+        assert_eq!(space.to_string(), uri);
     }
+
 
     #[test]
     fn test_space_ref_invalid() {
         // Missing the `space` marker.
-        assert!(SpaceRef::from_space_ref("at://did:plc:abc/my.type/self").is_none());
+        assert!(SpaceUri::from_string("at://did:plc:abc/my.type/self").is_none());
         // Missing skey.
-        assert!(SpaceRef::from_space_ref("at://did:plc:abc/space/my.type").is_none());
+        assert!(SpaceUri::from_string("at://did:plc:abc/space/my.type").is_none());
         // Extra segment.
-        assert!(SpaceRef::from_space_ref("at://did:plc:abc/space/my.type/self/extra").is_none());
+        assert!(SpaceUri::from_string("at://did:plc:abc/space/my.type/self/extra").is_none());
         // Not an at:// uri.
-        assert!(SpaceRef::from_space_ref("did:plc:abc/space/my.type/self").is_none());
+        assert!(SpaceUri::from_string("did:plc:abc/space/my.type/self").is_none());
     }
 
     #[test]
-    fn test_space_at_uri_roundtrip() {
+    fn test_space_record_uri_roundtrip() {
         let uri = "at://did:web:testuser.rustproto.com/space/my.bulletin.board/self/did:web:testuser.rustproto.com/my.bulletin.post/3mtzj6wohu6yq";
-        let record = SpaceAtUri::from_space_at_uri(uri).unwrap();
+        let record = SpaceRecordUri::from_string(uri).unwrap();
         assert_eq!(record.authority, "did:web:testuser.rustproto.com");
         assert_eq!(record.space_type, "my.bulletin.board");
         assert_eq!(record.skey, "self");
         assert_eq!(record.repo_did, "did:web:testuser.rustproto.com");
         assert_eq!(record.collection, "my.bulletin.post");
         assert_eq!(record.rkey, "3mtzj6wohu6yq");
-        assert_eq!(record.to_space_at_uri(), uri);
+        assert_eq!(record.to_string(), uri);
     }
 
     #[test]
-    fn test_space_at_uri_from_space_ref() {
+    fn test_space_record_uri_from_space_ref() {
         let space =
-            SpaceRef::from_space_ref("at://did:plc:abc/space/my.bulletin.board/self").unwrap();
+            SpaceUri::from_string("at://did:plc:abc/space/my.bulletin.board/self").unwrap();
         let record =
-            SpaceAtUri::from_space_ref(&space, "did:plc:abc", "my.bulletin.post", "rkey1");
+            SpaceRecordUri::from_space_uri(&space, "did:plc:abc", "my.bulletin.post", "rkey1");
         assert_eq!(
-            record.to_space_at_uri(),
+            record.to_string(),
             "at://did:plc:abc/space/my.bulletin.board/self/did:plc:abc/my.bulletin.post/rkey1"
         );
-        assert_eq!(record.space_ref(), space);
+        assert_eq!(record.space_uri(), space);
     }
 
     #[test]
-    fn test_space_at_uri_invalid() {
+    fn test_space_record_uri_invalid() {
         // Space reference only (missing repoDid/collection/rkey).
-        assert!(SpaceAtUri::from_space_at_uri("at://did:plc:abc/space/my.type/self").is_none());
+        assert!(SpaceRecordUri::from_string("at://did:plc:abc/space/my.type/self").is_none());
         // Missing rkey.
-        assert!(SpaceAtUri::from_space_at_uri(
+        assert!(SpaceRecordUri::from_string(
             "at://did:plc:abc/space/my.type/self/did:plc:abc/my.bulletin.post"
         )
         .is_none());
         // Missing the `space` marker.
-        assert!(SpaceAtUri::from_space_at_uri(
+        assert!(SpaceRecordUri::from_string(
             "at://did:plc:abc/notspace/my.type/self/did:plc:abc/my.bulletin.post/rkey1"
         )
         .is_none());
     }
 }
+

@@ -34,6 +34,7 @@ use crate::pds::db::{
 };
 use crate::pds::oauth::{get_hostname, validate_dpop};
 use crate::pds::server::PdsState;
+use crate::uri::{SpaceUri};
 use crate::ws::{ActorQueryOptions, BlueskyClient, DEFAULT_APP_VIEW_HOST_NAME};
 
 use super::app_bsky_proxy::is_valid_outbound_url;
@@ -52,9 +53,6 @@ const CHECK_USER_ACCESS_LXM: &str = "com.atproto.simplespace.checkUserAccess";
 
 /// Lifetime of the service-auth token minted for a `checkUserAccess` call.
 const CHECK_USER_ACCESS_AUTH_TTL_SECS: i64 = 60;
-
-/// The fixed marker segment identifying a permissioned-space URI.
-const SPACE_MARKER: &str = "space";
 
 /// Maximum age of an accepted DPoP proof, in seconds.
 const DPOP_MAX_AGE_SECS: i64 = 300;
@@ -85,43 +83,6 @@ pub struct GetSpaceCredentialResponse {
 pub struct GetSpaceCredentialError {
     error: String,
     message: String,
-}
-
-/// A parsed permissioned-space identity.
-struct SpaceId {
-    authority: String,
-    space_type: String,
-    skey: String,
-}
-
-impl SpaceId {
-    /// `at://{authority}/space/{spaceType}/{skey}`
-    fn uri(&self) -> String {
-        format!(
-            "at://{}/{}/{}/{}",
-            self.authority, SPACE_MARKER, self.space_type, self.skey
-        )
-    }
-}
-
-/// Parse a permissioned-space URI (`at://{authority}/space/{spaceType}/{skey}`).
-///
-/// This is not a standard at-uri: the literal `space` marker sits where a
-/// collection NSID would appear.
-fn parse_space_uri(uri: &str) -> Option<SpaceId> {
-    let rest = uri.strip_prefix("at://")?;
-    let parts: Vec<&str> = rest.split('/').collect();
-    if parts.len() != 4 || parts[1] != SPACE_MARKER {
-        return None;
-    }
-    if parts[0].is_empty() || parts[2].is_empty() || parts[3].is_empty() {
-        return None;
-    }
-    Some(SpaceId {
-        authority: parts[0].to_string(),
-        space_type: parts[2].to_string(),
-        skey: parts[3].to_string(),
-    })
 }
 
 /// Extract the authorization token, accepting either the `DPoP` scheme (used by
@@ -208,7 +169,7 @@ pub async fn get_space_credential(
             );
         }
     };
-    let space_id = match parse_space_uri(&space_uri) {
+    let space_id = match SpaceUri::from_string(&space_uri) {
         Some(space_id) => space_id,
         None => {
             return error_response(
@@ -319,7 +280,7 @@ pub async fn get_space_credential(
     let credential = match sign_space_credential(
         &private_key,
         &user_did,
-        &space_id.uri(),
+        &space_id.to_string(),
         &dpop_jkt,
         SPACE_CREDENTIAL_TTL_SECS,
     ) {
@@ -352,7 +313,7 @@ pub async fn get_space_credential(
 async fn verify_delegation_token(
     state: &Arc<PdsState>,
     token: &str,
-    space_id: &SpaceId,
+    space_uri: &SpaceUri,
 ) -> Result<String, String> {
     let parts: Vec<&str> = token.split('.').collect();
     if parts.len() != 3 {
@@ -379,12 +340,12 @@ async fn verify_delegation_token(
     let payload = decode_jwt_segment(parts[1]).ok_or("Invalid delegation token payload")?;
 
     let sub = payload.get("sub").and_then(|v| v.as_str()).unwrap_or_default();
-    if sub != space_id.uri() {
+    if sub != space_uri.to_string() {
         return Err("Delegation token subject does not match the requested space".to_string());
     }
 
     // The audience is the space host of this authority.
-    let expected_aud = format!("{}#atproto_space_host", space_id.authority);
+    let expected_aud = format!("{}#atproto_space_host", space_uri.authority);
     let aud = payload.get("aud").and_then(|v| v.as_str()).unwrap_or_default();
     if aud != expected_aud {
         return Err("Delegation token audience does not match this space host".to_string());
@@ -471,7 +432,7 @@ async fn resolve_issuer_public_key(
 /// app via a `com.atproto.simplespace.checkUserAccess` call.
 async fn authorize_user_for_space(
     state: &Arc<PdsState>,
-    space_id: &SpaceId,
+    space_uri: &SpaceUri,
     owner_did: &str,
     delegating_did: &str,
 ) -> Result<(), Response> {
@@ -483,7 +444,7 @@ async fn authorize_user_for_space(
     }
 
     // Any other user is admitted only by the space's persisted user-access policy.
-    let space = match state.db.get_space(&space_id.uri()) {
+    let space = match state.db.get_space(&space_uri.to_string()) {
         Ok(space) => space,
         Err(PdsDbError::SpaceNotFound(_)) => {
             return Err(error_response(
@@ -530,7 +491,7 @@ async fn authorize_user_for_space(
             match check_managing_app_access(
                 state,
                 &managing_app,
-                &space_id.uri(),
+                &space_uri.to_string(),
                 delegating_did,
                 None,
             )
@@ -802,26 +763,6 @@ fn space_service_endpoint(did_doc: &str, fragment: &str) -> Option<String> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn parses_valid_space_uri() {
-        let space = parse_space_uri("at://did:web:testuser.rustproto.com/space/my.bulletin.board/self")
-            .expect("valid space uri");
-        assert_eq!(space.authority, "did:web:testuser.rustproto.com");
-        assert_eq!(space.space_type, "my.bulletin.board");
-        assert_eq!(space.skey, "self");
-        assert_eq!(
-            space.uri(),
-            "at://did:web:testuser.rustproto.com/space/my.bulletin.board/self"
-        );
-    }
-
-    #[test]
-    fn rejects_malformed_space_uri() {
-        assert!(parse_space_uri("at://did:plc:abc/app.bsky.feed.post/3kabc").is_none());
-        assert!(parse_space_uri("at://did:plc:abc/space/my.type").is_none());
-        assert!(parse_space_uri("at://did:plc:abc/space/my.type/self/extra").is_none());
-        assert!(parse_space_uri("did:plc:abc/space/my.type/self").is_none());
-    }
 
     #[test]
     fn extracts_token_from_dpop_and_bearer_schemes() {

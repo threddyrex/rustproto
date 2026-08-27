@@ -26,7 +26,7 @@ use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
 use crate::pds::user_repo::parse_json_to_dag_cbor;
 use crate::repo::{CidV1, DagCborObject, DagCborValue};
-use crate::uri::{SpaceAtUri, SpaceRef};
+use crate::uri::{SpaceUri, SpaceRecordUri};
 
 use super::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info, AuthType};
 use super::space_helpers::{is_spaces_enabled, spaces_disabled_response};
@@ -146,7 +146,7 @@ pub async fn put_space_record(
             );
         }
     };
-    let space_ref = match SpaceRef::from_space_ref(&space_uri) {
+    let space_ref = match SpaceUri::from_string(&space_uri) {
         Some(space_ref) => space_ref,
         None => {
             return error_response(
@@ -156,7 +156,7 @@ pub async fn put_space_record(
             );
         }
     };
-    let canonical_uri = space_ref.to_space_ref();
+    let canonical_uri = space_ref.to_string();
 
     // Validate the required collection parameter.
     let collection = match body.collection {
@@ -334,8 +334,8 @@ pub async fn put_space_record(
     // segment between the space URI and the collection/rkey. `SpaceAtUri`
     // codifies this shape:
     // `at://{authority}/space/{spaceType}/{skey}/{authorDid}/{collection}/{rkey}`.
-    let uri = SpaceAtUri::from_space_ref(&space_ref, &user_did, &collection, &rkey)
-        .to_space_at_uri();
+    let uri = SpaceRecordUri::from_space_uri(&space_ref, &user_did, &collection, &rkey)
+        .to_string();
 
     state.log.info(&format!(
         "[SPACE] [PUT_RECORD] {} {} ({})",
