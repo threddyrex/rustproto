@@ -220,16 +220,16 @@ fn render_config_page(db: &PdsDb) -> Html<String> {
         <td>Are passkeys enabled?</td>
     </tr>
     <tr>
-        <td class="key-name">FeatureEnabled_Spaces</td>
-        <td>{feature_spaces}</td>
-        <td><button class="enable-btn" onclick="setBoolConfig('FeatureEnabled_Spaces', '1')">Enable</button><button class="disable-btn" onclick="setBoolConfig('FeatureEnabled_Spaces', '0')">Disable</button></td>
-        <td>Are atproto permissioned spaces enabled?</td>
-    </tr>
-    <tr>
         <td class="key-name">FeatureEnabled_RequestCrawl</td>
         <td>{feature_request_crawl}</td>
         <td><button class="enable-btn" onclick="setBoolConfig('FeatureEnabled_RequestCrawl', '1')">Enable</button><button class="disable-btn" onclick="setBoolConfig('FeatureEnabled_RequestCrawl', '0')">Disable</button></td>
         <td>If enabled, will periodically request a crawl from the crawlers. Enable this last - things need to be configured correctly before connecting with the larger network.</td>
+    </tr>
+    <tr>
+        <td class="key-name">FeatureEnabled_Spaces</td>
+        <td>{feature_spaces}</td>
+        <td><button class="enable-btn" onclick="setBoolConfig('FeatureEnabled_Spaces', '1')">Enable</button><button class="disable-btn" onclick="setBoolConfig('FeatureEnabled_Spaces', '0')">Disable</button></td>
+        <td>Are atproto permissioned spaces enabled?</td>
     </tr>
     <tr class="section-header"><td colspan="4">PDS</td></tr>
     <tr>
@@ -386,8 +386,8 @@ function setBoolConfig(key, value) {{
         feature_admin_dashboard = get_bool_config_value(db, "FeatureEnabled_AdminDashboard"),
         feature_oauth = get_bool_config_value(db, "FeatureEnabled_Oauth"),
         feature_passkeys = get_bool_config_value(db, "FeatureEnabled_Passkeys"),
-        feature_spaces = get_bool_config_value(db, "FeatureEnabled_Spaces"),
         feature_request_crawl = get_bool_config_value(db, "FeatureEnabled_RequestCrawl"),
+        feature_spaces = get_bool_config_value(db, "FeatureEnabled_Spaces"),
         // PDS section
         pds_crawlers = get_config_value(db, "PdsCrawlers"),
         pds_crawlers_js = get_config_value_for_js(db, "PdsCrawlers"),

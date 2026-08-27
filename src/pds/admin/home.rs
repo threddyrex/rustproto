@@ -147,8 +147,8 @@ fn build_config_table(db: &PdsDb) -> String {
     rows.push(row("FeatureEnabled_AdminDashboard", get_bool_value("FeatureEnabled_AdminDashboard"), "Is the admin dashboard enabled?"));
     rows.push(row("FeatureEnabled_Oauth", get_bool_value("FeatureEnabled_Oauth"), "Is OAuth enabled? This is a global flag that turns it off/on."));
     rows.push(row("FeatureEnabled_Passkeys", get_bool_value("FeatureEnabled_Passkeys"), "Are passkeys enabled?"));
-    rows.push(row("FeatureEnabled_Spaces", get_bool_value("FeatureEnabled_Spaces"), "Are atproto permissioned spaces enabled?"));
     rows.push(row("FeatureEnabled_RequestCrawl", get_bool_value("FeatureEnabled_RequestCrawl"), "If enabled, will periodically request a crawl from the crawlers."));
+    rows.push(row("FeatureEnabled_Spaces", get_bool_value("FeatureEnabled_Spaces"), "Are atproto permissioned spaces enabled?"));
 
     // PDS section
     rows.push(section("PDS"));
