@@ -27,6 +27,7 @@ pub use sessions::{
     admin_sessions, admin_delete_legacy_session, admin_delete_oauth_session,
     admin_delete_admin_session, admin_delete_space_delegation_token,
     admin_delete_space_credential, admin_delete_all_space_credentials,
+    admin_delete_all_oauth_sessions, admin_delete_all_space_delegation_tokens,
 };
 pub use stats::{
     admin_stats, admin_delete_statistic, admin_delete_all_statistics,

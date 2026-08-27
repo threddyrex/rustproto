@@ -2437,6 +2437,13 @@ impl PdsDb {
         Ok(())
     }
 
+    /// Delete all space delegation tokens.
+    pub fn delete_all_space_delegation_tokens(&self) -> Result<(), PdsDbError> {
+        let conn = self.get_connection()?;
+        conn.execute("DELETE FROM SpaceDelegationToken", [])?;
+        Ok(())
+    }
+
     /// Get all delegation token records.
     pub fn get_all_space_delegation_tokens(
         &self,
