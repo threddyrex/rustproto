@@ -684,7 +684,7 @@ async fn check_managing_app_access(
     {
         let mut qp = url.query_pairs_mut();
         qp.append_pair("space", space_uri);
-        qp.append_pair("did", user_did);
+        qp.append_pair("user", user_did);
         if let Some(client_id) = client_id {
             qp.append_pair("clientId", client_id);
         }
@@ -693,7 +693,7 @@ async fn check_managing_app_access(
     let http_client = reqwest::Client::new();
     // Log the full set of items being sent to the managing app.
     state.log.info(&format!(
-        "[SPACE] [CREDENTIAL] Calling managing app '{}' checkUserAccess: url={}, lxm={}, space={}, did={}, clientId={}",
+        "[SPACE] [CREDENTIAL] Calling managing app '{}' checkUserAccess: url={}, lxm={}, space={}, user={}, clientId={}",
         managing_app,
         url.as_str(),
         CHECK_USER_ACCESS_LXM,
@@ -747,9 +747,9 @@ async fn check_managing_app_access(
         .map_err(|e| format!("Invalid managing app response body: {}", e))?;
 
     let allowed = body
-        .get("allowed")
+        .get("authorized")
         .and_then(Value::as_bool)
-        .ok_or_else(|| "Managing app response missing 'allowed' boolean".to_string())?;
+        .ok_or_else(|| "Managing app response missing 'authorized' boolean".to_string())?;
 
     if !allowed {
         if let Some(reason) = body.get("reason").and_then(Value::as_str) {
