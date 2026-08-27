@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::pds::auth::{sign_delegation_token, DELEGATION_TOKEN_TTL_SECS};
 use crate::pds::db::{
-    format_datetime_for_db, get_current_datetime_for_db, DbSpaceDelegationToken, StatisticKey,
+    StatisticKey,
 };
 use crate::pds::server::PdsState;
 
@@ -222,32 +222,6 @@ pub async fn get_delegation_token(
                 .into_response();
         }
     };
-
-    // Persist the minted delegation token so it can be enforced as single-use
-    // when it is later swapped for a space credential.
-    let created_date = get_current_datetime_for_db();
-    let expires_date = format_datetime_for_db(
-        chrono::Utc::now() + chrono::Duration::seconds(DELEGATION_TOKEN_TTL_SECS),
-    );
-    if let Err(e) = state.db.insert_space_delegation_token(&DbSpaceDelegationToken {
-        token: token.clone(),
-        space_uri: space_id.uri(),
-        created_date,
-        expires_date,
-    }) {
-        state.log.error(&format!(
-            "[SPACE] [DELEGATION] Failed to store delegation token: {}",
-            e
-        ));
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(GetDelegationTokenError {
-                error: "ServerError".to_string(),
-                message: "Failed to store delegation token".to_string(),
-            }),
-        )
-            .into_response();
-    }
 
     Json(GetDelegationTokenResponse { token }).into_response()
 }
