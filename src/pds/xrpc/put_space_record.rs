@@ -29,6 +29,7 @@ use crate::repo::{CidV1, DagCborObject, DagCborValue};
 use crate::uri::{SpaceAtUri, SpaceRef};
 
 use super::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info, AuthType};
+use super::space_helpers::{is_spaces_enabled, spaces_disabled_response};
 
 /// Request body for putRecord.
 #[derive(Deserialize)]
@@ -116,6 +117,11 @@ pub async fn put_space_record(
         user_agent,
     };
     let _ = state.db.increment_statistic_for_endpoint(&stat_key);
+
+    // Ensure the spaces feature is enabled.
+    if !is_spaces_enabled(&state) {
+        return spaces_disabled_response();
+    }
 
     // Authenticate the caller. Per the lexicon, auth is OAuth only.
     let auth_result = check_user_auth(

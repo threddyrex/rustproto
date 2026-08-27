@@ -35,6 +35,7 @@ use crate::pds::oauth::{get_hostname, validate_dpop};
 use crate::pds::server::PdsState;
 
 use super::auth_helpers::get_caller_info;
+use super::space_helpers::{is_spaces_enabled, spaces_disabled_response};
 
 /// The fixed marker segment identifying a permissioned-space URI.
 const SPACE_MARKER: &str = "space";
@@ -174,6 +175,11 @@ pub async fn get_space_credential(
         user_agent,
     };
     let _ = state.db.increment_statistic_for_endpoint(&stat_key);
+
+    // Ensure the spaces feature is enabled.
+    if !is_spaces_enabled(&state) {
+        return spaces_disabled_response();
+    }
 
     // Validate and parse the required space parameter.
     let space_uri = match body.space {

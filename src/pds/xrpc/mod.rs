@@ -41,6 +41,7 @@ mod sync_get_record;
 mod sync_get_repo;
 mod sync_get_repo_status;
 mod sync_list_repos;
+mod space_helpers;
 mod unregister_notify;
 mod upload_blob;
 mod well_known_atproto_did;
