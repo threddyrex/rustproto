@@ -66,6 +66,8 @@ pub struct AuthResult {
     /// other auth types. Endpoints must confirm this matches the space being
     /// accessed.
     pub space_uri: Option<String>,
+    /// The type of authentication used, if any.
+    pub auth_type: Option<AuthType>,
 }
 
 
@@ -149,6 +151,7 @@ pub fn check_user_auth_with_lxm(
                 error: Some("OAuth authentication not allowed for this endpoint".to_string()),
                 is_expired: false,
                 space_uri: None,
+                auth_type: Some(AuthType::Oauth),
             };
         }
 
@@ -170,6 +173,7 @@ pub fn check_user_auth_with_lxm(
                 ),
                 is_expired: false,
                 space_uri: None,
+                auth_type: Some(AuthType::SpaceCredential),
             };
         }
 
@@ -189,6 +193,7 @@ pub fn check_user_auth_with_lxm(
                 error: Some("Service authentication not allowed for this endpoint".to_string()),
                 is_expired: false,
                 space_uri: None,
+                auth_type: Some(AuthType::Service),
             };
         }
 
@@ -211,6 +216,7 @@ pub fn check_user_auth_with_lxm(
         error: Some("No valid authentication provided".to_string()),
         is_expired: false,
         space_uri: None,
+        auth_type: None,
     }
 }
 
@@ -247,6 +253,7 @@ pub async fn check_user_auth_with_lxm_async(
                 error: Some("OAuth authentication not allowed for this endpoint".to_string()),
                 is_expired: false,
                 space_uri: None,
+                auth_type: Some(AuthType::Oauth),
             };
         }
 
@@ -268,6 +275,7 @@ pub async fn check_user_auth_with_lxm_async(
                 ),
                 is_expired: false,
                 space_uri: None,
+                auth_type: Some(AuthType::SpaceCredential),
             };
         }
 
@@ -288,6 +296,7 @@ pub async fn check_user_auth_with_lxm_async(
                 error: Some("Service authentication not allowed for this endpoint".to_string()),
                 is_expired: false,
                 space_uri: None,
+                auth_type: Some(AuthType::Service),
             };
         }
 
@@ -311,6 +320,7 @@ pub async fn check_user_auth_with_lxm_async(
         error: Some("No valid authentication provided".to_string()),
         is_expired: false,
         space_uri: None,
+        auth_type: None,
     }
 }
 
@@ -372,6 +382,7 @@ pub fn check_legacy_auth(state: &Arc<PdsState>, headers: &HeaderMap) -> AuthResu
                 error: Some("No authorization token".to_string()),
                 is_expired: false,
                 space_uri: None,
+                auth_type: Some(AuthType::Legacy)
             };
         }
     };
@@ -390,6 +401,7 @@ pub fn check_legacy_auth(state: &Arc<PdsState>, headers: &HeaderMap) -> AuthResu
                 error: Some("Server configuration error".to_string()),
                 is_expired: false,
                 space_uri: None,
+                auth_type: Some(AuthType::Legacy),
             };
         }
     };
@@ -407,6 +419,7 @@ pub fn check_legacy_auth(state: &Arc<PdsState>, headers: &HeaderMap) -> AuthResu
                 error: Some("Server configuration error".to_string()),
                 is_expired: false,
                 space_uri: None,
+                auth_type: Some(AuthType::Legacy),
             };
         }
     };
@@ -428,6 +441,7 @@ pub fn check_legacy_auth(state: &Arc<PdsState>, headers: &HeaderMap) -> AuthResu
                 error: Some("Token expired".to_string()),
                 is_expired: true,
                 space_uri: None,
+                auth_type: Some(AuthType::Legacy),
             };
         }
 
@@ -441,6 +455,7 @@ pub fn check_legacy_auth(state: &Arc<PdsState>, headers: &HeaderMap) -> AuthResu
             error: validation_result.error,
             is_expired: false,
             space_uri: None,
+            auth_type: Some(AuthType::Legacy)
         };
     }
 
@@ -461,6 +476,7 @@ pub fn check_legacy_auth(state: &Arc<PdsState>, headers: &HeaderMap) -> AuthResu
             error: Some("Session not found".to_string()),
             is_expired: false,
             space_uri: None,
+            auth_type: Some(AuthType::Legacy)
         };
     }
 
@@ -479,6 +495,7 @@ pub fn check_legacy_auth(state: &Arc<PdsState>, headers: &HeaderMap) -> AuthResu
         error: None,
         is_expired: false,
         space_uri: None,
+        auth_type: Some(AuthType::Legacy),
     }
 }
 
@@ -1163,6 +1180,7 @@ pub fn check_service_auth(
             error: result.error,
             is_expired: false,
             space_uri: None,
+            auth_type: Some(AuthType::Service),
         };
     }
 
@@ -1177,6 +1195,7 @@ pub fn check_service_auth(
         error: None,
         is_expired: false,
         space_uri: None,
+        auth_type: Some(AuthType::Service),
     }
 }
 
@@ -1207,6 +1226,7 @@ pub async fn check_service_auth_async(
             error: result.error,
             is_expired: false,
             space_uri: None,
+            auth_type: Some(AuthType::Service),
         };
     }
 
@@ -1221,6 +1241,7 @@ pub async fn check_service_auth_async(
         error: None,
         is_expired: false,
         space_uri: None,
+        auth_type: Some(AuthType::Service),
     }
 }
 
@@ -1265,6 +1286,7 @@ pub fn check_space_credential(
         error: Some(error.to_string()),
         is_expired: false,
         space_uri: None,
+        auth_type: Some(AuthType::SpaceCredential),
     };
 
     // Extract the credential (presented via DPoP or Bearer scheme).
@@ -1336,6 +1358,7 @@ pub fn check_space_credential(
                 error: Some("Space credential has expired".to_string()),
                 is_expired: true,
                 space_uri: None,
+                auth_type: Some(AuthType::SpaceCredential),
             };
         }
         None => return fail("Space credential missing exp claim"),
@@ -1402,6 +1425,7 @@ pub fn check_space_credential(
         error: None,
         is_expired: false,
         space_uri: Some(sub.to_string()),
+        auth_type: Some(AuthType::SpaceCredential),
     }
 }
 
@@ -1622,6 +1646,7 @@ pub fn check_oauth_auth(
             error: Some("OAuth is not enabled".to_string()),
             is_expired: false,
             space_uri: None,
+            auth_type: Some(AuthType::Oauth)
         };
     }
 
@@ -1638,6 +1663,7 @@ pub fn check_oauth_auth(
             error: Some("Token expired".to_string()),
             is_expired: true,
             space_uri: None,
+            auth_type: Some(AuthType::Oauth),
         };
     }
 
@@ -1652,6 +1678,7 @@ pub fn check_oauth_auth(
             error: oauth_result.error,
             is_expired: false,
             space_uri: None,
+            auth_type: Some(AuthType::Oauth),
         };
     }
 
@@ -1666,6 +1693,7 @@ pub fn check_oauth_auth(
         error: None,
         is_expired: false,
         space_uri: None,
+        auth_type: Some(AuthType::Oauth),
     }
 }
 
