@@ -91,7 +91,7 @@ pub async fn admin_sessions(
     .delete-btn:hover {{ background-color: #388e3c; }}
     .delete-all-btn {{ background-color: #4caf50; color: white; border: none; padding: 6px 12px; border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: 500; font-family: inherit; }}
     .delete-all-btn:hover {{ background-color: #388e3c; }}
-    .section-header {{ display: flex; justify-content: space-between; align-items: center; }}
+    .section-header {{ display: flex; justify-content: space-between; align-items: center; margin-top: 32px; }}
     .section-header h2 {{ margin: 0; }}
     .session-count {{ color: #8899a6; font-size: 14px; margin-left: 8px; }}
     .sessions-table {{ width: 100%; border-collapse: collapse; background-color: #2f3336; border-radius: 8px; overflow: hidden; margin-bottom: 24px; }}
