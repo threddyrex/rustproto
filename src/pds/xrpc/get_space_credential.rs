@@ -36,7 +36,7 @@ use crate::pds::oauth::{get_hostname, validate_dpop};
 use crate::pds::server::PdsState;
 use crate::ws::{ActorQueryOptions, BlueskyClient, DEFAULT_APP_VIEW_HOST_NAME};
 
-use super::app_bsky_proxy::{extract_service_endpoint_from_did_doc, is_valid_outbound_url};
+use super::app_bsky_proxy::is_valid_outbound_url;
 use super::auth_helpers::{extract_atproto_public_key, get_caller_info};
 use super::space_helpers::{is_spaces_enabled, spaces_disabled_response};
 
@@ -642,7 +642,7 @@ async fn check_managing_app_access(
         .and_then(|info| info.did_doc)
         .ok_or_else(|| format!("Failed to resolve DID document for managing app '{}'", app_did))?;
 
-    let service_endpoint = extract_service_endpoint_from_did_doc(&did_doc, service_fragment)
+    let service_endpoint = space_service_endpoint(&did_doc, service_fragment)
         .ok_or_else(|| {
             format!(
                 "No '{}' service endpoint in DID document for '{}'",
@@ -725,6 +725,29 @@ async fn check_managing_app_access(
     }
 
     Ok(allowed)
+}
+
+/// Find the `serviceEndpoint` for `fragment` in a DID document's `service`
+/// array.
+///
+/// A service's `id` may be written in relative (`#fragment`) or absolute
+/// (`did:...#fragment`) form; both are matched on the trailing `#fragment`, with
+/// the `#` anchoring the fragment boundary so partial matches are rejected.
+fn space_service_endpoint(did_doc: &str, fragment: &str) -> Option<String> {
+    let doc: Value = serde_json::from_str(did_doc).ok()?;
+    let services = doc.get("service")?.as_array()?;
+
+    let suffix = format!("#{}", fragment);
+    for service in services {
+        let id = service.get("id").and_then(Value::as_str).unwrap_or_default();
+        if id.ends_with(&suffix) {
+            if let Some(endpoint) = service.get("serviceEndpoint").and_then(Value::as_str) {
+                return Some(endpoint.to_string());
+            }
+        }
+    }
+
+    None
 }
 
 #[cfg(test)]
@@ -826,5 +849,50 @@ mod tests {
             evaluate_user_policy(&unknown, "did:web:threddy.example"),
             PolicyDecision::Deny(_)
         ));
+    }
+
+    #[test]
+    fn resolves_service_endpoint_for_relative_and_absolute_ids() {
+        // Relative service id (`#bulletin`).
+        let relative = serde_json::json!({
+            "service": [{
+                "id": "#bulletin",
+                "type": "AtprotoSpaceService",
+                "serviceEndpoint": "https://bulletin.my"
+            }]
+        })
+        .to_string();
+        assert_eq!(
+            space_service_endpoint(&relative, "bulletin").as_deref(),
+            Some("https://bulletin.my")
+        );
+
+        // Absolute service id (`did:web:bulletin.my#bulletin`), as emitted by
+        // the bulletin app's did:web document.
+        let absolute = serde_json::json!({
+            "service": [{
+                "id": "did:web:bulletin.my#bulletin",
+                "type": "AtprotoSpaceService",
+                "serviceEndpoint": "https://bulletin.my"
+            }]
+        })
+        .to_string();
+        assert_eq!(
+            space_service_endpoint(&absolute, "bulletin").as_deref(),
+            Some("https://bulletin.my")
+        );
+    }
+
+    #[test]
+    fn service_endpoint_rejects_partial_fragment_match() {
+        let doc = serde_json::json!({
+            "service": [{
+                "id": "did:web:bulletin.my#superbulletin",
+                "type": "AtprotoSpaceService",
+                "serviceEndpoint": "https://bulletin.my"
+            }]
+        })
+        .to_string();
+        assert_eq!(space_service_endpoint(&doc, "bulletin"), None);
     }
 }
