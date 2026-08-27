@@ -47,7 +47,7 @@ mod well_known_atproto_did;
 mod well_known_did;
 
 pub use activate_account::activate_account;
-pub use app_bsky_proxy::{app_bsky_fallback, is_valid_outbound_host, is_valid_outbound_url};
+pub use app_bsky_proxy::{app_bsky_fallback, is_valid_outbound_host, is_valid_outbound_url, log_xrpc_request};
 pub use apply_writes::apply_writes;
 pub use check_account_status::check_account_status;
 pub use create_record::create_record;

@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use axum::{
     Router,
+    body::Body,
     extract::{ConnectInfo, DefaultBodyLimit, Request, State},
     middleware::{self, Next},
     response::Response,
@@ -286,6 +287,10 @@ async fn logging_middleware(
         ip_address, path, user_agent
     ));
 
+    // Optionally log the full details of configured XRPC endpoints (debugging
+    // aid controlled by the LogXrpcEndpoints config property).
+    let request = maybe_log_xrpc_request(&state, &uri, &path, request).await;
+
     // Run the next handler
     let response = next.run(request).await;
 
@@ -300,7 +305,52 @@ async fn logging_middleware(
     response
 }
 
-/// Errors that can occur during PDS server operations.
+/// Maximum request body size (bytes) buffered for XRPC request logging.
+const MAX_LOGGED_XRPC_REQUEST_BYTES: usize = 50 * 1024 * 1024;
+
+/// If the request targets an XRPC endpoint configured in `LogXrpcEndpoints`,
+/// buffer its body, log the full request at info level, and return a
+/// reconstructed request so downstream handlers still see the body.
+///
+/// For all other requests the original request is returned untouched.
+async fn maybe_log_xrpc_request(
+    state: &Arc<PdsState>,
+    uri: &axum::http::Uri,
+    path: &str,
+    request: Request,
+) -> Request {
+    let nsid = match path.strip_prefix("/xrpc/") {
+        Some(nsid) => nsid,
+        None => return request,
+    };
+
+    let endpoints = match state.db.get_config_property_hash_set("LogXrpcEndpoints") {
+        Ok(endpoints) => endpoints,
+        Err(_) => return request,
+    };
+
+    if !endpoints.contains(nsid) {
+        return request;
+    }
+
+    let method = request.method().clone();
+    let query = uri.query().map(|q| format!("?{}", q)).unwrap_or_default();
+    let headers = request.headers().clone();
+
+    let (parts, body) = request.into_parts();
+    match axum::body::to_bytes(body, MAX_LOGGED_XRPC_REQUEST_BYTES).await {
+        Ok(bytes) => {
+            xrpc::log_xrpc_request(state, &method, path, &query, &headers, &bytes);
+            Request::from_parts(parts, Body::from(bytes))
+        }
+        Err(_) => {
+            state.log.warning(&format!(
+                "[LOG_XRPC] failed to buffer request body for {}", path
+            ));
+            Request::from_parts(parts, Body::empty())
+        }
+    }
+}
 #[derive(thiserror::Error, Debug)]
 pub enum PdsRunnerError {
     #[error("Database error: {0}")]

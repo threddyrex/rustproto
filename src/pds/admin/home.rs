@@ -178,6 +178,10 @@ fn build_config_table(db: &PdsDb) -> String {
     rows.push(section("App View"));
     rows.push(row("AppViewHostName", get_value("AppViewHostName"), "Host name for the App View service (ex: public.api.bsky.app)."));
 
+    // Debugging section
+    rows.push(section("Debugging"));
+    rows.push(row("LogXrpcEndpoints", get_value("LogXrpcEndpoints"), "Comma-separated list of XRPC endpoints (nsids) to log in full detail at info level."));
+
     rows.join("\n")
 }
 

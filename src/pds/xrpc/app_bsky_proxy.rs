@@ -551,20 +551,70 @@ fn log_unimplemented_xrpc_request(
     headers: &HeaderMap,
     body: &Bytes,
 ) {
+    log_xrpc_request_details(
+        "[UNIMPLEMENTED_XRPC]",
+        &|line| state.log.warning(line),
+        method,
+        path,
+        query,
+        headers,
+        body,
+    );
+}
+
+/// Log the full URL and payload of an incoming /xrpc request at info level.
+///
+/// This is a debugging aid controlled by the `LogXrpcEndpoints` config
+/// property: when a client calls one of the configured endpoints, the request
+/// is logged in enough detail to inspect exactly what was sent.
+///
+/// Sensitive headers (authorization, cookie, dpop) are redacted.
+pub fn log_xrpc_request(
+    state: &Arc<PdsState>,
+    method: &Method,
+    path: &str,
+    query: &str,
+    headers: &HeaderMap,
+    body: &Bytes,
+) {
+    log_xrpc_request_details(
+        "[LOG_XRPC]",
+        &|line| state.log.info(line),
+        method,
+        path,
+        query,
+        headers,
+        body,
+    );
+}
+
+/// Shared implementation for logging the details of an /xrpc request.
+///
+/// `prefix` is prepended to every logged line and `log_line` is the sink that
+/// receives each formatted line (for example, an info- or warning-level logger).
+///
+/// Sensitive headers (authorization, cookie, dpop) are redacted.
+fn log_xrpc_request_details(
+    prefix: &str,
+    log_line: &dyn Fn(&str),
+    method: &Method,
+    path: &str,
+    query: &str,
+    headers: &HeaderMap,
+    body: &Bytes,
+) {
     let nsid = path.strip_prefix("/xrpc/").unwrap_or(path);
 
-    state.log.warning("[UNIMPLEMENTED_XRPC] ----------------------------------------");
-    state.log.warning(&format!("[UNIMPLEMENTED_XRPC] method: {}", method));
-    state.log.warning(&format!("[UNIMPLEMENTED_XRPC] nsid:   {}", nsid));
-    state.log.warning(&format!("[UNIMPLEMENTED_XRPC] url:    {}{}", path, query));
+    log_line(&format!("{} ----------------------------------------", prefix));
+    log_line(&format!("{} method: {}", prefix, method));
+    log_line(&format!("{} nsid:   {}", prefix, nsid));
+    log_line(&format!("{} url:    {}{}", prefix, path, query));
 
     // Query parameters, one per line for readability.
     let query_params = query.trim_start_matches('?');
     if !query_params.is_empty() {
         for pair in query_params.split('&') {
-            state
-                .log
-                .warning(&format!("[UNIMPLEMENTED_XRPC] query:  {}", pair));
+            log_line(&format!("{} query:  {}", prefix, pair));
         }
     }
 
@@ -580,21 +630,20 @@ fn log_unimplemented_xrpc_request(
         } else {
             value.to_str().unwrap_or("<non-utf8>").to_string()
         };
-        state
-            .log
-            .warning(&format!("[UNIMPLEMENTED_XRPC] header: {}: {}", name_lower, value_str));
+        log_line(&format!("{} header: {}: {}", prefix, name_lower, value_str));
     }
 
     // Body / payload.
     if body.is_empty() {
-        state.log.warning("[UNIMPLEMENTED_XRPC] body:   <empty>");
+        log_line(&format!("{} body:   <empty>", prefix));
     } else {
         let content_type = headers
             .get("content-type")
             .and_then(|v| v.to_str().ok())
             .unwrap_or("<unknown>");
-        state.log.warning(&format!(
-            "[UNIMPLEMENTED_XRPC] body:   {} bytes, content-type: {}",
+        log_line(&format!(
+            "{} body:   {} bytes, content-type: {}",
+            prefix,
             body.len(),
             content_type
         ));
@@ -611,26 +660,25 @@ fn log_unimplemented_xrpc_request(
                     .unwrap_or_else(|| text.to_string());
 
                 for line in rendered.lines() {
-                    state
-                        .log
-                        .warning(&format!("[UNIMPLEMENTED_XRPC] body:   {}", line));
+                    log_line(&format!("{} body:   {}", prefix, line));
                 }
             }
             Err(_) => {
-                state.log.warning("[UNIMPLEMENTED_XRPC] body:   <binary, not logged>");
+                log_line(&format!("{} body:   <binary, not logged>", prefix));
             }
         }
 
         if truncated {
-            state.log.warning(&format!(
-                "[UNIMPLEMENTED_XRPC] body:   <truncated, {} of {} bytes shown>",
+            log_line(&format!(
+                "{} body:   <truncated, {} of {} bytes shown>",
+                prefix,
                 MAX_LOGGED_BODY_BYTES,
                 body.len()
             ));
         }
     }
 
-    state.log.warning("[UNIMPLEMENTED_XRPC] ----------------------------------------");
+    log_line(&format!("{} ----------------------------------------", prefix));
 }
 
 /// Handler for fallback app.bsky.*/chat.bsky.* routes.

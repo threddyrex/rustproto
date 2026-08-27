@@ -42,6 +42,7 @@ const ALLOWED_CONFIG_KEYS: &[&str] = &[
     "AtprotoProxyAllowedDids",
     "OauthAllowedRedirectUris",
     "AppViewHostName",
+    "LogXrpcEndpoints",
 ];
 
 /// Form data for setting a config property.
@@ -312,6 +313,13 @@ fn render_config_page(db: &PdsDb) -> Html<String> {
         <td><button class="set-btn" onclick="setConfig('AppViewHostName', '{app_view_host_name_js}')">Set</button></td>
         <td>Host name for the App View service (ex: public.api.bsky.app).</td>
     </tr>
+    <tr class="section-header"><td colspan="4">Debugging</td></tr>
+    <tr>
+        <td class="key-name">LogXrpcEndpoints</td>
+        <td>{log_xrpc_endpoints}</td>
+        <td><button class="set-btn" onclick="setConfig('LogXrpcEndpoints', '{log_xrpc_endpoints_js}')">Set</button></td>
+        <td>Comma-separated list of XRPC endpoints (nsids) to log in full detail at info level (ex: com.atproto.repo.createRecord).</td>
+    </tr>
 </table>
 <script>
 function setConfig(key, currentValue) {{
@@ -404,6 +412,9 @@ function setBoolConfig(key, value) {{
         // App View section
         app_view_host_name = get_config_value(db, "AppViewHostName"),
         app_view_host_name_js = get_config_value_for_js(db, "AppViewHostName"),
+        // Debugging section
+        log_xrpc_endpoints = get_config_value(db, "LogXrpcEndpoints"),
+        log_xrpc_endpoints_js = get_config_value_for_js(db, "LogXrpcEndpoints"),
     );
 
     Html(html)
