@@ -367,6 +367,13 @@ async fn verify_delegation_token(
             DELEGATION_TOKEN_TYP
         ));
     }
+    // The signature is verified against the issuer's `#atproto` key, so the
+    // token must name that key. The spec fixes `kid` to `#atproto`; rejecting
+    // anything else prevents a token that claims some other key from being
+    // waved through by a verification it never actually committed to.
+    if header.get("kid").and_then(|v| v.as_str()) != Some("#atproto") {
+        return Err("Delegation token kid must be '#atproto'".to_string());
+    }
 
     // Payload: validate the delegation claims.
     let payload = decode_jwt_segment(parts[1]).ok_or("Invalid delegation token payload")?;
@@ -385,9 +392,12 @@ async fn verify_delegation_token(
 
     // The issuer is the delegating user. It may be any user (not just this
     // authority): cross-account access is exactly the case this endpoint serves.
+    // It must be a DID: the value later drives the local-key fast path and the
+    // owner short-circuit (`delegating_did == owner_did`), so a degenerate or
+    // empty issuer must never flow through.
     let issuer = payload.get("iss").and_then(|v| v.as_str()).unwrap_or_default();
-    if issuer.is_empty() {
-        return Err("Delegation token is missing an issuer".to_string());
+    if !issuer.starts_with("did:") {
+        return Err("Delegation token issuer must be a DID".to_string());
     }
 
     // Expiry.
@@ -416,7 +426,7 @@ async fn resolve_issuer_public_key(
     issuer: &str,
 ) -> Result<String, String> {
     if let Ok(user_did) = state.db.get_config_property("UserDid") {
-        if issuer == user_did {
+        if !user_did.is_empty() && issuer == user_did {
             return state
                 .db
                 .get_config_property("UserPublicKeyMultibase")
@@ -465,8 +475,10 @@ async fn authorize_user_for_space(
     owner_did: &str,
     delegating_did: &str,
 ) -> Result<(), Response> {
-    // The owner accessing their own space needs no persisted policy.
-    if delegating_did == owner_did {
+    // The owner accessing their own space needs no persisted policy. Guard
+    // against an empty owner DID (misconfiguration) so an equally empty value
+    // can never satisfy this bypass.
+    if !owner_did.is_empty() && delegating_did == owner_did {
         return Ok(());
     }
 
