@@ -691,23 +691,59 @@ async fn check_managing_app_access(
     }
 
     let http_client = reqwest::Client::new();
+    // Log the full set of items being sent to the managing app.
+    state.log.info(&format!(
+        "[SPACE] [CREDENTIAL] Calling managing app '{}' checkUserAccess: url={}, lxm={}, space={}, did={}, clientId={}",
+        managing_app,
+        url.as_str(),
+        CHECK_USER_ACCESS_LXM,
+        space_uri,
+        user_did,
+        client_id.unwrap_or("<none>"),
+    ));
     let response = http_client
         .get(url.as_str())
         .header("Authorization", format!("Bearer {}", service_auth))
         .send()
         .await
-        .map_err(|e| format!("Request to managing app failed: {}", e))?;
+        .map_err(|e| {
+            let msg = format!("Request to managing app failed: {}", e);
+            state.log.info(&format!(
+                "[SPACE] [CREDENTIAL] Managing app '{}' response: {}",
+                managing_app, msg
+            ));
+            msg
+        })?;
 
-    if !response.status().is_success() {
+    // Capture the status and raw body so the full response can be logged no
+    // matter what happens next.
+    let status = response.status();
+    let body_text = response.text().await.map_err(|e| {
+        let msg = format!("Invalid managing app response body: {}", e);
+        state.log.info(&format!(
+            "[SPACE] [CREDENTIAL] Managing app '{}' response: status={}, error={}",
+            managing_app,
+            status.as_u16(),
+            msg
+        ));
+        msg
+    })?;
+
+    state.log.info(&format!(
+        "[SPACE] [CREDENTIAL] Managing app '{}' response: status={}, body={}",
+        managing_app,
+        status.as_u16(),
+        body_text
+    ));
+
+    if !status.is_success() {
         return Err(format!(
             "Managing app returned status {}",
-            response.status().as_u16()
+            status.as_u16()
         ));
     }
 
-    let body: Value = response
-        .json()
-        .await
+    let body: Value = serde_json::from_str(&body_text)
         .map_err(|e| format!("Invalid managing app response body: {}", e))?;
 
     let allowed = body
