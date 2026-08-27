@@ -1130,7 +1130,7 @@ pub async fn validate_service_auth_token_async(
 /// Extract the atproto public key from a DID document.
 ///
 /// Looks for a verificationMethod with id ending in "#atproto".
-fn extract_atproto_public_key(did_doc: &str) -> Option<String> {
+pub(crate) fn extract_atproto_public_key(did_doc: &str) -> Option<String> {
     let doc: serde_json::Value = serde_json::from_str(did_doc).ok()?;
     
     let methods = doc.get("verificationMethod")?.as_array()?;

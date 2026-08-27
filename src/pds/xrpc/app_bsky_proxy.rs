@@ -145,7 +145,7 @@ pub fn is_valid_outbound_host(hostname: &str) -> bool {
 }
 
 /// Extract the service endpoint from a DID document.
-fn extract_service_endpoint_from_did_doc(
+pub(crate) fn extract_service_endpoint_from_did_doc(
     did_doc: &str,
     service_id: &str,
 ) -> Option<String> {
