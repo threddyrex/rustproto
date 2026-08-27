@@ -8,7 +8,8 @@
 //! Like repo records, the record body is persisted as DAG-CBOR bytes with its
 //! computed CID.
 //!
-//! Authentication is OAuth: the account that owns the space on this host.
+//! Authentication is OAuth: the record is authored by this account, whether the
+//! space is hosted on this PDS or on another one.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -97,8 +98,7 @@ fn error_response(status: StatusCode, error: &str, message: &str) -> Response {
 /// # Returns
 ///
 /// * `200 OK` with `{uri, cid, validationStatus}` on success
-/// * `400 Bad Request` for malformed input or a space this host is not the
-///   authority for
+/// * `400 Bad Request` for malformed input
 /// * `401 Unauthorized` if authentication is missing
 pub async fn create_space_record(
     State(state): State<Arc<PdsState>>,
@@ -176,7 +176,7 @@ pub async fn create_space_record(
         }
     };
 
-    // This host is only the authority for spaces anchored on its own account.
+    // The record is authored by (and written into) this account's repo.
     let user_did = match state.db.get_config_property("UserDid") {
         Ok(did) => did,
         Err(_) => {
@@ -187,13 +187,6 @@ pub async fn create_space_record(
             );
         }
     };
-    if space_ref.authority != user_did {
-        return error_response(
-            StatusCode::BAD_REQUEST,
-            "SpaceNotFound",
-            "This service is not the authority for the requested space",
-        );
-    }
 
     // If provided, the repo must match the authenticated user.
     if let Some(repo) = &body.repo {
@@ -206,17 +199,23 @@ pub async fn create_space_record(
         }
     }
 
-    // The space must exist (created via com.atproto.simplespace.createSpace).
-    if let Err(e) = state.db.get_space(&canonical_uri) {
-        state.log.info(&format!(
-            "[SPACE] [CREATE_RECORD] Space not found {}: {}",
-            canonical_uri, e
-        ));
-        return error_response(
-            StatusCode::BAD_REQUEST,
-            "SpaceNotFound",
-            "The requested space does not exist",
-        );
+    // A space may be hosted on this PDS (this account is its authority) or on a
+    // different PDS. When this host is the authority, the space must already
+    // exist locally (created via com.atproto.simplespace.createSpace). When the
+    // space is hosted elsewhere, we record the member's contribution without
+    // requiring a local copy of the space.
+    if space_ref.authority == user_did {
+        if let Err(e) = state.db.get_space(&canonical_uri) {
+            state.log.info(&format!(
+                "[SPACE] [CREATE_RECORD] Space not found {}: {}",
+                canonical_uri, e
+            ));
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                "SpaceNotFound",
+                "The requested space does not exist",
+            );
+        }
     }
 
     // Generate an rkey if none was provided.
