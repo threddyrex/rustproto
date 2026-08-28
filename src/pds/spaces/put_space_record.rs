@@ -1,9 +1,9 @@
-//! com.atproto.space.createRecord endpoint.
+//! com.atproto.space.putRecord endpoint.
 //!
-//! Creates a record in a permissioned space's repository. This is the
-//! space-scoped parallel of `com.atproto.repo.createRecord`: instead of writing
-//! into the caller's public repo (MST + signed commit + firehose), the record is
-//! stored in the `SpaceRepoRecord` table, keyed by the space it belongs to.
+//! Creates or updates a record in a permissioned space's repository. This is the
+//! space-scoped parallel of `com.atproto.repo.putRecord`, and mirrors
+//! `com.atproto.space.createRecord` except that it targets a specific `rkey` and
+//! overwrites any existing record stored there instead of rejecting collisions.
 //!
 //! Like repo records, the record body is persisted as DAG-CBOR bytes with its
 //! computed CID.
@@ -24,23 +24,23 @@ use serde::{Deserialize, Serialize};
 
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
-use crate::pds::user_repo::{parse_json_to_dag_cbor, UserRepo};
+use crate::pds::user_repo::parse_json_to_dag_cbor;
 use crate::repo::{CidV1, DagCborObject, DagCborValue};
 use crate::uri::{SpaceUri, SpaceRecordUri};
 
-use super::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info, AuthType};
-use super::space_helpers::{is_spaces_enabled, spaces_disabled_response};
+use crate::pds::xrpc::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info, AuthType};
+use crate::pds::spaces::{is_spaces_enabled, spaces_disabled_response};
 
-/// Request body for createRecord.
+/// Request body for putRecord.
 #[derive(Deserialize)]
-pub struct CreateSpaceRecordRequest {
+pub struct PutSpaceRecordRequest {
     /// Repository DID (must match the authenticated user).
     repo: Option<String>,
     /// Reference to the space (`at://{authority}/space/{spaceType}/{skey}`).
     space: Option<String>,
     /// Collection NSID.
     collection: Option<String>,
-    /// Record key (optional, auto-generated if not provided).
+    /// Record key (required for put).
     rkey: Option<String>,
     /// The record data.
     record: Option<serde_json::Value>,
@@ -51,21 +51,21 @@ pub struct CreateSpaceRecordRequest {
     validate: Option<bool>,
 }
 
-/// Successful response for createRecord.
+/// Successful response for putRecord.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CreateSpaceRecordResponse {
-    /// AT URI of the created record.
+pub struct PutSpaceRecordResponse {
+    /// AT URI of the record.
     uri: String,
-    /// CID of the created record.
+    /// CID of the record.
     cid: String,
     /// Validation status.
     validation_status: String,
 }
 
-/// Error response for createRecord.
+/// Error response for putRecord.
 #[derive(Serialize)]
-pub struct CreateSpaceRecordError {
+pub struct PutSpaceRecordError {
     error: String,
     message: String,
 }
@@ -73,7 +73,7 @@ pub struct CreateSpaceRecordError {
 fn error_response(status: StatusCode, error: &str, message: &str) -> Response {
     (
         status,
-        Json(CreateSpaceRecordError {
+        Json(PutSpaceRecordError {
             error: error.to_string(),
             message: message.to_string(),
         }),
@@ -81,7 +81,7 @@ fn error_response(status: StatusCode, error: &str, message: &str) -> Response {
         .into_response()
 }
 
-/// POST /xrpc/com.atproto.space.createRecord - Create a record in a space.
+/// POST /xrpc/com.atproto.space.putRecord - Create or update a record in a space.
 ///
 /// # Headers
 ///
@@ -92,7 +92,7 @@ fn error_response(status: StatusCode, error: &str, message: &str) -> Response {
 /// * `repo` - Required. Repository DID (must match the authenticated user).
 /// * `space` - Required. Reference to the space.
 /// * `collection` - Required. Collection NSID.
-/// * `rkey` - Optional record key (auto-generated if not provided).
+/// * `rkey` - Required. Record key to create or update.
 /// * `record` - Required. The record data.
 /// * `validate` - Optional. Affects the reported `validationStatus` only.
 ///
@@ -101,18 +101,18 @@ fn error_response(status: StatusCode, error: &str, message: &str) -> Response {
 /// * `200 OK` with `{uri, cid, validationStatus}` on success
 /// * `400 Bad Request` for malformed input
 /// * `401 Unauthorized` if authentication is missing
-pub async fn create_space_record(
+pub async fn put_space_record(
     State(state): State<Arc<PdsState>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    Json(body): Json<CreateSpaceRecordRequest>,
+    Json(body): Json<PutSpaceRecordRequest>,
 ) -> Response {
     // Get caller info for statistics
     let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
 
     // Increment statistics
     let stat_key = StatisticKey {
-        name: "xrpc/com.atproto.space.createRecord".to_string(),
+        name: "xrpc/com.atproto.space.putRecord".to_string(),
         ip_address,
         user_agent,
     };
@@ -129,7 +129,7 @@ pub async fn create_space_record(
         &headers,
         Some(&[AuthType::Oauth]),
         "POST",
-        "/xrpc/com.atproto.space.createRecord",
+        "/xrpc/com.atproto.space.putRecord",
     );
     if !auth_result.is_authenticated {
         return auth_failure_response(&auth_result);
@@ -166,6 +166,19 @@ pub async fn create_space_record(
                 StatusCode::BAD_REQUEST,
                 "InvalidRequest",
                 "Missing required parameter: collection",
+            );
+        }
+    };
+
+    // Validate the required rkey parameter. Unlike createRecord, put targets a
+    // specific record key and never auto-generates one.
+    let rkey = match body.rkey {
+        Some(rkey) if !rkey.is_empty() => rkey,
+        _ => {
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                "InvalidRequest",
+                "Missing required parameter: rkey",
             );
         }
     };
@@ -213,41 +226,13 @@ pub async fn create_space_record(
     if space_ref.authority == user_did {
         if let Err(e) = state.db.get_space(&canonical_uri) {
             state.log.info(&format!(
-                "[SPACE] [CREATE_RECORD] Space not found {}: {}",
+                "[SPACE] [PUT_RECORD] Space not found {}: {}",
                 canonical_uri, e
             ));
             return error_response(
                 StatusCode::BAD_REQUEST,
                 "SpaceNotFound",
                 "The requested space does not exist",
-            );
-        }
-    }
-
-    // Generate an rkey if none was provided.
-    let rkey = body.rkey.unwrap_or_else(UserRepo::generate_tid);
-
-    // Reject a collision with an existing record in this space.
-    match state
-        .db
-        .space_repo_record_exists(&canonical_uri, &collection, &rkey)
-    {
-        Ok(true) => {
-            return error_response(
-                StatusCode::BAD_REQUEST,
-                "InvalidRequest",
-                "Record already exists.",
-            );
-        }
-        Ok(false) => {}
-        Err(e) => {
-            state
-                .log
-                .error(&format!("[SPACE] [CREATE_RECORD] existence check failed: {}", e));
-            return error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "ServerError",
-                "Failed to check for existing record",
             );
         }
     }
@@ -277,7 +262,7 @@ pub async fn create_space_record(
         Err(e) => {
             state
                 .log
-                .error(&format!("[SPACE] [CREATE_RECORD] CID computation failed: {}", e));
+                .error(&format!("[SPACE] [PUT_RECORD] CID computation failed: {}", e));
             return error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "ServerError",
@@ -290,7 +275,7 @@ pub async fn create_space_record(
         Err(e) => {
             state
                 .log
-                .error(&format!("[SPACE] [CREATE_RECORD] serialization failed: {}", e));
+                .error(&format!("[SPACE] [PUT_RECORD] serialization failed: {}", e));
             return error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "ServerError",
@@ -299,17 +284,45 @@ pub async fn create_space_record(
         }
     };
 
-    // Persist the space record.
-    if let Err(e) = state.db.insert_space_repo_record(
-        &canonical_uri,
-        &collection,
-        &rkey,
-        &record_cid.base32,
-        &record_bytes,
-    ) {
+    // Determine whether the record already exists so we can update or insert.
+    let exists = match state
+        .db
+        .space_repo_record_exists(&canonical_uri, &collection, &rkey)
+    {
+        Ok(exists) => exists,
+        Err(e) => {
+            state
+                .log
+                .error(&format!("[SPACE] [PUT_RECORD] existence check failed: {}", e));
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "ServerError",
+                "Failed to check for existing record",
+            );
+        }
+    };
+
+    let persist_result = if exists {
+        state.db.update_space_repo_record(
+            &canonical_uri,
+            &collection,
+            &rkey,
+            &record_cid.base32,
+            &record_bytes,
+        )
+    } else {
+        state.db.insert_space_repo_record(
+            &canonical_uri,
+            &collection,
+            &rkey,
+            &record_cid.base32,
+            &record_bytes,
+        )
+    };
+    if let Err(e) = persist_result {
         state
             .log
-            .error(&format!("[SPACE] [CREATE_RECORD] insert failed: {}", e));
+            .error(&format!("[SPACE] [PUT_RECORD] persist failed: {}", e));
         return error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
             "ServerError",
@@ -325,8 +338,10 @@ pub async fn create_space_record(
         .to_string();
 
     state.log.info(&format!(
-        "[SPACE] [CREATE_RECORD] Created {} ({})",
-        uri, record_cid.base32
+        "[SPACE] [PUT_RECORD] {} {} ({})",
+        if exists { "Updated" } else { "Created" },
+        uri,
+        record_cid.base32
     ));
 
     // We do not perform lexicon validation; report accordingly.
@@ -336,7 +351,7 @@ pub async fn create_space_record(
         "valid"
     };
 
-    Json(CreateSpaceRecordResponse {
+    Json(PutSpaceRecordResponse {
         uri,
         cid: record_cid.base32,
         validation_status: validation_status.to_string(),

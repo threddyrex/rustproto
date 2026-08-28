@@ -1,8 +1,23 @@
-//! Shared helpers for the permissioned-space XRPC endpoints.
-//!
-//! These utilities are common to the `com.atproto.space.*` /
-//! `com.atproto.simplespace.*` handlers, such as gating them behind the
-//! `FeatureEnabled_Spaces` config property.
+
+
+mod create_space;
+mod create_space_record;
+mod get_delegation_token;
+mod get_space;
+mod get_space_credential;
+mod put_space_record;
+mod register_notify;
+mod unregister_notify;
+
+pub use create_space::create_space;
+pub use create_space_record::create_space_record;
+pub use get_delegation_token::get_delegation_token;
+pub use get_space::get_space;
+pub use get_space_credential::get_space_credential;
+pub use put_space_record::put_space_record;
+pub use register_notify::register_notify;
+pub use unregister_notify::unregister_notify;
+
 
 use std::sync::Arc;
 
@@ -14,6 +29,7 @@ use axum::{
 use serde::Serialize;
 
 use crate::pds::server::PdsState;
+
 
 /// Error body returned by space XRPC endpoints when the feature is unavailable.
 #[derive(Serialize)]

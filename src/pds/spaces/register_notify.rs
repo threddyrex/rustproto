@@ -1,8 +1,9 @@
-//! com.atproto.space.unregisterNotify endpoint.
+//! com.atproto.space.registerNotify endpoint.
 //!
-//! Removes a registration created by `com.atproto.space.registerNotify`, so that
-//! a service is no longer recorded as wanting to be notified about activity in a
-//! permissioned space managed by this authority.
+//! Records that a service wants to be notified about activity in a permissioned
+//! space managed by this authority. This endpoint only stores the registration
+//! (the intent to be notified); delivering the notifications themselves is
+//! handled separately.
 //!
 //! The space must be one this host is the authority for (anchored on its own
 //! account). Authentication is OAuth: the account that owns the space on this
@@ -19,36 +20,36 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::pds::db::StatisticKey;
+use crate::pds::db::{get_current_datetime_for_db, DbSpaceNotifyRegistration, StatisticKey};
 use crate::pds::server::PdsState;
 
-use super::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info, AuthType};
-use super::space_helpers::{is_spaces_enabled, spaces_disabled_response};
+use crate::pds::xrpc::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info, AuthType};
+use crate::pds::spaces::{is_spaces_enabled, spaces_disabled_response};
 
 /// The fixed marker segment identifying a permissioned-space URI.
 const SPACE_MARKER: &str = "space";
 
-/// Request body for unregisterNotify.
+/// Request body for registerNotify.
 #[derive(Deserialize)]
-pub struct UnregisterNotifyRequest {
-    /// Identifier of the service to stop notifying (e.g. `did:web:bulletin.my#bulletin`).
+pub struct RegisterNotifyRequest {
+    /// Identifier of the service to notify (e.g. `did:web:bulletin.my#bulletin`).
     service: Option<String>,
     /// Reference to the space (`at://{authority}/space/{spaceType}/{skey}`).
     space: Option<String>,
 }
 
-/// Successful response for unregisterNotify.
+/// Successful response for registerNotify.
 #[derive(Serialize)]
-pub struct UnregisterNotifyResponse {
-    /// Canonical URI of the space the registration was removed for.
+pub struct RegisterNotifyResponse {
+    /// Canonical URI of the space the registration was recorded for.
     space: String,
-    /// The service that was unregistered.
+    /// The service that was registered for notifications.
     service: String,
 }
 
-/// Error response for unregisterNotify.
+/// Error response for registerNotify.
 #[derive(Serialize)]
-pub struct UnregisterNotifyError {
+pub struct RegisterNotifyError {
     error: String,
     message: String,
 }
@@ -96,7 +97,7 @@ fn is_valid_service(service: &str) -> bool {
 fn error_response(status: StatusCode, error: &str, message: &str) -> Response {
     (
         status,
-        Json(UnregisterNotifyError {
+        Json(RegisterNotifyError {
             error: error.to_string(),
             message: message.to_string(),
         }),
@@ -104,8 +105,8 @@ fn error_response(status: StatusCode, error: &str, message: &str) -> Response {
         .into_response()
 }
 
-/// POST /xrpc/com.atproto.space.unregisterNotify - Remove a service's
-/// notification registration for a permissioned space.
+/// POST /xrpc/com.atproto.space.registerNotify - Register a service to be
+/// notified about activity in a permissioned space.
 ///
 /// # Headers
 ///
@@ -113,28 +114,27 @@ fn error_response(status: StatusCode, error: &str, message: &str) -> Response {
 ///
 /// # Request Body
 ///
-/// * `service` - Required. Identifier of the service to stop notifying.
+/// * `service` - Required. Identifier of the service to notify.
 /// * `space` - Required. Reference to the space.
 ///
 /// # Returns
 ///
-/// * `200 OK` with `{space, service}` on success (idempotent; succeeds even if
-///   no registration existed)
+/// * `200 OK` with `{space, service}` on success
 /// * `400 Bad Request` for malformed input or a space this host is not the
 ///   authority for
 /// * `401 Unauthorized` if authentication is missing
-pub async fn unregister_notify(
+pub async fn register_notify(
     State(state): State<Arc<PdsState>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    Json(body): Json<UnregisterNotifyRequest>,
+    Json(body): Json<RegisterNotifyRequest>,
 ) -> Response {
     // Get caller info for statistics
     let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
 
     // Increment statistics
     let stat_key = StatisticKey {
-        name: "xrpc/com.atproto.space.unregisterNotify".to_string(),
+        name: "xrpc/com.atproto.space.registerNotify".to_string(),
         ip_address,
         user_agent,
     };
@@ -151,12 +151,11 @@ pub async fn unregister_notify(
         &headers,
         Some(&[AuthType::Oauth, AuthType::SpaceCredential]),
         "POST",
-        "/xrpc/com.atproto.space.unregisterNotify",
+        "/xrpc/com.atproto.space.registerNotify",
     );
     if !auth_result.is_authenticated {
         return auth_failure_response(&auth_result);
     }
-
 
     // Validate and parse the required space parameter.
     let space_uri = match body.space {
@@ -219,29 +218,30 @@ pub async fn unregister_notify(
         );
     }
 
-    // Remove the notify registration. This is idempotent: deleting a
-    // non-existent registration is not an error.
-    if let Err(e) = state
-        .db
-        .delete_space_notify_registration(&canonical_uri, &service)
-    {
-        state.log.error(&format!(
-            "[SPACE] [NOTIFY] Failed to unregister notify: {}",
-            e
-        ));
+    // Record the notify registration. This only stores the intent to be
+    // notified; delivering notifications is handled separately.
+    let registration = DbSpaceNotifyRegistration {
+        space_uri: canonical_uri.clone(),
+        service: service.clone(),
+        created_date: get_current_datetime_for_db(),
+    };
+    if let Err(e) = state.db.insert_space_notify_registration(&registration) {
+        state
+            .log
+            .error(&format!("[SPACE] [NOTIFY] Failed to register notify: {}", e));
         return error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
             "ServerError",
-            "Failed to remove notify registration",
+            "Failed to persist notify registration",
         );
     }
 
     state.log.info(&format!(
-        "[SPACE] [NOTIFY] Unregistered notify for service {} on space {}",
+        "[SPACE] [NOTIFY] Registered notify for service {} on space {}",
         service, canonical_uri
     ));
 
-    Json(UnregisterNotifyResponse {
+    Json(RegisterNotifyResponse {
         space: canonical_uri,
         service,
     })

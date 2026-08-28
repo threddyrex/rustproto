@@ -25,8 +25,8 @@ use crate::pds::server::PdsState;
 
 use crate::uri::{SpaceUri};
 
-use super::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info, AuthType};
-use super::space_helpers::{is_spaces_enabled, spaces_disabled_response};
+use crate::pds::xrpc::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info, AuthType};
+use crate::pds::spaces::{is_spaces_enabled, spaces_disabled_response};
 
 
 /// Query parameters for getDelegationToken.

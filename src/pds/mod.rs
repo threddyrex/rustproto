@@ -13,6 +13,7 @@ pub mod http_utils;
 pub mod installer;
 pub mod oauth;
 pub mod server;
+pub mod spaces;
 pub mod user_repo;
 pub mod xrpc;
 

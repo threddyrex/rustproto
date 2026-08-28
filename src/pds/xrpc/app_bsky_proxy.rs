@@ -18,7 +18,6 @@ use axum::{
     Json,
 };
 use reqwest::header::{HeaderName, HeaderValue};
-use reqwest::Url;
 use serde_json::Value as JsonValue;
 
 use crate::pds::auth::sign_service_auth_token;
@@ -28,121 +27,13 @@ use crate::uri::AtprotoProxy;
 use crate::ws::DEFAULT_APP_VIEW_HOST_NAME;
 
 use super::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info};
+use super::is_valid_outbound_url;
 
 /// Default Atproto-Proxy value for the Bluesky AppView.
 const DEFAULT_ATPROTO_PROXY: &str = "did:web:api.bsky.app#bsky_appview";
 
 
-/// Validates that a URL is safe for outbound requests (SSRF protection).
-///
-/// Blocks localhost, private IPs, cloud metadata endpoints, and non-HTTPS schemes.
-pub fn is_valid_outbound_url(url: &str) -> bool {
-    let parsed_url = match Url::parse(url) {
-        Ok(u) => u,
-        Err(_) => return false,
-    };
 
-    // Only allow HTTPS
-    if parsed_url.scheme() != "https" {
-        return false;
-    }
-
-    let host = match parsed_url.host_str() {
-        Some(h) => h,
-        None => return false,
-    };
-
-    is_valid_outbound_host(host)
-}
-
-/// Validates that a hostname is safe for outbound requests.
-pub fn is_valid_outbound_host(hostname: &str) -> bool {
-    if hostname.is_empty() {
-        return false;
-    }
-
-    // Block URL injection characters
-    if hostname.contains('?')
-        || hostname.contains('#')
-        || hostname.contains('/')
-        || hostname.contains('@')
-        || hostname.contains('\\')
-        || hostname.contains(' ')
-        || hostname.contains('\t')
-        || hostname.contains('\r')
-        || hostname.contains('\n')
-    {
-        return false;
-    }
-
-    // Block colon except in IPv6 addresses
-    if hostname.contains(':') && !hostname.starts_with('[') {
-        return false;
-    }
-
-    // Block localhost variants
-    if hostname.eq_ignore_ascii_case("localhost") {
-        return false;
-    }
-
-    // Block internal domain suffixes
-    let lower = hostname.to_lowercase();
-    if lower.ends_with(".local")
-        || lower.ends_with(".internal")
-        || lower.ends_with(".localhost")
-    {
-        return false;
-    }
-
-    // Block private/loopback IP addresses
-    if let Ok(ip) = hostname.parse::<std::net::IpAddr>() {
-        // Loopback
-        if ip.is_loopback() {
-            return false;
-        }
-
-        match ip {
-            std::net::IpAddr::V4(v4) => {
-                let octets = v4.octets();
-
-                // Cloud metadata endpoint (169.254.169.254)
-                if octets[0] == 169
-                    && octets[1] == 254
-                    && octets[2] == 169
-                    && octets[3] == 254
-                {
-                    return false;
-                }
-
-                // 10.0.0.0/8
-                if octets[0] == 10 {
-                    return false;
-                }
-
-                // 172.16.0.0/12
-                if octets[0] == 172 && (16..=31).contains(&octets[1]) {
-                    return false;
-                }
-
-                // 192.168.0.0/16
-                if octets[0] == 192 && octets[1] == 168 {
-                    return false;
-                }
-
-                // Link-local 169.254.0.0/16
-                if octets[0] == 169 && octets[1] == 254 {
-                    return false;
-                }
-            }
-            std::net::IpAddr::V6(_) => {
-                // For IPv6, just reject loopback (already handled above)
-                // Could add more checks for link-local, etc.
-            }
-        }
-    }
-
-    true
-}
 
 /// Extract the service endpoint from a DID document.
 fn extract_service_endpoint_from_did_doc(
