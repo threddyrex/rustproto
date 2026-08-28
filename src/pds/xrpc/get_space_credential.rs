@@ -159,7 +159,7 @@ pub async fn get_space_credential(
     }
 
     // Validate and parse the required space parameter.
-    let space_uri = match body.space {
+    let space_param = match body.space {
         Some(space) if !space.is_empty() => space,
         _ => {
             return error_response(
@@ -169,13 +169,13 @@ pub async fn get_space_credential(
             );
         }
     };
-    let space_id = match SpaceUri::from_string(&space_uri) {
-        Some(space_id) => space_id,
+    let space_uri = match SpaceUri::from_string(&space_param) {
+        Some(space_uri) => space_uri,
         None => {
             return error_response(
                 StatusCode::BAD_REQUEST,
                 "InvalidRequest",
-                &format!("Invalid space uri: {}", space_uri),
+                &format!("Invalid space uri: {}", space_param),
             );
         }
     };
@@ -191,7 +191,7 @@ pub async fn get_space_credential(
             );
         }
     };
-    if space_id.authority != user_did {
+    if space_uri.authority != user_did {
         return error_response(
             StatusCode::BAD_REQUEST,
             "SpaceNotFound",
@@ -243,7 +243,7 @@ pub async fn get_space_credential(
     // hosted elsewhere can delegate access to this authority's space. Returns
     // the delegating user's DID.
     let delegating_did =
-        match verify_delegation_token(&state, &delegation_token, &space_id).await {
+        match verify_delegation_token(&state, &delegation_token, &space_uri).await {
             Ok(did) => did,
             Err(message) => {
                 return error_response(
@@ -260,7 +260,7 @@ pub async fn get_space_credential(
     // default; any other user is admitted only if the space's persisted policy
     // permits it.
     if let Err(response) =
-        authorize_user_for_space(&state, &space_id, &user_did, &delegating_did).await
+        authorize_user_for_space(&state, &space_uri, &user_did, &delegating_did).await
     {
         return response;
     }
@@ -280,7 +280,7 @@ pub async fn get_space_credential(
     let credential = match sign_space_credential(
         &private_key,
         &user_did,
-        &space_id.to_string(),
+        &space_uri.to_string(),
         &dpop_jkt,
         SPACE_CREDENTIAL_TTL_SECS,
     ) {
