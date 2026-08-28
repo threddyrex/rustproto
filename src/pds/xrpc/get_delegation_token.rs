@@ -23,11 +23,11 @@ use crate::pds::db::{
 };
 use crate::pds::server::PdsState;
 
+use crate::uri::{SpaceUri};
+
 use super::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info, AuthType};
 use super::space_helpers::{is_spaces_enabled, spaces_disabled_response};
 
-/// The fixed marker segment identifying a permissioned-space URI.
-const SPACE_MARKER: &str = "space";
 
 /// Query parameters for getDelegationToken.
 #[derive(Deserialize)]
@@ -50,42 +50,6 @@ pub struct GetDelegationTokenError {
     message: String,
 }
 
-/// A parsed permissioned-space identity.
-struct SpaceId {
-    authority: String,
-    space_type: String,
-    skey: String,
-}
-
-impl SpaceId {
-    /// `at://{authority}/space/{spaceType}/{skey}`
-    fn uri(&self) -> String {
-        format!(
-            "at://{}/{}/{}/{}",
-            self.authority, SPACE_MARKER, self.space_type, self.skey
-        )
-    }
-}
-
-/// Parse a permissioned-space URI (`at://{authority}/space/{spaceType}/{skey}`).
-///
-/// This is not a standard at-uri: the literal `space` marker sits where a
-/// collection NSID would appear.
-fn parse_space_uri(uri: &str) -> Option<SpaceId> {
-    let rest = uri.strip_prefix("at://")?;
-    let parts: Vec<&str> = rest.split('/').collect();
-    if parts.len() != 4 || parts[1] != SPACE_MARKER {
-        return None;
-    }
-    if parts[0].is_empty() || parts[2].is_empty() || parts[3].is_empty() {
-        return None;
-    }
-    Some(SpaceId {
-        authority: parts[0].to_string(),
-        space_type: parts[2].to_string(),
-        skey: parts[3].to_string(),
-    })
-}
 
 /// GET /xrpc/com.atproto.space.getDelegationToken - Space delegation token endpoint.
 ///
@@ -140,7 +104,7 @@ pub async fn get_delegation_token(
     }
 
     // Validate and parse required space parameter
-    let space_uri = match params.space {
+    let space_param = match params.space {
         Some(space) if !space.is_empty() => space,
         _ => {
             return (
@@ -154,14 +118,14 @@ pub async fn get_delegation_token(
         }
     };
 
-    let space_id = match parse_space_uri(&space_uri) {
-        Some(space_id) => space_id,
+    let space_uri = match SpaceUri::from_string(&space_param) {
+        Some(space_uri) => space_uri,
         None => {
             return (
                 StatusCode::BAD_REQUEST,
                 Json(GetDelegationTokenError {
                     error: "InvalidRequest".to_string(),
-                    message: format!("Invalid space uri: {}", space_uri),
+                    message: format!("Invalid space uri: {}", space_param),
                 }),
             )
                 .into_response();
@@ -202,8 +166,8 @@ pub async fn get_delegation_token(
     let token = match sign_delegation_token(
         &private_key,
         &user_did,
-        &space_id.uri(),
-        &space_id.authority,
+        &space_uri.to_string(),
+        &space_uri.authority,
         DELEGATION_TOKEN_TTL_SECS,
     ) {
         Ok(token) => token,
@@ -226,35 +190,4 @@ pub async fn get_delegation_token(
     Json(GetDelegationTokenResponse { token }).into_response()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
 
-    #[test]
-    fn parses_valid_space_uri() {
-        let space = parse_space_uri("at://did:web:testuser.rustproto.com/space/my.bulletin.board/self")
-            .expect("valid space uri");
-        assert_eq!(space.authority, "did:web:testuser.rustproto.com");
-        assert_eq!(space.space_type, "my.bulletin.board");
-        assert_eq!(space.skey, "self");
-        assert_eq!(
-            space.uri(),
-            "at://did:web:testuser.rustproto.com/space/my.bulletin.board/self"
-        );
-    }
-
-    #[test]
-    fn rejects_public_at_uri() {
-        // A public at-uri has a collection NSID where the `space` marker belongs.
-        assert!(parse_space_uri("at://did:plc:abc/app.bsky.feed.post/3kabc").is_none());
-    }
-
-    #[test]
-    fn rejects_missing_prefix_and_wrong_shape() {
-        assert!(parse_space_uri("did:plc:abc/space/my.type/self").is_none());
-        assert!(parse_space_uri("at://did:plc:abc/space/my.type").is_none());
-        assert!(parse_space_uri("at://did:plc:abc/space/my.type/self/extra").is_none());
-        assert!(parse_space_uri("at://did:plc:abc/notspace/my.type/self").is_none());
-        assert!(parse_space_uri("at:///space/my.type/self").is_none());
-    }
-}
