@@ -34,7 +34,7 @@ use crate::pds::db::{
 };
 use crate::pds::oauth::{get_hostname, validate_dpop};
 use crate::pds::server::PdsState;
-use crate::uri::{SpaceUri};
+use crate::pds::spaces::{SpaceUri};
 use crate::ws::{DEFAULT_APP_VIEW_HOST_NAME};
 
 use crate::pds::xrpc::is_valid_outbound_url;

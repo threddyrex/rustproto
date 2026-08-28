@@ -2,8 +2,6 @@
 
 mod at_uri;
 mod atproto_proxy;
-mod space_uri;
 
 pub use at_uri::AtUri;
 pub use atproto_proxy::AtprotoProxy;
-pub use space_uri::{SpaceUri, SpaceRecordUri};

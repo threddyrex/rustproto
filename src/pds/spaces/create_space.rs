@@ -24,7 +24,7 @@ use serde_json::Value;
 use crate::pds::db::{DbSpace, PdsDb, StatisticKey};
 use crate::pds::server::PdsState;
 
-use crate::uri::{SpaceUri};
+use crate::pds::spaces::{SpaceUri};
 
 use crate::pds::auth::{auth_failure_response, check_user_auth, AuthType};
 use super::{is_spaces_enabled, spaces_disabled_response};

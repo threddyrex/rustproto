@@ -26,7 +26,7 @@ use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
 use crate::pds::user_repo::{parse_json_to_dag_cbor, UserRepo};
 use crate::repo::{CidV1, DagCborObject, DagCborValue};
-use crate::uri::{SpaceUri, SpaceRecordUri};
+use crate::pds::spaces::{SpaceUri, SpaceRecordUri};
 
 use crate::pds::auth::{auth_failure_response, check_user_auth, AuthType};
 use super::{is_spaces_enabled, spaces_disabled_response};
