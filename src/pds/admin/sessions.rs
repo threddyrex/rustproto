@@ -146,12 +146,7 @@ pub async fn admin_sessions(
     </tbody>
 </table>
 
-<div class="section-header">
-    <h2>OAuth Sessions <span class="session-count">({oauth_count})</span></h2>
-    <form method="post" action="/admin/deletealloauthsessions" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete all OAuth sessions?');">
-        <button type="submit" class="delete-all-btn">Delete All</button>
-    </form>
-</div>
+<h2>OAuth Sessions <span class="session-count">({oauth_count})</span></h2>
 <table class="sessions-table" id="oauthSessionsTable">
     <thead>
         <tr>
