@@ -25,7 +25,7 @@ pub use home::admin_home;
 pub use login::{admin_login_get, admin_login_post, admin_logout, get_caller_info};
 pub use sessions::{
     admin_sessions, admin_delete_legacy_session, admin_delete_oauth_session,
-    admin_delete_admin_session, admin_delete_all_oauth_sessions,
+    admin_delete_admin_session,
 };
 pub use stats::{
     admin_stats, admin_delete_statistic, admin_delete_all_statistics,

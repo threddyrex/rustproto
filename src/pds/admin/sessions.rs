@@ -423,41 +423,7 @@ pub async fn admin_delete_admin_session(
     Redirect::to("/admin/sessions").into_response()
 }
 
-/// Handle POST /admin/deletealloauthsessions - Delete all OAuth sessions.
-pub async fn admin_delete_all_oauth_sessions(
-    State(state): State<Arc<PdsState>>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
-    cookies: Cookies,
-) -> impl IntoResponse {
-    // Extract caller info first for IP-based session validation
-    let (ip_address, user_agent) = get_caller_info(&headers, Some(addr));
 
-    // Check if admin dashboard is enabled
-    if !is_admin_enabled(&state.db) {
-        return Redirect::to("/admin/login").into_response();
-    }
-
-    // Check authentication with IP verification
-    if !is_authenticated(&state.db, &cookies, &ip_address) {
-        return Redirect::to("/admin/login").into_response();
-    }
-
-    // Increment statistics
-    let stat_key = StatisticKey {
-        name: "admin/deletealloauthsessions".to_string(),
-        ip_address,
-        user_agent,
-    };
-    let _ = state.db.increment_statistic_for_endpoint(&stat_key);
-
-    // Delete all OAuth sessions
-    if let Err(e) = state.db.delete_all_oauth_sessions() {
-        state.log.error(&format!("Failed to delete all OAuth sessions: {}", e));
-    }
-
-    Redirect::to("/admin/sessions").into_response()
-}
 
 /// Calculate a human-friendly "time ago" from a created date string.
 ///
