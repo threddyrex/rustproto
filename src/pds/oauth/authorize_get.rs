@@ -117,7 +117,18 @@ pub fn generate_auth_form(
 ) -> String {
     let safe_request_uri = html_encode(request_uri);
     let safe_client_id = html_encode(client_id);
-    let safe_scope = html_encode(scope);
+
+    // Build the "requested permissions" section. Split the raw scope into one
+    // list item per token so it can be indented consistently with the resolved
+    // breakdown below.
+    let requested_items: String = scope
+        .split_whitespace()
+        .map(|s| format!("<li><code>{}</code></li>", html_encode(s)))
+        .collect();
+    let requested_section = format!(
+        r#"<h2 class="perm-heading">Requested permissions</h2>
+<ul class="scope-list scope-indent">{requested_items}</ul>"#
+    );
 
     // Build the "will be granted" section. The requested scope can contain opaque
     // `include:<nsid>` permission-set tokens; the resolved scope expands those into
@@ -130,8 +141,9 @@ pub fn generate_auth_form(
             .map(|s| format!("<li><code>{}</code></li>", html_encode(s)))
             .collect();
         format!(
-            r#"<p>These expand to the following permissions, which will be granted:</p>
-<ul class="scope-list">{items}</ul>"#
+            r#"<h2 class="perm-heading">Granted permissions</h2>
+<p class="perm-subtitle">The requested permissions above expand to the following, which will be granted:</p>
+<ul class="scope-list scope-indent">{items}</ul>"#
         )
     } else {
         String::new()
@@ -288,6 +300,9 @@ pub fn generate_auth_form(
     ul.scope-list {{ list-style: none; padding: 0; margin: 0 0 16px 0; }}
     ul.scope-list li {{ margin-bottom: 8px; }}
     ul.scope-list code {{ display: inline-block; word-break: break-all; }}
+    ul.scope-indent {{ margin-left: 24px; }}
+    h2.perm-heading {{ color: #e7e9ea; font-size: 18px; font-weight: 700; margin: 24px 0 8px 0; }}
+    p.perm-subtitle {{ color: #8899a6; margin: 0 0 8px 0; }}
     a {{ color: #1d9bf0; text-decoration: none; }}
     a:hover {{ text-decoration: underline; }}
     label {{ display: block; margin-bottom: 6px; color: #8899a6; }}
@@ -315,7 +330,7 @@ pub fn generate_auth_form(
 <h1>Authorize {safe_client_id}</h1>
 {failed_message}
 <p><strong>{safe_client_id}</strong> is requesting access to your account.</p>
-<p>Requested permissions: <code>{safe_scope}</code></p>
+{requested_section}
 {resolved_section}
 
 {passkey_section}
