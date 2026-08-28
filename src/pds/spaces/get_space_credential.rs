@@ -35,7 +35,7 @@ use crate::pds::db::{
 use crate::pds::oauth::{get_hostname, validate_dpop};
 use crate::pds::server::PdsState;
 use crate::uri::{SpaceUri};
-use crate::ws::{ActorQueryOptions, BlueskyClient, DEFAULT_APP_VIEW_HOST_NAME};
+use crate::ws::{DEFAULT_APP_VIEW_HOST_NAME};
 
 use crate::pds::xrpc::is_valid_outbound_url;
 use crate::pds::auth::{extract_atproto_public_key};
@@ -400,13 +400,9 @@ async fn resolve_issuer_public_key(
         .db
         .get_config_property("AppViewHostName")
         .unwrap_or_else(|_| DEFAULT_APP_VIEW_HOST_NAME.to_string());
-    let client = BlueskyClient::new(&app_view_host_name);
-    let options = ActorQueryOptions {
-        resolve_did_doc: true,
-        ..Default::default()
-    };
-    let did_doc = client
-        .resolve_actor_info(issuer, Some(options))
+    let did_doc = state
+        .lfs
+        .resolve_actor_info(issuer, None, &app_view_host_name)
         .await
         .ok()
         .and_then(|info| info.did_doc)
@@ -604,13 +600,9 @@ async fn check_managing_app_access(
         .db
         .get_config_property("AppViewHostName")
         .unwrap_or_else(|_| DEFAULT_APP_VIEW_HOST_NAME.to_string());
-    let client = BlueskyClient::new(&app_view_host_name);
-    let options = ActorQueryOptions {
-        resolve_did_doc: true,
-        ..Default::default()
-    };
-    let did_doc = client
-        .resolve_actor_info(app_did, Some(options))
+    let did_doc = state
+        .lfs
+        .resolve_actor_info(app_did, None, &app_view_host_name)
         .await
         .ok()
         .and_then(|info| info.did_doc)
