@@ -188,7 +188,7 @@ fn is_admin_enabled(db: &PdsDb) -> bool {
 /// Extract caller IP address and User-Agent from request headers.
 ///
 /// Re-exported from the canonical implementation in [`crate::pds::http_utils`].
-pub use crate::pds::http_utils::get_caller_info;
+pub use crate::pds::xrpc::get_caller_info;
 
 /// Verify a password against a stored PBKDF2 hash.
 ///

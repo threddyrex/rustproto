@@ -19,7 +19,8 @@ use crate::pds::db::{LegacySession, StatisticKey};
 use crate::pds::server::PdsState;
 use crate::ws::{ActorQueryOptions, BlueskyClient, DEFAULT_APP_VIEW_HOST_NAME};
 
-use super::auth_helpers::get_caller_info;
+use super::{get_caller_info};
+
 
 /// Request body for createSession.
 #[derive(Deserialize)]

@@ -38,8 +38,9 @@ use crate::uri::{SpaceUri};
 use crate::ws::{ActorQueryOptions, BlueskyClient, DEFAULT_APP_VIEW_HOST_NAME};
 
 use crate::pds::xrpc::is_valid_outbound_url;
-use crate::pds::xrpc::auth_helpers::{extract_atproto_public_key, get_caller_info};
+use crate::pds::auth::{extract_atproto_public_key};
 use crate::pds::spaces::{is_spaces_enabled, spaces_disabled_response};
+use crate::pds::xrpc::{get_caller_info};
 
 /// Known `policy` union variants (user-access policy), mirroring
 /// `com.atproto.simplespace.createSpace`.

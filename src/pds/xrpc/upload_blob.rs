@@ -17,7 +17,8 @@ use serde::Serialize;
 use crate::pds::blob_db::{BlobDb, create_blob_db};
 use crate::pds::db::{Blob, StatisticKey};
 use crate::pds::server::PdsState;
-use crate::pds::xrpc::auth_helpers::{auth_failure_response, check_user_auth_with_lxm_async, get_caller_info, AuthType};
+use crate::pds::auth::{auth_failure_response, check_user_auth_with_lxm_async, AuthType};
+use super::{get_caller_info};
 use crate::repo::CidV1;
 
 /// Blob reference response.

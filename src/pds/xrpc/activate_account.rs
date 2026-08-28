@@ -15,7 +15,8 @@ use crate::pds::db::StatisticKey;
 use crate::pds::firehose_event_generator::FirehoseEventGenerator;
 use crate::pds::server::PdsState;
 
-use super::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info};
+use crate::pds::auth::{auth_failure_response, check_user_auth};
+use crate::pds::xrpc::{get_caller_info};
 
 /// POST /xrpc/com.atproto.server.activateAccount - Activate account endpoint.
 ///

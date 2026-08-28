@@ -12,9 +12,10 @@ use axum::{
 };
 use tower_cookies::Cookies;
 
-use super::{get_base_styles, get_caller_info, get_navbar_css, get_navbar_html, is_admin_enabled, is_authenticated};
+use super::{get_base_styles, get_navbar_css, get_navbar_html, is_admin_enabled, is_authenticated};
 use crate::pds::db::{PdsDb, StatisticKey};
 use crate::pds::server::PdsState;
+use crate::pds::xrpc::{get_caller_info};
 
 /// Handle GET /admin/ - Show admin home page.
 pub async fn admin_home(

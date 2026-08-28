@@ -16,7 +16,9 @@ use serde::Serialize;
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
 
-use super::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info};
+use crate::pds::auth::{auth_failure_response, check_user_auth};
+use super::{get_caller_info};
+
 
 /// Successful response for checkAccountStatus.
 #[derive(Serialize)]

@@ -26,8 +26,9 @@ use crate::pds::server::PdsState;
 use crate::uri::AtprotoProxy;
 use crate::ws::DEFAULT_APP_VIEW_HOST_NAME;
 
-use super::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info};
+use crate::pds::auth::{auth_failure_response, check_user_auth};
 use super::is_valid_outbound_url;
+use super::{get_caller_info};
 
 /// Default Atproto-Proxy value for the Bluesky AppView.
 const DEFAULT_ATPROTO_PROXY: &str = "did:web:api.bsky.app#bsky_appview";

@@ -26,8 +26,9 @@ use crate::pds::server::PdsState;
 
 use crate::uri::{SpaceUri};
 
-use crate::pds::xrpc::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info, AuthType};
+use crate::pds::auth::{auth_failure_response, check_user_auth, AuthType};
 use super::{is_spaces_enabled, spaces_disabled_response};
+use crate::pds::xrpc::{get_caller_info};
 
 /// The fixed marker segment identifying a permissioned-space URI.
 const SPACE_MARKER: &str = "space";

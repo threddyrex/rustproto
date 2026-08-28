@@ -16,7 +16,9 @@ use serde::{Deserialize, Serialize};
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
 use crate::pds::user_repo::{ApplyWritesOperation, UserRepo, parse_json_to_dag_cbor, write_type};
-use crate::pds::xrpc::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info};
+use crate::pds::auth::{auth_failure_response, check_user_auth};
+use super::{get_caller_info};
+
 
 /// Request body for createRecord.
 #[derive(Deserialize)]

@@ -14,7 +14,7 @@ use crate::pds::server::PdsState;
 /// OAuth handlers do not extract the connection socket address, so callers pass
 /// `None` for `socket_addr`; the IP is resolved from `X-Forwarded-For` or falls
 /// back to `"unknown"`.
-pub use crate::pds::http_utils::get_caller_info;
+pub use crate::pds::xrpc::get_caller_info;
 
 /// Check if OAuth is enabled in the PDS configuration.
 ///

@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
 use crate::ws::DEFAULT_APP_VIEW_HOST_NAME;
-use crate::pds::xrpc::auth_helpers::get_caller_info;
+use super::{get_caller_info};
 
 /// Query parameters for describeRepo.
 #[derive(Deserialize)]

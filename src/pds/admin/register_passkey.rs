@@ -23,7 +23,9 @@ use crate::pds::db::{Passkey, PasskeyChallenge, PdsDb, StatisticKey};
 use crate::pds::server::PdsState;
 use crate::repo::DagCborObject;
 
-use super::{get_caller_info, is_admin_enabled, is_authenticated};
+use super::{is_admin_enabled, is_authenticated};
+use crate::pds::xrpc::{get_caller_info};
+
 
 // =============================================================================
 // HELPER FUNCTIONS

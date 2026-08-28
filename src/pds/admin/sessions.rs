@@ -15,9 +15,10 @@ use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use tower_cookies::Cookies;
 
-use super::{get_base_styles, get_caller_info, get_navbar_css, get_navbar_html, is_admin_enabled, is_authenticated};
+use super::{get_base_styles, get_navbar_css, get_navbar_html, is_admin_enabled, is_authenticated};
 use crate::pds::db::{AdminSession, LegacySession, OauthSession, PasskeyChallenge, StatisticKey};
 use crate::pds::server::PdsState;
+use crate::pds::xrpc::{get_caller_info};
 
 /// Handle GET /admin/sessions - Show sessions page.
 pub async fn admin_sessions(

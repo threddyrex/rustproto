@@ -16,7 +16,7 @@ use axum::{
 
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
-use crate::pds::xrpc::auth_helpers::get_caller_info;
+use super::{get_caller_info};
 
 /// GET /.well-known/atproto-did - Returns the user's DID as plain text.
 pub async fn well_known_atproto_did(

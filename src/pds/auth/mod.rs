@@ -3,9 +3,17 @@
 //! This module provides JWT token generation, validation, and password
 //! verification utilities for AT Protocol authentication.
 
+mod auth_flow;
 mod jwt;
 mod password;
 mod signer;
+
+pub use auth_flow::{
+    AuthType,
+    check_user_auth, check_user_auth_with_lxm_async, check_legacy_auth, 
+    auth_failure_response,
+    extract_atproto_public_key, extract_bearer_token};
+
 
 pub use jwt::{
     generate_access_jwt, generate_refresh_jwt, validate_access_jwt, validate_refresh_jwt,

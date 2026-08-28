@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use crate::mst::{Mst, MstItem};
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
-use crate::pds::xrpc::auth_helpers::get_caller_info;
+use super::{get_caller_info};
 use crate::repo::{CidV1, DagCborObject, RepoMst, VarInt};
 
 /// Query parameters for getRepo.

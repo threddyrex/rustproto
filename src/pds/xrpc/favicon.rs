@@ -13,7 +13,7 @@ use axum::{
 
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
-use crate::pds::xrpc::auth_helpers::get_caller_info;
+use super::{get_caller_info};
 
 /// GET /favicon.ico - Serve the favicon if it exists.
 ///

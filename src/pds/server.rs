@@ -20,7 +20,7 @@ use tower_http::cors::{Any, CorsLayer};
 use super::admin;
 use super::background_jobs::BackgroundJobs;
 use super::db::{PdsDb};
-use super::http_utils::get_caller_info;
+use crate::pds::xrpc::get_caller_info;
 use super::oauth;
 use super::spaces;
 use super::xrpc;

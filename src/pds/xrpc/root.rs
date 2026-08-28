@@ -14,7 +14,7 @@ use axum::{
 
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
-use crate::pds::xrpc::auth_helpers::get_caller_info;
+use super::{get_caller_info};
 
 /// GET / - Serve index.html from the static directory, or a default page.
 ///

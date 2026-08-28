@@ -19,7 +19,9 @@ use crate::pds::auth::{generate_access_jwt, generate_refresh_jwt, validate_refre
 use crate::pds::db::{LegacySession, StatisticKey};
 use crate::pds::server::PdsState;
 
-use super::auth_helpers::{extract_bearer_token, get_caller_info};
+use crate::pds::auth::{extract_bearer_token};
+use super::{get_caller_info};
+
 
 /// Lock for refresh operations to prevent race conditions.
 static REFRESH_LOCK: Mutex<()> = Mutex::new(());

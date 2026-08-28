@@ -20,7 +20,7 @@ use tokio::time::{Duration, interval};
 
 use crate::pds::db::StatisticKey;
 use crate::pds::server::PdsState;
-use crate::pds::xrpc::auth_helpers::get_caller_info;
+use super::{get_caller_info};
 
 /// Query parameters for subscribeRepos.
 #[derive(Deserialize)]

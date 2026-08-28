@@ -15,7 +15,9 @@ use crate::pds::db::StatisticKey;
 use crate::pds::firehose_event_generator::FirehoseEventGenerator;
 use crate::pds::server::PdsState;
 
-use super::auth_helpers::{auth_failure_response, check_legacy_auth, get_caller_info};
+use crate::pds::auth::{auth_failure_response, check_legacy_auth};
+use super::{get_caller_info};
+
 
 /// POST /xrpc/com.atproto.server.deactivateAccount - Deactivate account endpoint.
 ///

@@ -20,12 +20,13 @@ use serde::Deserialize;
 use sha2::Sha256;
 use tower_cookies::{Cookie, Cookies};
 
-use super::{get_base_styles, get_caller_info, get_navbar_css, get_navbar_html, is_admin_enabled, is_authenticated};
+use super::{get_base_styles, get_navbar_css, get_navbar_html, is_admin_enabled, is_authenticated};
 use crate::log::{Logger, LogLevel};
 use crate::pds::db::{PdsDb, StatisticKey};
 use crate::pds::firehose_event_generator::FirehoseEventGenerator;
 use crate::pds::installer::Installer;
 use crate::pds::server::PdsState;
+use crate::pds::xrpc::{get_caller_info};
 
 /// Password hasher constants (must match dnproto).
 const SALT_SIZE: usize = 16; // 128 bits

@@ -1,4 +1,4 @@
-//! Authentication helpers for XRPC endpoints.
+//! Authentication flow for XRPC endpoints.
 //!
 //! This module provides utilities for extracting and validating authentication
 //! from HTTP requests in XRPC handlers.
@@ -533,10 +533,6 @@ pub fn auth_failure_response(auth_result: &AuthResult) -> Response {
     }
 }
 
-/// Extract caller info (IP address and user agent) from request headers.
-///
-/// Re-exported from the canonical implementation in [`crate::pds::http_utils`].
-pub use crate::pds::http_utils::get_caller_info;
 
 /// Result of OAuth token validation.
 #[allow(dead_code)]
@@ -1130,7 +1126,7 @@ pub async fn validate_service_auth_token_async(
 /// Extract the atproto public key from a DID document.
 ///
 /// Looks for a verificationMethod with id ending in "#atproto".
-pub(crate) fn extract_atproto_public_key(did_doc: &str) -> Option<String> {
+pub fn extract_atproto_public_key(did_doc: &str) -> Option<String> {
     let doc: serde_json::Value = serde_json::from_str(did_doc).ok()?;
     
     let methods = doc.get("verificationMethod")?.as_array()?;
