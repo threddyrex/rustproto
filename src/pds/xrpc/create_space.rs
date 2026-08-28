@@ -24,6 +24,8 @@ use serde_json::Value;
 use crate::pds::db::{DbSpace, PdsDb, StatisticKey};
 use crate::pds::server::PdsState;
 
+use crate::uri::{SpaceUri};
+
 use super::auth_helpers::{auth_failure_response, check_user_auth, get_caller_info, AuthType};
 use super::space_helpers::{is_spaces_enabled, spaces_disabled_response};
 
@@ -79,35 +81,6 @@ fn error_response(status: StatusCode, error: &str, message: &str) -> Response {
         .into_response()
 }
 
-/// Validate that a string is a plausible NSID (dotted, non-empty segments).
-fn is_valid_nsid(nsid: &str) -> bool {
-    if nsid.is_empty() {
-        return false;
-    }
-    let segments: Vec<&str> = nsid.split('.').collect();
-    if segments.len() < 2 {
-        return false;
-    }
-    segments.iter().all(|seg| {
-        !seg.is_empty()
-            && seg
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-')
-            && seg.chars().next().map(|c| c.is_ascii_alphabetic()).unwrap_or(false)
-    })
-}
-
-/// Validate a record-key-shaped space key.
-fn is_valid_skey(skey: &str) -> bool {
-    if skey.is_empty() || skey.len() > 512 {
-        return false;
-    }
-    if skey == "." || skey == ".." {
-        return false;
-    }
-    skey.chars()
-        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | ':' | '~'))
-}
 
 /// Validate the `policy` union. Returns `Err(message)` for an unsupported or
 /// malformed variant.
@@ -199,7 +172,7 @@ pub async fn create_space(
     }
 
     // Validate the space type.
-    if !is_valid_nsid(&body.space_type) {
+    if !SpaceUri::is_valid_nsid(&body.space_type) {
         return error_response(
             StatusCode::BAD_REQUEST,
             "InvalidRequest",
@@ -210,7 +183,7 @@ pub async fn create_space(
     // Resolve the space key: use the provided one or generate a TID.
     let skey = match body.skey {
         Some(skey) => {
-            if !is_valid_skey(&skey) {
+            if !SpaceUri::is_valid_skey(&skey) {
                 return error_response(
                     StatusCode::BAD_REQUEST,
                     "InvalidRequest",
@@ -327,25 +300,6 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    #[test]
-    fn validates_nsid() {
-        assert!(is_valid_nsid("my.bulletin.board"));
-        assert!(is_valid_nsid("app.bsky.group"));
-        assert!(!is_valid_nsid("board"));
-        assert!(!is_valid_nsid(""));
-        assert!(!is_valid_nsid("my..board"));
-        assert!(!is_valid_nsid("my.1bad.board"));
-    }
-
-    #[test]
-    fn validates_skey() {
-        assert!(is_valid_skey("self"));
-        assert!(is_valid_skey("3kabc"));
-        assert!(!is_valid_skey(""));
-        assert!(!is_valid_skey("."));
-        assert!(!is_valid_skey(".."));
-        assert!(!is_valid_skey("has/slash"));
-    }
 
     #[test]
     fn accepts_known_policies() {

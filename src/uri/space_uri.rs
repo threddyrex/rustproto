@@ -21,7 +21,7 @@ pub struct SpaceUri {
 
 impl SpaceUri {
 
-    pub fn new(authority: &str, space_type: &str, skey: &str) -> Self {
+    fn new(authority: &str, space_type: &str, skey: &str) -> Self {
         SpaceUri {
             authority: authority.to_string(),
             space_type: space_type.to_string(),
@@ -44,9 +44,11 @@ impl SpaceUri {
         let authority = parts[2];
         let space_type = parts[4];
         let skey = parts[5];
-        if authority.is_empty() || space_type.is_empty() || skey.is_empty() {
+
+        if authority.is_empty() || space_type.is_empty() || skey.is_empty() || !Self::is_valid_nsid(space_type) || !Self::is_valid_skey(skey) {
             return None;
         }
+
         Some(SpaceUri::new(authority, space_type, skey))
     }
 
@@ -57,6 +59,37 @@ impl SpaceUri {
             self.authority, SPACE_MARKER, self.space_type, self.skey
         )
     }
+
+    /// Validate that a string is a plausible NSID (dotted, non-empty segments).
+    pub fn is_valid_nsid(nsid: &str) -> bool {
+        if nsid.is_empty() {
+            return false;
+        }
+        let segments: Vec<&str> = nsid.split('.').collect();
+        if segments.len() < 2 {
+            return false;
+        }
+        segments.iter().all(|seg| {
+            !seg.is_empty()
+                && seg
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-')
+                && seg.chars().next().map(|c| c.is_ascii_alphabetic()).unwrap_or(false)
+        })
+    }
+
+    /// Validate a record-key-shaped space key.
+    pub fn is_valid_skey(skey: &str) -> bool {
+        if skey.is_empty() || skey.len() > 512 {
+            return false;
+        }
+        if skey == "." || skey == ".." {
+            return false;
+        }
+        skey.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | ':' | '~'))
+    }
+
 }
 
 
@@ -238,5 +271,26 @@ mod tests {
         )
         .is_none());
     }
+
+    #[test]
+    fn validates_nsid() {
+        assert!(SpaceUri::is_valid_nsid("my.bulletin.board"));
+        assert!(SpaceUri::is_valid_nsid("app.bsky.group"));
+        assert!(!SpaceUri::is_valid_nsid("board"));
+        assert!(!SpaceUri::is_valid_nsid(""));
+        assert!(!SpaceUri::is_valid_nsid("my..board"));
+        assert!(!SpaceUri::is_valid_nsid("my.1bad.board"));
+    }
+
+    #[test]
+    fn validates_skey() {
+        assert!(SpaceUri::is_valid_skey("self"));
+        assert!(SpaceUri::is_valid_skey("3kabc"));
+        assert!(!SpaceUri::is_valid_skey(""));
+        assert!(!SpaceUri::is_valid_skey("."));
+        assert!(!SpaceUri::is_valid_skey(".."));
+        assert!(!SpaceUri::is_valid_skey("has/slash"));
+    }
+
 }
 
