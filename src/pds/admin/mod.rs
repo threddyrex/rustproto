@@ -56,9 +56,9 @@ pub use register_passkey::{admin_register_passkey_get, admin_passkey_registratio
 pub fn get_navbar_css() -> &'static str {
     r#"
         .navbar { position: fixed; top: 0; left: 0; bottom: 0; width: 180px; display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 24px 16px; border-right: 1px solid #2f3336; background-color: #1a1c20; box-sizing: border-box; overflow-y: auto; }
-        .nav-btn { background-color: #4caf50; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: 500; text-decoration: none; display: block; text-align: left; }
-        .nav-btn:hover { background-color: #388e3c; }
-        .nav-btn.active { background-color: #388e3c; }
+        .nav-btn { background-color: #0e6210; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: 500; text-decoration: none; display: block; text-align: left; }
+        .nav-btn:hover { background-color: #0e6210; }
+        .nav-btn.active { background-color: #0e6210; }
         .nav-btn-destructive { background-color: #f44336; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: 500; text-decoration: none; display: block; text-align: left; }
         .nav-btn-destructive:hover { background-color: #d32f2f; }
         .nav-btn-destructive.active { background-color: #d32f2f; }
@@ -77,12 +77,12 @@ pub fn get_navbar_html(active_page: &str) -> String {
     
     format!(r#"
         <div class="navbar">
-            <a href="/admin/" class="nav-btn{home}">Home</a>
-            <a href="/admin/sessions" class="nav-btn{sessions}">Sessions</a>
-            <a href="/admin/spaces" class="nav-btn{spaces}">Spaces</a>
-            <a href="/admin/stats" class="nav-btn{stats}">Stats</a>
-            <a href="/admin/stats_ip" class="nav-btn{stats_ip}">Stats (ip)</a>
-            <a href="/admin/stats_writes" class="nav-btn{stats_writes}">Stats (writes)</a>
+            <a href="/admin/" class="nav-btn{home}">🏠 Home</a>
+            <a href="/admin/sessions" class="nav-btn{sessions}">🔐 Sessions</a>
+            <a href="/admin/spaces" class="nav-btn{spaces}">🚀 Spaces</a>
+            <a href="/admin/stats" class="nav-btn{stats}">📊 Stats</a>
+            <a href="/admin/stats_ip" class="nav-btn{stats_ip}">📊 Stats (ip)</a>
+            <a href="/admin/stats_writes" class="nav-btn{stats_writes}">📊 Stats (writes)</a>
             <div class="nav-spacer"></div>
             <a href="/admin/config" class="nav-btn-destructive{config}">Config</a>
             <a href="/admin/actions" class="nav-btn-destructive{actions}">Actions</a>
