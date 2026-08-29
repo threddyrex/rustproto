@@ -299,8 +299,8 @@ async fn logging_middleware(
     let status = response.status();
 
     state.log.info(&format!(
-        "[END REQUEST] {} {} {} {} {} --> {} ({:.2?})",
-        ip_address, method, path, params_str, user_agent, status.as_u16(), elapsed
+        "[END REQUEST] [{} ({:.2?})] {} {} {} {} {}",
+        status.as_u16(), elapsed, ip_address, method, path, params_str, user_agent
     ));
 
     response
