@@ -279,10 +279,13 @@ async fn logging_middleware(
     // Extract caller info for statistics
     let (ip_address, user_agent) = get_caller_info(request.headers(), Some(addr));
 
+    // get params string for logging
+    let params_str = uri.query().map(|q| format!("?{}", q)).unwrap_or_default();
+
     // Log the connection
     state.log.info(&format!(
-        "[CONNECT] {} {} {}",
-        ip_address, path, user_agent
+        "[BEGIN REQUEST] {} {} {} {} {}",
+        ip_address, method, path, user_agent, params_str,
     ));
 
     // Optionally log the full details of configured XRPC endpoints (debugging
@@ -296,8 +299,8 @@ async fn logging_middleware(
     let status = response.status();
 
     state.log.info(&format!(
-        "{} {} -> {} ({:.2?})",
-        method, path, status.as_u16(), elapsed
+        "[END REQUEST] {} {} {} {} {} ({:.2?})",
+        ip_address, method, path, user_agent, status.as_u16(), elapsed
     ));
 
     response
