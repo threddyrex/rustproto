@@ -551,6 +551,8 @@ pub struct OauthValidationResult {
     pub client_id: Option<String>,
     /// The JWK thumbprint (cnf.jkt) from the token.
     pub jwk_thumbprint: Option<String>,
+    /// The original requested scope
+    pub requested_scope: Option<String>,
 }
 
 impl Default for OauthValidationResult {
@@ -563,6 +565,7 @@ impl Default for OauthValidationResult {
             scope: None,
             client_id: None,
             jwk_thumbprint: None,
+            requested_scope: None,
         }
     }
 }
@@ -1527,12 +1530,25 @@ pub fn validate_oauth_access_token(
         return result;
     }
 
+    // Get the oauth session, to pass back the requested scope
+    let oauth_session = match state
+        .db
+        .get_oauth_session_by_dpop_thumbprint(&jwk_thumbprint)
+        .unwrap_or(None) {
+        Some(session) => session,
+        None => {
+            result.error = Some("No valid OAuth session found for this token".to_string());
+            return result;
+        }
+    };
+
     // update db
     let _ = state.db.update_oauth_session_last_used_date(&jwk_thumbprint);
 
     result.is_valid = true;
     result.subject = token_result.subject;
     result.scope = token_result.scope;
+    result.requested_scope = Some(oauth_session.requested_scope);
     result.client_id = token_result.client_id;
     result.jwk_thumbprint = token_result.jwk_thumbprint;
 
@@ -1679,8 +1695,8 @@ pub fn check_oauth_auth(
     }
 
     logger().info(&format!(
-        "[AUTH] [OAUTH] ip={} authenticated=true scope={:?}",
-        ip, oauth_result.scope
+        "[AUTH] [OAUTH] ip={} authenticated=true requested_scope={:?}",
+        ip, oauth_result.requested_scope.unwrap_or_default()
     ));
 
     AuthResult {
