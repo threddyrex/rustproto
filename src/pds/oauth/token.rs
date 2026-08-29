@@ -219,12 +219,12 @@ async fn handle_authorization_code(
     // sets are resolved and expanded into concrete granular scopes here, at
     // session creation time; the expanded string is what gets stored on the
     // session and used for the access token (and reused verbatim on refresh).
-    let raw_scope = get_form_value(&oauth_request.body, "scope").unwrap_or_default();
+    let requested_scope = get_form_value(&oauth_request.body, "scope").unwrap_or_default();
     let app_view_host_name = state
         .db
         .get_config_property("AppViewHostName")
         .unwrap_or_else(|_| DEFAULT_APP_VIEW_HOST_NAME.to_string());
-    let scope = resolve_scopes(&raw_scope, &state.lfs, &app_view_host_name, state.log).await;
+    let scope = resolve_scopes(&requested_scope, &state.lfs, &app_view_host_name, state.log).await;
     let auth_type = oauth_request.auth_type.clone().unwrap_or_else(|| "Unknown".to_string());
 
     // Get caller info for session
@@ -242,7 +242,7 @@ async fn handle_authorization_code(
         session_id: session_id.clone(),
         client_id: client_id.clone(),
         scope: scope.clone(),
-        requested_scope: raw_scope.clone(),
+        requested_scope: requested_scope.clone(),
         dpop_jwk_thumbprint: jwk_thumbprint.clone(),
         refresh_token: refresh_token.clone(),
         refresh_token_expires_date: refresh_expires.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
@@ -253,8 +253,8 @@ async fn handle_authorization_code(
     };
 
     state.log.info(&format!(
-        "[AUTH] [OAUTH] authorization_code: Scope from PAR: '{}' -> resolved: '{}'",
-        raw_scope, scope
+        "[AUTH] [OAUTH] authorization_code: requested_scope: '{}' -> actual_scope: '{}'",
+        requested_scope, scope
     ));
 
     if let Err(e) = state.db.insert_oauth_session(&oauth_session) {
@@ -316,8 +316,8 @@ async fn handle_authorization_code(
     };
 
     state.log.info(&format!(
-        "[AUTH] [OAUTH] authorization_code: Token issued. session_id={} at_fp={} scope={}",
-        session_id, token_fp(&access_token), scope
+        "[AUTH] [OAUTH] authorization_code: Token issued. session_id={} at_fp={} requested_scope={}",
+        session_id, token_fp(&access_token), requested_scope
     ));
 
     Json(TokenResponse {
