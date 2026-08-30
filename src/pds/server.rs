@@ -280,7 +280,13 @@ async fn logging_middleware(
     let (ip_address, user_agent) = get_caller_info(request.headers(), Some(addr));
 
     // get params string for logging
-    let params_str = uri.query().map(|q| format!("?{}", q)).unwrap_or_default();
+    let mut params_str = uri.query().map(|q| format!("?{}", q)).unwrap_or_default();
+
+    // this one is verbose and we'll never read it
+    if path == "/xrpc/app.bsky.feed.getPosts"
+    {
+        params_str = "<params_str omitted>".to_string();
+    }
 
     // Log the connection
     state.log.info(&format!(
