@@ -879,6 +879,9 @@ impl BlueskyClient {
         Ok(json)
     }
 
+
+
+    
     /// Resolves a lexicon schema by NSID using authoritative DNS + DID + PDS routing.
     ///
     /// Resolution flow:
@@ -886,11 +889,6 @@ impl BlueskyClient {
     /// 2. Resolve `_lexicon.{authority}` TXT and read `did=...`
     /// 3. Resolve DID doc, extract PDS service endpoint
     /// 4. Fetch `com.atproto.lexicon.schema/{nsid}` via `com.atproto.repo.getRecord`
-    pub async fn get_lexicon_schema(&self, schema: &str) -> Result<Value, BlueskyClientError> {
-        self.resolve_lexicon_schema(schema).await
-    }
-
-    /// Resolves a lexicon schema by NSID using DNS TXT `_lexicon` authority records.
     pub async fn resolve_lexicon_schema(&self, nsid: &str) -> Result<Value, BlueskyClientError> {
         let authority = Self::lexicon_authority_from_nsid(nsid)?;
         let dns_name = format!("_lexicon.{}", authority);

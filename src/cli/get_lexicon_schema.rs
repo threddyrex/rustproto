@@ -41,7 +41,7 @@ pub async fn cmd_get_lexicon_schema(args: &HashMap<String, String>) {
         }
     } else {
         let client = BlueskyClient::new(DEFAULT_APP_VIEW_HOST_NAME);
-        match client.get_lexicon_schema(schema).await {
+        match client.resolve_lexicon_schema(schema).await {
             Ok(response) => response,
             Err(e) => {
                 log.error(&format!("Error resolving lexicon schema: {}", e));
