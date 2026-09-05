@@ -8,14 +8,14 @@ use crate::log::logger;
 use crate::ws::{BlueskyClient, DEFAULT_APP_VIEW_HOST_NAME};
 
 /// Resolves a lexicon schema by NSID and prints the JSON response.
-pub async fn cmd_get_lexicon_schema(args: &HashMap<String, String>) {
+pub async fn cmd_resolve_lexicon_schema(args: &HashMap<String, String>) {
     let log = logger();
 
     let schema = match get_arg(args, "schema") {
         Some(s) => s,
         None => {
             log.error("missing /schema argument");
-            log.error("Usage: rustproto /command GetLexiconSchema /schema <lexicon_id>");
+            log.error("Usage: rustproto /command ResolveLexiconSchema /schema <lexicon_id>");
             return;
         }
     };

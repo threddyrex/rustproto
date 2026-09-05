@@ -11,4 +11,4 @@ param (
 
 
 # call rustproto.exe to resolve a lexicon schema by NSID
-& $exePath /command GetLexiconSchema /schema $schema /logLevel $logLevel /logToDataDir $logToDataDir /dataDir $dataDir
+& $exePath /command ResolveLexiconSchema /schema $schema /logLevel $logLevel /logToDataDir $logToDataDir /dataDir $dataDir
