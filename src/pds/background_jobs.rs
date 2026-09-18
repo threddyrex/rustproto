@@ -144,6 +144,20 @@ impl BackgroundJobs {
         });
         self.handles.push(handle);
 
+        
+        // Job delete old statistics
+        let log = self.log;
+        let db = Arc::clone(&self.db);
+        let handle = tokio::spawn(async move {
+            let mut timer = interval(Duration::from_secs(3600));
+            loop {
+                timer.tick().await;
+                job_delete_old_statistics(log, &db);
+            }
+        });
+        self.handles.push(handle);
+
+
         self.log.info("[BACKGROUND] Background jobs started");
     }
 
@@ -351,6 +365,13 @@ fn job_delete_stale_admin_sessions(log: &'static Logger, db: &PdsDb) {
     log.info("[BACKGROUND] DeleteStaleAdminSessions");
     if let Err(e) = db.delete_stale_admin_sessions(ADMIN_SESSION_TIMEOUT_MINUTES) {
         log.error(&format!("[BACKGROUND] DeleteStaleAdminSessions error: {}", e));
+    }
+}
+
+fn job_delete_old_statistics(log: &'static Logger, db: &PdsDb) {
+    log.info("[BACKGROUND] DeleteOldStatistics");
+    if let Err(e) = db.delete_old_statistics(24) {
+        log.error(&format!("[BACKGROUND] DeleteOldStatistics error: {}", e));
     }
 }
 
