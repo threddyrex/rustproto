@@ -466,7 +466,7 @@ fn get_sort_and_filter_script() -> &'static str {
                 
                 // "Show apply_writes" filter (check Name column only to avoid matching the Delete button)
                 if (onlyWrites) {
-                    const nameText = (cells[0] ? cells[0].textContent.toLowerCase() : '');
+                    const nameText = (cells[4] ? cells[4].textContent.toLowerCase() : '');
                     if (!nameText.startsWith('apply_writes')) {
                         row.style.display = 'none';
                         return;
