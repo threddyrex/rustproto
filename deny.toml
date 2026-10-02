@@ -213,6 +213,8 @@ skip = [
     { crate = "getrandom@0.3.4", reason = "intermediate getrandom version pulled by transitive deps; not directly controllable" },
     # --- rusqlite -> hashlink pins the older hashbrown ---
     { crate = "hashbrown@0.14.5", reason = "pulled by rusqlite->hashlink" },
+    # --- base64 pulled at two majors by transitive deps ---
+    { crate = "base64@0.22.1", reason = "pulled by jsonwebtoken/pem/reqwest; hyper-util pulls base64 0.23, neither directly controllable" },
     # --- platform-native bindings; subsystems legitimately use different majors ---
     { crate = "core-foundation@0.9.4", reason = "older macOS/native-tls bindings; transitive, platform-specific" },
     { crate = "windows-sys@0.52.0", reason = "older Windows bindings from transitive deps; platform-specific" },
