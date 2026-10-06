@@ -184,6 +184,10 @@ fn build_config_table(db: &PdsDb) -> String {
     rows.push(section("Debugging"));
     rows.push(row("LogXrpcEndpoints", get_value("LogXrpcEndpoints"), "Comma-separated list of XRPC endpoints (nsids) to log in full detail at info level."));
 
+    // Backups section
+    rows.push(section("Backups"));
+    rows.push(row("AzureStorageSASURL", get_value("AzureStorageSASURL"), "Azure Storage SAS URL used for backups."));
+
     rows.join("\n")
 }
 

@@ -45,6 +45,7 @@ const ALLOWED_CONFIG_KEYS: &[&str] = &[
     "OauthAllowedRedirectUris",
     "AppViewHostName",
     "LogXrpcEndpoints",
+    "AzureStorageSASURL",
 ];
 
 /// Form data for setting a config property.
@@ -328,6 +329,13 @@ fn render_config_page(db: &PdsDb) -> Html<String> {
         <td><button class="set-btn" onclick="setConfig('LogXrpcEndpoints', '{log_xrpc_endpoints_js}')">Set</button></td>
         <td>Comma-separated list of XRPC endpoints (nsids) to log in full detail at info level (ex: com.atproto.repo.createRecord).</td>
     </tr>
+    <tr class="section-header"><td colspan="4">Backups</td></tr>
+    <tr>
+        <td class="key-name">AzureStorageSASURL</td>
+        <td>{azure_storage_sas_url}</td>
+        <td><button class="set-btn" onclick="setConfig('AzureStorageSASURL', '{azure_storage_sas_url_js}')">Set</button></td>
+        <td>Azure Storage SAS URL used for backups.</td>
+    </tr>
 </table>
 <script>
 function setConfig(key, currentValue) {{
@@ -424,6 +432,9 @@ function setBoolConfig(key, value) {{
         // Debugging section
         log_xrpc_endpoints = get_config_value(db, "LogXrpcEndpoints"),
         log_xrpc_endpoints_js = get_config_value_for_js(db, "LogXrpcEndpoints"),
+        // Backups section
+        azure_storage_sas_url = get_config_value(db, "AzureStorageSASURL"),
+        azure_storage_sas_url_js = get_config_value_for_js(db, "AzureStorageSASURL"),
     );
 
     Html(html)
