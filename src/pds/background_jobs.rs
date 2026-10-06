@@ -87,7 +87,7 @@ impl BackgroundJobs {
             let mut timer = interval(Duration::from_secs(3600));
             loop {
                 timer.tick().await;
-                job_cleanup_old_logs(log, &lfs, &db);
+                job_cleanup_old_logs(log, &lfs, &db).await;
             }
         });
         self.handles.push(handle);
@@ -203,7 +203,7 @@ fn job_update_log_level(log: &'static Logger, db: &PdsDb) {
 }
 
 /// Job: Cleanup old log files based on retention period.
-fn job_cleanup_old_logs(log: &'static Logger, lfs: &LocalFileSystem, db: &PdsDb) {
+async fn job_cleanup_old_logs(log: &'static Logger, lfs: &LocalFileSystem, db: &PdsDb) {
     let log_retention_days = match db.get_config_property_int("LogRetentionDays") {
         Ok(days) => days,
         Err(e) => {
@@ -254,6 +254,9 @@ fn job_cleanup_old_logs(log: &'static Logger, lfs: &LocalFileSystem, db: &PdsDb)
 
         let modified_datetime: chrono::DateTime<chrono::Local> = modified.into();
         if modified_datetime < cutoff {
+            // Back up the log file to Azure storage before removing it.
+            backup_log_to_azure(log, db, &path, file_name).await;
+
             log.info(&format!("[BACKGROUND] Deleting old log file: {}", path.display()));
             if let Err(e) = std::fs::remove_file(&path) {
                 log.error(&format!(
@@ -263,6 +266,83 @@ fn job_cleanup_old_logs(log: &'static Logger, lfs: &LocalFileSystem, db: &PdsDb)
             }
         } else {
             log.info(&format!("[BACKGROUND] Keeping log file: {}", path.display()));
+        }
+    }
+}
+
+/// Back up a log file to the Azure storage container referenced by the
+/// `AzureStorageSASURL` config property before it is deleted.
+///
+/// If the config property is not set, a warning is logged and the caller
+/// proceeds to remove the file anyway.
+async fn backup_log_to_azure(
+    log: &'static Logger,
+    db: &PdsDb,
+    path: &std::path::Path,
+    file_name: &str,
+) {
+    let sas_url = match db.get_config_property("AzureStorageSASURL") {
+        Ok(url) if !url.is_empty() => url,
+        _ => {
+            log.warning(&format!(
+                "[BACKGROUND] CleanupOldLogs: AzureStorageSASURL not set, skipping backup of log file: {}",
+                file_name
+            ));
+            return;
+        }
+    };
+
+    let pds_hostname = db
+        .get_config_property("PdsHostname")
+        .unwrap_or_else(|_| "unknown".to_string());
+
+    let timestamp = chrono::Local::now().format("%Y%m%d%H%M%S").to_string();
+    let blob_name = format!("{}-pds.log-{}.log.bak", timestamp, pds_hostname);
+
+    let file_bytes = match std::fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            log.error(&format!(
+                "[BACKGROUND] CleanupOldLogs: failed to read log file for backup: {}. Exception: {}",
+                path.display(), e
+            ));
+            return;
+        }
+    };
+
+    // Insert the blob name into the container SAS URL path, before the query string.
+    let upload_url = match sas_url.split_once('?') {
+        Some((base, query)) => format!("{}/{}?{}", base.trim_end_matches('/'), blob_name, query),
+        None => format!("{}/{}", sas_url.trim_end_matches('/'), blob_name),
+    };
+
+    let client = reqwest::Client::new();
+    let result = client
+        .put(&upload_url)
+        .header("x-ms-blob-type", "BlockBlob")
+        .header("x-ms-version", "2021-08-06")
+        .body(file_bytes)
+        .send()
+        .await;
+
+    match result {
+        Ok(resp) if resp.status().is_success() => {
+            log.info(&format!(
+                "[BACKGROUND] CleanupOldLogs: backed up log file to Azure storage as blob: {}",
+                blob_name
+            ));
+        }
+        Ok(resp) => {
+            log.error(&format!(
+                "[BACKGROUND] CleanupOldLogs: Azure backup failed for blob {} with status {}",
+                blob_name, resp.status()
+            ));
+        }
+        Err(e) => {
+            log.error(&format!(
+                "[BACKGROUND] CleanupOldLogs: Azure backup request error for blob {}: {}",
+                blob_name, e
+            ));
         }
     }
 }
