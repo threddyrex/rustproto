@@ -186,9 +186,27 @@ fn build_config_table(db: &PdsDb) -> String {
 
     // Backups section
     rows.push(section("Backups"));
-    rows.push(row("AzureStorageSASURL", get_value("AzureStorageSASURL"), "Azure Storage SAS URL used for backups."));
+    let sas_url_masked = match db.get_config_property("AzureStorageSASURL") {
+        Ok(v) if !v.is_empty() => mask_secret(&v),
+        _ => "<span class=\"dimmed\">empty</span>".to_string(),
+    };
+    rows.push(row("AzureStorageSASURL", sas_url_masked, "Azure Storage SAS URL used for backups (secret - masked). Set it on the Config page."));
 
     rows.join("\n")
+}
+
+/// Mask a secret value, revealing only the last 4 characters.
+fn mask_secret(value: &str) -> String {
+    let chars: Vec<char> = value.chars().collect();
+    if chars.len() <= 4 {
+        "<span class=\"dimmed\">•••••• (set)</span>".to_string()
+    } else {
+        let last4: String = chars[chars.len() - 4..].iter().collect();
+        format!(
+            "<span class=\"dimmed\">••••••{} (set)</span>",
+            html_encode(&last4)
+        )
+    }
 }
 
 /// Check if a config key contains sensitive data.

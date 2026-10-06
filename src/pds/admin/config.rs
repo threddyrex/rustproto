@@ -333,8 +333,8 @@ fn render_config_page(db: &PdsDb) -> Html<String> {
     <tr>
         <td class="key-name">AzureStorageSASURL</td>
         <td>{azure_storage_sas_url}</td>
-        <td><button class="set-btn" onclick="setConfig('AzureStorageSASURL', '{azure_storage_sas_url_js}')">Set</button></td>
-        <td>Azure Storage SAS URL used for backups.</td>
+        <td><button class="set-btn" onclick="setConfig('AzureStorageSASURL', '')">Set</button></td>
+        <td>Azure Storage SAS URL used for backups (secret - masked). Click Set to enter a new value.</td>
     </tr>
 </table>
 <script>
@@ -433,8 +433,7 @@ function setBoolConfig(key, value) {{
         log_xrpc_endpoints = get_config_value(db, "LogXrpcEndpoints"),
         log_xrpc_endpoints_js = get_config_value_for_js(db, "LogXrpcEndpoints"),
         // Backups section
-        azure_storage_sas_url = get_config_value(db, "AzureStorageSASURL"),
-        azure_storage_sas_url_js = get_config_value_for_js(db, "AzureStorageSASURL"),
+        azure_storage_sas_url = get_masked_config_value(db, "AzureStorageSASURL"),
     );
 
     Html(html)
@@ -449,6 +448,25 @@ fn get_config_value(db: &PdsDb, key: &str) -> String {
     match db.get_config_property(key) {
         Ok(value) => html_encode(&value),
         Err(_) => r#"<span class="dimmed">empty</span>"#.to_string(),
+    }
+}
+
+/// Get a masked configuration value for secrets, revealing only the last 4 characters.
+fn get_masked_config_value(db: &PdsDb, key: &str) -> String {
+    match db.get_config_property(key) {
+        Ok(value) if !value.is_empty() => {
+            let chars: Vec<char> = value.chars().collect();
+            if chars.len() <= 4 {
+                r#"<span class="dimmed">•••••• (set)</span>"#.to_string()
+            } else {
+                let last4: String = chars[chars.len() - 4..].iter().collect();
+                format!(
+                    r#"<span class="dimmed">••••••{} (set)</span>"#,
+                    html_encode(&last4)
+                )
+            }
+        }
+        _ => r#"<span class="dimmed">empty</span>"#.to_string(),
     }
 }
 
