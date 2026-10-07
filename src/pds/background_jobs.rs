@@ -190,14 +190,14 @@ fn job_update_log_level(log: &'static Logger, db: &PdsDb) {
 
             if current_level != new_level {
                 log.info(&format!(
-                    "[BACKGROUND] UpdateLogLevel currentLevel=[{}] newLevel=[{}]",
+                    "[BACKGROUND][UPDATELOGLEVEL] UpdateLogLevel currentLevel=[{}] newLevel=[{}]",
                     current_level, new_level
                 ));
                 log.set_level(new_level);
             }
         }
         Err(e) => {
-            log.error(&format!("[BACKGROUND] UpdateLogLevel error: {}", e));
+            log.error(&format!("[BACKGROUND][UPDATELOGLEVEL] UpdateLogLevel error: {}", e));
         }
     }
 }
@@ -207,7 +207,7 @@ async fn job_cleanup_old_logs(log: &'static Logger, lfs: &LocalFileSystem, db: &
     let log_retention_days = match db.get_config_property_int("LogRetentionDays") {
         Ok(days) => days,
         Err(e) => {
-            log.error(&format!("[BACKGROUND] CleanupOldLogs error getting retention days: {}", e));
+            log.error(&format!("[BACKGROUND][CLEANUPOLDLOGS] CleanupOldLogs error getting retention days: {}", e));
             return;
         }
     };
@@ -220,7 +220,7 @@ async fn job_cleanup_old_logs(log: &'static Logger, lfs: &LocalFileSystem, db: &
     let entries = match std::fs::read_dir(&logs_dir) {
         Ok(entries) => entries,
         Err(e) => {
-            log.error(&format!("[BACKGROUND] CleanupOldLogs error reading logs dir: {}", e));
+            log.error(&format!("[BACKGROUND][CLEANUPOLDLOGS] CleanupOldLogs error reading logs dir: {}", e));
             return;
         }
     };
@@ -237,7 +237,7 @@ async fn job_cleanup_old_logs(log: &'static Logger, lfs: &LocalFileSystem, db: &
         
         // Only delete .bak files (rotated logs)
         if !file_name.ends_with(".bak") {
-            log.info(&format!("[BACKGROUND] Keeping log file: {}", path.display()));
+            log.info(&format!("[BACKGROUND][CLEANUPOLDLOGS] Keeping log file: {}", path.display()));
             continue;
         }
 
@@ -257,15 +257,15 @@ async fn job_cleanup_old_logs(log: &'static Logger, lfs: &LocalFileSystem, db: &
             // Back up the log file to Azure storage before removing it.
             backup_log_to_azure(log, db, &path, file_name).await;
 
-            log.info(&format!("[BACKGROUND] Deleting old log file: {}", path.display()));
+            log.info(&format!("[BACKGROUND][CLEANUPOLDLOGS] Deleting old log file: {}", path.display()));
             if let Err(e) = std::fs::remove_file(&path) {
                 log.error(&format!(
-                    "[BACKGROUND] Failed to delete log file: {}. Exception: {}",
+                    "[BACKGROUND][CLEANUPOLDLOGS] Failed to delete log file: {}. Exception: {}",
                     path.display(), e
                 ));
             }
         } else {
-            log.info(&format!("[BACKGROUND] Keeping log file: {}", path.display()));
+            log.info(&format!("[BACKGROUND][CLEANUPOLDLOGS] Keeping log file: {}", path.display()));
         }
     }
 }
@@ -285,7 +285,7 @@ async fn backup_log_to_azure(
         Ok(url) if !url.is_empty() => url,
         _ => {
             log.warning(&format!(
-                "[BACKGROUND] CleanupOldLogs: AzureStorageSASURL not set, skipping backup of log file: {}",
+                "[BACKGROUND][CLEANUPOLDLOGS] CleanupOldLogs: AzureStorageSASURL not set, skipping backup of log file: {}",
                 file_name
             ));
             return;
@@ -303,7 +303,7 @@ async fn backup_log_to_azure(
         Ok(bytes) => bytes,
         Err(e) => {
             log.error(&format!(
-                "[BACKGROUND] CleanupOldLogs: failed to read log file for backup: {}. Exception: {}",
+                "[BACKGROUND][CLEANUPOLDLOGS] CleanupOldLogs: failed to read log file for backup: {}. Exception: {}",
                 path.display(), e
             ));
             return;
@@ -328,19 +328,19 @@ async fn backup_log_to_azure(
     match result {
         Ok(resp) if resp.status().is_success() => {
             log.info(&format!(
-                "[BACKGROUND] CleanupOldLogs: backed up log file to Azure storage as blob: {}",
+                "[BACKGROUND][CLEANUPOLDLOGS] CleanupOldLogs: backed up log file to Azure storage as blob: {}",
                 blob_name
             ));
         }
         Ok(resp) => {
             log.error(&format!(
-                "[BACKGROUND] CleanupOldLogs: Azure backup failed for blob {} with status {}",
+                "[BACKGROUND][CLEANUPOLDLOGS] CleanupOldLogs: Azure backup failed for blob {} with status {}",
                 blob_name, resp.status()
             ));
         }
         Err(e) => {
             log.error(&format!(
-                "[BACKGROUND] CleanupOldLogs: Azure backup request error for blob {}: {}",
+                "[BACKGROUND][CLEANUPOLDLOGS] CleanupOldLogs: Azure backup request error for blob {}: {}",
                 blob_name, e
             ));
         }
@@ -353,7 +353,7 @@ fn job_delete_old_firehose_events(log: &'static Logger, db: &PdsDb) {
         Ok(old_event_count) => {
             if old_event_count > 0 {
                 if let Err(e) = db.delete_old_firehose_events(FIREHOSE_RETENTION_HOURS) {
-                    log.error(&format!("[BACKGROUND] DeleteOldFirehoseEvents error: {}", e));
+                    log.error(&format!("[BACKGROUND][DELETEOLDFIREHOSEEVENTS] DeleteOldFirehoseEvents error: {}", e));
                     return;
                 }
             }
@@ -363,21 +363,21 @@ fn job_delete_old_firehose_events(log: &'static Logger, db: &PdsDb) {
                 .unwrap_or(0);
 
             log.info(&format!(
-                "[BACKGROUND] DeleteOldFirehoseEvents beforeCount={} afterCount={}",
+                "[BACKGROUND][DELETEOLDFIREHOSEEVENTS] DeleteOldFirehoseEvents beforeCount={} afterCount={}",
                 old_event_count, old_event_count_after
             ));
         }
         Err(e) => {
-            log.error(&format!("[BACKGROUND] DeleteOldFirehoseEvents error: {}", e));
+            log.error(&format!("[BACKGROUND][DELETEOLDFIREHOSEEVENTS] DeleteOldFirehoseEvents error: {}", e));
         }
     }
 }
 
 /// Job: Delete old OAuth requests.
 fn job_delete_old_oauth_requests(log: &'static Logger, db: &PdsDb) {
-    log.info("[BACKGROUND] DeleteOldOauthRequests");
+    log.info("[BACKGROUND][DELETEOLDOAUTHREQUESTS] DeleteOldOauthRequests");
     if let Err(e) = db.delete_old_oauth_requests() {
-        log.error(&format!("[BACKGROUND] DeleteOldOauthRequests error: {}", e));
+        log.error(&format!("[BACKGROUND][DELETEOLDOAUTHREQUESTS] DeleteOldOauthRequests error: {}", e));
     }
 }
 
@@ -395,7 +395,7 @@ async fn job_request_crawl_if_enabled(log: &'static Logger, db: &PdsDb) {
     let pds_hostname = match db.get_config_property("PdsHostname") {
         Ok(hostname) => hostname,
         Err(e) => {
-            log.error(&format!("[BACKGROUND] RequestCrawl error getting hostname: {}", e));
+            log.error(&format!("[BACKGROUND][REQUESTCRAWL] RequestCrawl error getting hostname: {}", e));
             return;
         }
     };
@@ -403,7 +403,7 @@ async fn job_request_crawl_if_enabled(log: &'static Logger, db: &PdsDb) {
     let crawlers_str = match db.get_config_property("PdsCrawlers") {
         Ok(crawlers) => crawlers,
         Err(e) => {
-            log.error(&format!("[BACKGROUND] RequestCrawl error getting crawlers: {}", e));
+            log.error(&format!("[BACKGROUND][REQUESTCRAWL] RequestCrawl error getting crawlers: {}", e));
             return;
         }
     };
@@ -426,13 +426,13 @@ async fn job_request_crawl_if_enabled(log: &'static Logger, db: &PdsDb) {
             Ok(response) => {
                 let response_text = response.text().await.unwrap_or_default();
                 log.info(&format!(
-                    "[BACKGROUND] RequestCrawl. pdsHostname={} crawler={} response={}",
+                    "[BACKGROUND][REQUESTCRAWL] RequestCrawl. pdsHostname={} crawler={} response={}",
                     pds_hostname, crawler, response_text
                 ));
             }
             Err(e) => {
                 log.error(&format!(
-                    "[BACKGROUND] RequestCrawl error for crawler {}: {}",
+                    "[BACKGROUND][REQUESTCRAWL] RequestCrawl error for crawler {}: {}",
                     crawler, e
                 ));
             }
@@ -442,16 +442,16 @@ async fn job_request_crawl_if_enabled(log: &'static Logger, db: &PdsDb) {
 
 /// Job: Delete stale admin sessions.
 fn job_delete_stale_admin_sessions(log: &'static Logger, db: &PdsDb) {
-    log.info("[BACKGROUND] DeleteStaleAdminSessions");
+    log.info("[BACKGROUND][DELETESTALEADMINSESSIONS] DeleteStaleAdminSessions");
     if let Err(e) = db.delete_stale_admin_sessions(ADMIN_SESSION_TIMEOUT_MINUTES) {
-        log.error(&format!("[BACKGROUND] DeleteStaleAdminSessions error: {}", e));
+        log.error(&format!("[BACKGROUND][DELETESTALEADMINSESSIONS] DeleteStaleAdminSessions error: {}", e));
     }
 }
 
 fn job_delete_old_statistics(log: &'static Logger, db: &PdsDb) {
-    log.info("[BACKGROUND] DeleteOldStatistics");
+    log.info("[BACKGROUND][DELETEOLDSTATISTICS] DeleteOldStatistics");
     if let Err(e) = db.delete_old_statistics(24) {
-        log.error(&format!("[BACKGROUND] DeleteOldStatistics error: {}", e));
+        log.error(&format!("[BACKGROUND][DELETEOLDSTATISTICS] DeleteOldStatistics error: {}", e));
     }
 }
 
