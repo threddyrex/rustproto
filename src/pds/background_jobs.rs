@@ -296,8 +296,7 @@ async fn backup_log_to_azure(
         .get_config_property("PdsHostname")
         .unwrap_or_else(|_| "unknown".to_string());
 
-    let timestamp = chrono::Local::now().format("%Y%m%d%H%M%S").to_string();
-    let blob_name = format!("{}-pds.log-{}.log.bak", timestamp, pds_hostname);
+    let blob_name = format!("{}-{}", pds_hostname, file_name);
 
     let file_bytes = match std::fs::read(path) {
         Ok(bytes) => bytes,
