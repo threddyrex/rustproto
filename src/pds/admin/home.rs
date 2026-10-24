@@ -157,6 +157,7 @@ fn build_config_table(db: &PdsDb) -> String {
     rows.push(row("PdsDid", get_value("PdsDid"), "DID for the PDS (ex: did:web:thisisyourpdshost.com)"));
     rows.push(row("PdsHostname", get_value("PdsHostname"), "Hostname for the PDS. What goes in your DID doc."));
     rows.push(row("PdsAvailableUserDomain", get_value("PdsAvailableUserDomain"), "A single domain that is the available user domains, prefixed with ."));
+    rows.push(row("HomePageRedirect", get_value("HomePageRedirect"), "If set, HTTPS requests to the root (/) redirect to this URL instead of serving the static index.html."));
 
     // User section
     rows.push(section("User"));

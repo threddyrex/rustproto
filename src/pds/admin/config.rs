@@ -33,6 +33,7 @@ const ALLOWED_CONFIG_KEYS: &[&str] = &[
     "PdsDid",
     "PdsHostname",
     "PdsAvailableUserDomain",
+    "HomePageRedirect",
     "UserHandle",
     "UserDid",
     "UserEmail",
@@ -258,6 +259,12 @@ fn render_config_page(db: &PdsDb) -> Html<String> {
         <td><button class="set-btn" onclick="setConfig('PdsAvailableUserDomain', '{pds_available_user_domain_js}')">Set</button></td>
         <td>A single domain that is the available user domains, prefixed with .</td>
     </tr>
+    <tr>
+        <td class="key-name">HomePageRedirect</td>
+        <td>{home_page_redirect}</td>
+        <td><button class="set-btn" onclick="setConfig('HomePageRedirect', '{home_page_redirect_js}')">Set</button></td>
+        <td>If set, HTTPS requests to the root (/) redirect to this URL instead of serving the static index.html.</td>
+    </tr>
     <tr class="section-header"><td colspan="4">User</td></tr>
     <tr>
         <td class="key-name">UserHandle</td>
@@ -406,6 +413,8 @@ function setBoolConfig(key, value) {{
         pds_hostname_js = get_config_value_for_js(db, "PdsHostname"),
         pds_available_user_domain = get_config_value(db, "PdsAvailableUserDomain"),
         pds_available_user_domain_js = get_config_value_for_js(db, "PdsAvailableUserDomain"),
+        home_page_redirect = get_config_value(db, "HomePageRedirect"),
+        home_page_redirect_js = get_config_value_for_js(db, "HomePageRedirect"),
         // User section
         user_handle = get_config_value(db, "UserHandle"),
         user_handle_js = get_config_value_for_js(db, "UserHandle"),

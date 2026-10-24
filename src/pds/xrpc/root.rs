@@ -9,7 +9,7 @@ use std::sync::Arc;
 use axum::{
     extract::{ConnectInfo, State},
     http::{HeaderMap, StatusCode, header},
-    response::{IntoResponse, Response},
+    response::{IntoResponse, Redirect, Response},
 };
 
 use crate::pds::db::StatisticKey;
@@ -18,9 +18,10 @@ use super::{get_caller_info};
 
 /// GET / - Serve index.html from the static directory, or a default page.
 ///
-/// Looks for `{datadir}/static/index.html` and returns it with the
-/// `text/html` content type. If the file does not exist, returns a small
-/// default HTML page linking to the rustproto project.
+/// If the `HomePageRedirect` config property is set to a non-empty value, the
+/// request is redirected there. Otherwise, looks for `{datadir}/static/index.html`
+/// and returns it with the `text/html` content type. If the file does not exist,
+/// returns a small default HTML page linking to the rustproto project.
 pub async fn root(
     State(state): State<Arc<PdsState>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -34,6 +35,13 @@ pub async fn root(
         user_agent,
     };
     let _ = state.db.increment_statistic_for_endpoint(&stat_key);
+
+    // If a home page redirect is configured, redirect there before anything else.
+    if let Ok(redirect_url) = state.db.get_config_property("HomePageRedirect") {
+        if !redirect_url.trim().is_empty() {
+            return Redirect::to(redirect_url.trim()).into_response();
+        }
+    }
 
     let index_path = state.lfs.get_path_static_dir().join("index.html");
 
