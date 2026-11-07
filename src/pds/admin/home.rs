@@ -192,6 +192,11 @@ fn build_config_table(db: &PdsDb) -> String {
         _ => "<span class=\"dimmed\">empty</span>".to_string(),
     };
     rows.push(row("AzureStorageSASURL", sas_url_masked, "Azure Storage SAS URL used for backups (secret - masked). Set it on the Config page."));
+    let blob_sas_url_masked = match db.get_config_property("AzureStorageSASURL_Blobs") {
+        Ok(v) if !v.is_empty() => mask_secret(&v),
+        _ => "<span class=\"dimmed\">empty</span>".to_string(),
+    };
+    rows.push(row("AzureStorageSASURL_Blobs", blob_sas_url_masked, "Azure Storage SAS URL for blob backups (secret - masked). Set it on the Config page."));
 
     rows.join("\n")
 }
@@ -226,4 +231,37 @@ fn html_encode(s: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&#39;")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fs::LocalFileSystem;
+    use crate::log::Logger;
+    use crate::pds::installer::Installer;
+
+    #[test]
+    fn blob_sas_url_is_read_only_and_masked() {
+        let dir = tempfile::tempdir().unwrap();
+        let lfs = LocalFileSystem::initialize_with_create(dir.path()).unwrap();
+        Installer::install_db(&lfs, &Logger::default_logger(), false).unwrap();
+        let db = PdsDb::connect(&lfs).unwrap();
+        let key = "AzureStorageSASURL_Blobs";
+        assert!(!db.config_property_exists(key).unwrap());
+
+        let empty = build_config_table(&db);
+        assert!(empty.contains("AzureStorageSASURL_Blobs</td>\n                <td><span class=\"dimmed\">empty</span>"));
+        assert!(!empty.contains("setConfig("));
+
+        let secret = "https://example.test/container?sig=private1234";
+        db.set_config_property(key, secret).unwrap();
+        let set = build_config_table(&db);
+        assert!(set.contains("AzureStorageSASURL_Blobs</td>\n                <td><span class=\"dimmed\">••••••1234 (set)</span>"));
+        assert!(!set.contains(secret));
+        assert!(!set.contains("private"));
+
+        db.set_config_property(key, "").unwrap();
+        let cleared = build_config_table(&db);
+        assert!(cleared.contains("AzureStorageSASURL_Blobs</td>\n                <td><span class=\"dimmed\">empty</span>"));
+    }
 }
