@@ -7,7 +7,9 @@
 //! - Deleting old OAuth requests
 //! - Requesting crawls from configured crawlers
 //! - Deleting stale admin sessions
+//! - Backing up blobs to Azure storage
 
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -16,6 +18,7 @@ use tokio::time::interval;
 
 use crate::fs::LocalFileSystem;
 use crate::log::{LogLevel, Logger};
+use crate::pds::blob_db::{create_blob_db, BlobDb};
 use crate::pds::db::PdsDb;
 
 /// Configuration for retention periods (in hours for firehose events).
@@ -64,6 +67,7 @@ impl BackgroundJobs {
     /// - Delete old OAuth requests: every hour
     /// - Request crawl (if enabled): every 5 minutes (starts after 30 seconds)
     /// - Delete stale admin sessions: every hour (starts after 30 seconds)
+    /// - Back up blobs to Azure storage: every day (starts after 60 seconds)
     pub fn start(&mut self) {
         self.log.info("[BACKGROUND] Starting background jobs");
 
@@ -153,6 +157,20 @@ impl BackgroundJobs {
             loop {
                 timer.tick().await;
                 job_delete_old_statistics(log, &db);
+            }
+        });
+        self.handles.push(handle);
+
+        // Job: Back up blobs to Azure storage once per day (starts after 60 seconds)
+        let log = self.log;
+        let lfs = self.lfs.clone();
+        let db = Arc::clone(&self.db);
+        let handle = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            let mut timer = interval(Duration::from_secs(86400));
+            loop {
+                timer.tick().await;
+                job_backup_blobs_to_azure(log, &lfs, &db).await;
             }
         });
         self.handles.push(handle);
@@ -346,6 +364,187 @@ async fn backup_log_to_azure(
     }
 }
 
+/// Job: Back up PDS blobs to the Azure storage container referenced by the
+/// `AzureStorageSASURL_Blobs` config property.
+///
+/// Lists the blobs already in the container, compares against the blobs
+/// stored in the PDS, and uploads any PDS blobs that are missing. Blobs are
+/// named by their CID in the container.
+async fn job_backup_blobs_to_azure(log: &'static Logger, lfs: &LocalFileSystem, db: &PdsDb) {
+    let sas_url = match db.get_config_property("AzureStorageSASURL_Blobs") {
+        Ok(url) if !url.trim().is_empty() => url.trim().to_string(),
+        _ => {
+            log.info("[BACKGROUND][BACKUPBLOBS] BackupBlobs: AzureStorageSASURL_Blobs not set, skipping");
+            return;
+        }
+    };
+
+    let client = reqwest::Client::new();
+
+    let container_blobs = match list_azure_container_blobs(&client, &sas_url).await {
+        Ok(names) => names,
+        Err(e) => {
+            log.error(&format!("[BACKGROUND][BACKUPBLOBS] BackupBlobs: failed to list container blobs: {}", e));
+            return;
+        }
+    };
+
+    let pds_blobs = match db.get_all_blobs() {
+        Ok(blobs) => blobs,
+        Err(e) => {
+            log.error(&format!("[BACKGROUND][BACKUPBLOBS] BackupBlobs: failed to get PDS blobs: {}", e));
+            return;
+        }
+    };
+
+    let missing: Vec<_> = pds_blobs
+        .iter()
+        .filter(|b| !container_blobs.contains(&b.cid))
+        .collect();
+
+    log.info(&format!(
+        "[BACKGROUND][BACKUPBLOBS] BackupBlobs containerBlobCount={} pdsBlobCount={} missingBlobCount={} (writing missing blobs to container)",
+        container_blobs.len(), pds_blobs.len(), missing.len()
+    ));
+
+    let blob_db = create_blob_db(lfs, log);
+    let mut uploaded = 0;
+    let mut failed = 0;
+
+    for blob in missing {
+        let bytes = match blob_db.get_blob_bytes(&blob.cid) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                log.error(&format!(
+                    "[BACKGROUND][BACKUPBLOBS] BackupBlobs: failed to read blob bytes for {}: {}",
+                    blob.cid, e
+                ));
+                failed += 1;
+                continue;
+            }
+        };
+
+        let upload_url = azure_blob_url(&sas_url, &blob.cid);
+        let result = client
+            .put(&upload_url)
+            .header("x-ms-blob-type", "BlockBlob")
+            .header("x-ms-version", "2021-08-06")
+            .header("x-ms-blob-content-type", &blob.content_type)
+            .body(bytes)
+            .send()
+            .await;
+
+        match result {
+            Ok(resp) if resp.status().is_success() => {
+                log.info(&format!("[BACKGROUND][BACKUPBLOBS] BackupBlobs: uploaded blob {}", blob.cid));
+                uploaded += 1;
+            }
+            Ok(resp) => {
+                log.error(&format!(
+                    "[BACKGROUND][BACKUPBLOBS] BackupBlobs: upload failed for blob {} with status {}",
+                    blob.cid, resp.status()
+                ));
+                failed += 1;
+            }
+            Err(e) => {
+                log.error(&format!(
+                    "[BACKGROUND][BACKUPBLOBS] BackupBlobs: upload request error for blob {}: {}",
+                    blob.cid, e
+                ));
+                failed += 1;
+            }
+        }
+    }
+
+    log.info(&format!(
+        "[BACKGROUND][BACKUPBLOBS] BackupBlobs complete uploaded={} failed={}",
+        uploaded, failed
+    ));
+}
+
+/// Build the URL for a blob within a container SAS URL by inserting the blob
+/// name into the path, before the query string.
+fn azure_blob_url(container_sas_url: &str, blob_name: &str) -> String {
+    match container_sas_url.split_once('?') {
+        Some((base, query)) => format!("{}/{}?{}", base.trim_end_matches('/'), blob_name, query),
+        None => format!("{}/{}", container_sas_url.trim_end_matches('/'), blob_name),
+    }
+}
+
+/// Build the List Blobs URL for a container SAS URL, with an optional marker.
+fn azure_list_blobs_url(container_sas_url: &str, marker: Option<&str>) -> String {
+    let (base, query) = match container_sas_url.split_once('?') {
+        Some((base, query)) => (base.trim_end_matches('/'), query),
+        None => (container_sas_url.trim_end_matches('/'), ""),
+    };
+    let mut url = format!("{}?restype=container&comp=list", base);
+    if !query.is_empty() {
+        url.push('&');
+        url.push_str(query);
+    }
+    if let Some(m) = marker {
+        url.push_str("&marker=");
+        url.push_str(&urlencoding::encode(m));
+    }
+    url
+}
+
+/// List all blob names in an Azure storage container (following pagination markers).
+async fn list_azure_container_blobs(
+    client: &reqwest::Client,
+    container_sas_url: &str,
+) -> Result<HashSet<String>, String> {
+    let mut names = HashSet::new();
+    let mut marker: Option<String> = None;
+
+    loop {
+        let url = azure_list_blobs_url(container_sas_url, marker.as_deref());
+        let resp = client
+            .get(&url)
+            .header("x-ms-version", "2021-08-06")
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        let status = resp.status();
+        let body = resp.text().await.map_err(|e| e.to_string())?;
+        if !status.is_success() {
+            return Err(format!("status {}", status));
+        }
+
+        names.extend(extract_xml_values(&body, "Name"));
+
+        match extract_xml_values(&body, "NextMarker").into_iter().next() {
+            Some(next) if !next.is_empty() => marker = Some(next),
+            _ => break,
+        }
+    }
+
+    Ok(names)
+}
+
+/// Extract the text of every `<tag>...</tag>` element in an XML document.
+fn extract_xml_values(xml: &str, tag: &str) -> Vec<String> {
+    let open = format!("<{}>", tag);
+    let close = format!("</{}>", tag);
+    let mut values = Vec::new();
+    let mut rest = xml;
+    while let Some(start) = rest.find(&open) {
+        let after = &rest[start + open.len()..];
+        let Some(end) = after.find(&close) else { break };
+        values.push(xml_unescape(&after[..end]));
+        rest = &after[end + close.len()..];
+    }
+    values
+}
+
+fn xml_unescape(s: &str) -> String {
+    s.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
+}
+
 /// Job: Delete old firehose events.
 fn job_delete_old_firehose_events(log: &'static Logger, db: &PdsDb) {
     match db.get_count_of_old_firehose_events(FIREHOSE_RETENTION_HOURS) {
@@ -456,6 +655,37 @@ fn job_delete_old_statistics(log: &'static Logger, db: &PdsDb) {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn test_azure_blob_url() {
+        assert_eq!(
+            azure_blob_url("https://a.blob.core.windows.net/c?sv=1&sig=x", "bafy"),
+            "https://a.blob.core.windows.net/c/bafy?sv=1&sig=x"
+        );
+        assert_eq!(azure_blob_url("https://a/c/", "b"), "https://a/c/b");
+    }
+
+    #[test]
+    fn test_azure_list_blobs_url() {
+        assert_eq!(
+            azure_list_blobs_url("https://a/c?sv=1&sig=x", None),
+            "https://a/c?restype=container&comp=list&sv=1&sig=x"
+        );
+        assert_eq!(
+            azure_list_blobs_url("https://a/c?sv=1", Some("m/1")),
+            "https://a/c?restype=container&comp=list&sv=1&marker=m%2F1"
+        );
+    }
+
+    #[test]
+    fn test_extract_xml_values() {
+        let xml = "<EnumerationResults><Blobs><Blob><Name>a</Name></Blob><Blob><Name>b&amp;c</Name></Blob></Blobs><NextMarker /></EnumerationResults>";
+        assert_eq!(extract_xml_values(xml, "Name"), vec!["a", "b&c"]);
+        assert!(extract_xml_values(xml, "NextMarker").is_empty());
+        let xml2 = "<NextMarker>abc</NextMarker>";
+        assert_eq!(extract_xml_values(xml2, "NextMarker"), vec!["abc"]);
+    }
     #[test]
     fn test_background_jobs_creation() {
         // This test just verifies the struct can be constructed
