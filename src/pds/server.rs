@@ -301,12 +301,12 @@ async fn logging_middleware(
     // Run the next handler
     let response = next.run(request).await;
 
-    let elapsed = start.elapsed();
+    let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
     let status = response.status();
 
     state.log.info(&format!(
-        "[END REQUEST] [{} ({:.2?})] {} {} {} {} {}",
-        status.as_u16(), elapsed, ip_address, method, path, params_str, user_agent
+        "[END REQUEST] [{} ({:8.1} ms)] {} {} {} {} {}",
+        status.as_u16(), elapsed_ms, ip_address, method, path, params_str, user_agent
     ));
 
     response
