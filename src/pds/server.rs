@@ -290,7 +290,7 @@ async fn logging_middleware(
 
     // Log the connection
     state.log.info(&format!(
-        "[BEGIN REQUEST] {} {} {} {} {}",
+        "[BEGIN REQUEST] {:<15} {:<4} {} {} {}",
         ip_address, method, path, params_str, user_agent,
     ));
 
@@ -305,7 +305,7 @@ async fn logging_middleware(
     let status = response.status();
 
     state.log.info(&format!(
-        "[END REQUEST] [{} ({:8.1} ms)] {} {} {} {} {}",
+        "[END REQUEST] [{} ({:8.1} ms)] {:<15} {:<4} {} {} {}",
         status.as_u16(), elapsed_ms, ip_address, method, path, params_str, user_agent
     ));
 
