@@ -312,7 +312,7 @@ mod tests {
         db.set_config_property("UserDid", "did:plc:example")
             .unwrap();
 
-        let record_bytes = DagCborObject::new_text("requested record")
+        let record_bytes = DagCborObject::new_text("requested record".to_string())
             .to_bytes()
             .unwrap();
         let record_cid = CidV1::compute_cid_for_dag_cbor_bytes(&record_bytes).unwrap();
@@ -323,7 +323,7 @@ mod tests {
             &record_bytes,
         )
         .unwrap();
-        let other_bytes = DagCborObject::new_text("unrequested record")
+        let other_bytes = DagCborObject::new_text("unrequested record".to_string())
             .to_bytes()
             .unwrap();
         let other_cid = CidV1::compute_cid_for_dag_cbor_bytes(&other_bytes).unwrap();
