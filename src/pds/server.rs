@@ -293,7 +293,7 @@ async fn logging_middleware(
     // Log the connection
     state.log.info(&format!(
         "[BEGIN REQUEST] {:<15} {:<4} {} {} {}",
-        ip_address, method, path, params_str, user_agent,
+        ip_address, method.as_str(), path, params_str, user_agent,
     ));
 
     // Optionally log the full details of configured XRPC endpoints (debugging
@@ -308,7 +308,7 @@ async fn logging_middleware(
 
     state.log.info(&format!(
         "[END REQUEST] [{} ({:8.1} ms)] {:<15} {:<4} {} {} {}",
-        status.as_u16(), elapsed_ms, ip_address, method, path, params_str, user_agent
+        status.as_u16(), elapsed_ms, ip_address, method.as_str(), path, params_str, user_agent
     ));
 
     response
