@@ -183,6 +183,7 @@ impl PdsRunner {
             // Sync endpoints
             .route("/xrpc/com.atproto.sync.getRepo", axum::routing::get(xrpc::sync_get_repo))
             .route("/xrpc/com.atproto.sync.getRecord", axum::routing::get(xrpc::sync_get_record))
+            .route("/xrpc/com.atproto.sync.getBlocks", axum::routing::get(xrpc::sync_get_blocks))
             .route("/xrpc/com.atproto.sync.listRepos", axum::routing::get(xrpc::sync_list_repos))
             .route("/xrpc/com.atproto.sync.getRepoStatus", axum::routing::get(xrpc::sync_get_repo_status))
             .route("/xrpc/com.atproto.sync.subscribeRepos", axum::routing::get(xrpc::subscribe_repos))

@@ -29,6 +29,7 @@ mod refresh_session;
 mod resolve_handle;
 mod root;
 mod subscribe_repos;
+mod sync_get_blocks;
 mod sync_get_record;
 mod sync_get_repo;
 mod sync_get_repo_status;
@@ -63,6 +64,7 @@ pub use refresh_session::refresh_session;
 pub use resolve_handle::resolve_handle;
 pub use root::root;
 pub use subscribe_repos::subscribe_repos;
+pub use sync_get_blocks::sync_get_blocks;
 pub use sync_get_record::sync_get_record;
 pub use sync_get_repo::sync_get_repo;
 pub use sync_get_repo_status::sync_get_repo_status;
@@ -243,4 +245,3 @@ pub fn get_caller_info(headers: &HeaderMap, socket_addr: Option<SocketAddr>) -> 
 
     (ip_address, user_agent)
 }
-
