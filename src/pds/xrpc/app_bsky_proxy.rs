@@ -9,6 +9,7 @@
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::{Duration, Instant};
 
 use axum::{
@@ -18,6 +19,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use reqwest::header::{HeaderName, HeaderValue};
 use serde_json::Value as JsonValue;
 
@@ -43,6 +45,33 @@ fn lap_ms(lap_start: &mut Instant) -> u128 {
     let ms = now.duration_since(*lap_start).as_millis();
     *lap_start = now;
     ms
+}
+
+/// Upstream response headers that may carry server-side timing info.
+const UPSTREAM_TIMING_HEADERS: &[&str] = &[
+    "server-timing",
+    "x-response-time",
+    "x-runtime",
+    "x-envoy-upstream-service-time",
+    "age",
+];
+
+/// DNS resolver that records how long the lookup took (-1 = no lookup performed).
+struct TimingDnsResolver {
+    elapsed_ms: Arc<AtomicI64>,
+}
+
+impl Resolve for TimingDnsResolver {
+    fn resolve(&self, name: Name) -> Resolving {
+        let elapsed_ms = self.elapsed_ms.clone();
+        Box::pin(async move {
+            let start = Instant::now();
+            let result = tokio::net::lookup_host((name.as_str(), 0)).await;
+            elapsed_ms.store(start.elapsed().as_millis() as i64, Ordering::Relaxed);
+            let addrs: Addrs = Box::new(result?.collect::<Vec<_>>().into_iter());
+            Ok(addrs)
+        })
+    }
 }
 
 
@@ -317,7 +346,13 @@ pub async fn proxy_to_appview(
     let sign_service_auth_ms = lap_ms(&mut lap);
 
     // Build the outgoing request
-    let http_client = reqwest::Client::new();
+    let dns_lookup_ms = Arc::new(AtomicI64::new(-1));
+    let http_client = reqwest::Client::builder()
+        .dns_resolver(Arc::new(TimingDnsResolver {
+            elapsed_ms: dns_lookup_ms.clone(),
+        }))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
     let mut request_builder = match method {
         Method::GET => http_client.get(&target_url),
         Method::POST => http_client.post(&target_url),
@@ -405,6 +440,17 @@ pub async fn proxy_to_appview(
     };
     let send_request_ms = lap_ms(&mut lap);
 
+    let upstream_timing_headers: Vec<String> = UPSTREAM_TIMING_HEADERS
+        .iter()
+        .filter_map(|name| {
+            response
+                .headers()
+                .get(*name)
+                .and_then(|v| v.to_str().ok())
+                .map(|v| format!("{}=\"{}\"", name, v))
+        })
+        .collect();
+
     let status = StatusCode::from_u16(response.status().as_u16()).unwrap_or(StatusCode::OK);
     let content_type = response
         .headers()
@@ -439,7 +485,8 @@ pub async fn proxy_to_appview(
              increment_stats={}ms check_user_auth={}ms parse_proxy_header={}ms \
              check_allow_list={}ms resolve_did_doc={}ms extract_service_endpoint={}ms \
              load_signing_config={}ms sign_service_auth={}ms build_request={}ms \
-             send_request={}ms read_response={}ms",
+             send_request={}ms (dns_lookup={}) read_response={}ms response_bytes={} \
+             upstream_timing=[{}]",
             method,
             path,
             status.as_u16(),
@@ -454,7 +501,13 @@ pub async fn proxy_to_appview(
             sign_service_auth_ms,
             build_request_ms,
             send_request_ms,
+            match dns_lookup_ms.load(Ordering::Relaxed) {
+                ms if ms >= 0 => format!("{}ms", ms),
+                _ => "n/a".to_string(),
+            },
             read_response_ms,
+            response_body.len(),
+            upstream_timing_headers.join(" "),
         ));
     }
 
