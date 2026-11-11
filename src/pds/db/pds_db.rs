@@ -5,6 +5,7 @@
 
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use rusqlite::Connection;
@@ -13,7 +14,7 @@ use thiserror::Error;
 use super::entities::*;
 use super::SqliteDb;
 use crate::fs::LocalFileSystem;
-use crate::log::Logger;
+use crate::log::{Logger, logger};
 
 /// Errors that can occur during PDS database operations.
 #[derive(Error, Debug)]
@@ -2072,29 +2073,36 @@ impl PdsDb {
 
     /// Increment a statistic.
     pub fn increment_statistic_for_endpoint(&self, key: &StatisticKey) -> Result<(), PdsDbError> {
-
         let mut key_to_insert = key.clone();
 
         if key_to_insert.name.starts_with("/") == false {
             key_to_insert.name = format!("/{}", key_to_insert.name);
         }
 
-        if self.statistic_exists(&key_to_insert)? {
-            let current = self.get_statistic_value(&key_to_insert)?;
-            self.update_statistic(&key_to_insert, current + 1)
-        } else {
-            self.insert_statistic(&key_to_insert, 1)
-        }
+        self.increment_statistic(&key_to_insert)
     }
 
     /// Increment a statistic.
     pub fn increment_statistic(&self, key: &StatisticKey) -> Result<(), PdsDbError> {
-        if self.statistic_exists(&key)? {
-            let current = self.get_statistic_value(&key)?;
-            self.update_statistic(&key, current + 1)
-        } else {
-            self.insert_statistic(&key, 1)
+        let start = Instant::now();
+        let result = (|| {
+            if self.statistic_exists(key)? {
+                let current = self.get_statistic_value(key)?;
+                self.update_statistic(key, current + 1)
+            } else {
+                self.insert_statistic(key, 1)
+            }
+        })();
+        let elapsed = start.elapsed();
+        if elapsed > Duration::from_millis(500) {
+            logger().warning(&format!(
+                "Statistic increment for {} took {} ms (success: {})",
+                key.name,
+                elapsed.as_millis(),
+                result.is_ok()
+            ));
         }
+        result
     }
 
 

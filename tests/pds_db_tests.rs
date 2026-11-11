@@ -915,6 +915,77 @@ fn stats_insert_exact_and_retrieve() {
     assert_eq!(stats[0].value, 3);
 }
 
+#[test]
+fn stats_increment_warns_when_blocked_by_writer() {
+    use rustproto::log::{LogDestination, LogLevel, logger};
+    use std::sync::{Arc, Mutex, mpsc};
+    use std::time::Duration;
+
+    struct WarningCapture(Mutex<Vec<String>>);
+
+    impl LogDestination for WarningCapture {
+        fn write(&self, level: LogLevel, message: &str) {
+            if level == LogLevel::Warning {
+                self.0.lock().unwrap().push(message.to_string());
+            }
+        }
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+    let lfs = LocalFileSystem::initialize_with_create(dir.path()).unwrap();
+    Installer::install_db(&lfs, &Logger::default_logger(), false).unwrap();
+    let pds_db = PdsDb::connect(&lfs).unwrap();
+    let capture = Arc::new(WarningCapture(Mutex::new(Vec::new())));
+    logger().add_destination(capture.clone());
+    let key = StatisticKey {
+        name: format!("slow-stat-{}", Uuid::new_v4()),
+        ip_address: "userip".to_string(),
+        user_agent: "useragent".to_string(),
+    };
+    let normalized_key = StatisticKey {
+        name: format!("/{}", key.name),
+        ..key.clone()
+    };
+
+    // Exercise both insertion and update while another connection holds the writer lock.
+    for value in 1..=2 {
+        let conn = pds_db.get_connection().unwrap();
+        let (ready_tx, ready_rx) = mpsc::channel();
+        let writer = std::thread::spawn(move || {
+            conn.execute_batch("BEGIN IMMEDIATE").unwrap();
+            ready_tx.send(()).unwrap();
+            std::thread::sleep(Duration::from_millis(700));
+            conn.execute_batch("COMMIT").unwrap();
+        });
+        ready_rx.recv().unwrap();
+
+        if value == 1 {
+            pds_db.increment_statistic_for_endpoint(&key).unwrap();
+        } else {
+            pds_db.increment_statistic(&normalized_key).unwrap();
+        }
+        writer.join().unwrap();
+        assert_eq!(pds_db.get_statistic_value(&normalized_key).unwrap(), value);
+    }
+
+    let warnings: Vec<_> = capture
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|message| message.contains(&key.name))
+        .cloned()
+        .collect();
+    assert_eq!(warnings.len(), 2);
+    for message in warnings {
+        assert!(message.contains(&format!(
+            "Statistic increment for {} took ",
+            normalized_key.name
+        )));
+        assert!(message.contains("ms (success: true)"));
+    }
+}
+
 
 // =========================================================================
 // SPACE REPO RECORD TESTS
