@@ -9,6 +9,7 @@
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use axum::{
     body::{Body, Bytes},
@@ -33,6 +34,16 @@ use super::{get_caller_info};
 /// Default Atproto-Proxy value for the Bluesky AppView.
 const DEFAULT_ATPROTO_PROXY: &str = "did:web:api.bsky.app#bsky_appview";
 
+/// Requests slower than this log a warning with a per-phase timing breakdown.
+const SLOW_PROXY_REQUEST_THRESHOLD: Duration = Duration::from_millis(1500);
+
+/// Return milliseconds elapsed since `lap_start`, and reset it to now.
+fn lap_ms(lap_start: &mut Instant) -> u128 {
+    let now = Instant::now();
+    let ms = now.duration_since(*lap_start).as_millis();
+    *lap_start = now;
+    ms
+}
 
 
 
@@ -86,6 +97,9 @@ pub async fn proxy_to_appview(
     body: Bytes,
     socket_addr: Option<SocketAddr>,
 ) -> Response {
+    let request_start = Instant::now();
+    let mut lap = request_start;
+
     // Get caller info for statistics
     let (ip_address, user_agent) = get_caller_info(&headers, socket_addr);
 
@@ -96,6 +110,7 @@ pub async fn proxy_to_appview(
         user_agent,
     };
     let _ = state.db.increment_statistic_for_endpoint(&stat_key);
+    let increment_stats_ms = lap_ms(&mut lap);
 
     // Check authentication (supports Legacy and OAuth)
     let auth_result = check_user_auth(
@@ -108,6 +123,7 @@ pub async fn proxy_to_appview(
     if !auth_result.is_authenticated {
         return auth_failure_response(&auth_result);
     }
+    let check_user_auth_ms = lap_ms(&mut lap);
 
     // Get Atproto-Proxy header or use default
     let proxy_header = headers
@@ -131,6 +147,7 @@ pub async fn proxy_to_appview(
                 .into_response();
         }
     };
+    let parse_proxy_header_ms = lap_ms(&mut lap);
 
     // Check against allow list
     let allow_list: HashSet<String> = state
@@ -152,6 +169,7 @@ pub async fn proxy_to_appview(
         )
             .into_response();
     }
+    let check_allow_list_ms = lap_ms(&mut lap);
 
     // Resolve DID document for the proxy DID (LFS cache with 3-hour expiry)
     let app_view_host_name = state.db.get_config_property("AppViewHostName")
@@ -192,6 +210,7 @@ pub async fn proxy_to_appview(
                 .into_response();
         }
     };
+    let resolve_did_doc_ms = lap_ms(&mut lap);
 
     // Extract service endpoint
     let service_endpoint =
@@ -228,6 +247,7 @@ pub async fn proxy_to_appview(
         )
             .into_response();
     }
+    let extract_service_endpoint_ms = lap_ms(&mut lap);
 
     // Build target URL
     let target_url = format!("{}{}{}", service_endpoint, path, query);
@@ -269,6 +289,7 @@ pub async fn proxy_to_appview(
                 .into_response();
         }
     };
+    let load_signing_config_ms = lap_ms(&mut lap);
 
     // Create service auth JWT (5 minute expiry)
     let service_auth_jwt = match sign_service_auth_token(
@@ -293,6 +314,7 @@ pub async fn proxy_to_appview(
                 .into_response();
         }
     };
+    let sign_service_auth_ms = lap_ms(&mut lap);
 
     // Build the outgoing request
     let http_client = reqwest::Client::new();
@@ -362,6 +384,7 @@ pub async fn proxy_to_appview(
         }
         request_builder = request_builder.body(body.to_vec());
     }
+    let build_request_ms = lap_ms(&mut lap);
 
     // Send the request
     let response = match request_builder.send().await {
@@ -380,6 +403,7 @@ pub async fn proxy_to_appview(
                 .into_response();
         }
     };
+    let send_request_ms = lap_ms(&mut lap);
 
     let status = StatusCode::from_u16(response.status().as_u16()).unwrap_or(StatusCode::OK);
     let content_type = response
@@ -406,6 +430,33 @@ pub async fn proxy_to_appview(
                 .into_response();
         }
     };
+    let read_response_ms = lap_ms(&mut lap);
+
+    let total = request_start.elapsed();
+    if total > SLOW_PROXY_REQUEST_THRESHOLD {
+        state.log.warning(&format!(
+            "[PROXY] Slow request {} {} (status {}): total={}ms \
+             increment_stats={}ms check_user_auth={}ms parse_proxy_header={}ms \
+             check_allow_list={}ms resolve_did_doc={}ms extract_service_endpoint={}ms \
+             load_signing_config={}ms sign_service_auth={}ms build_request={}ms \
+             send_request={}ms read_response={}ms",
+            method,
+            path,
+            status.as_u16(),
+            total.as_millis(),
+            increment_stats_ms,
+            check_user_auth_ms,
+            parse_proxy_header_ms,
+            check_allow_list_ms,
+            resolve_did_doc_ms,
+            extract_service_endpoint_ms,
+            load_signing_config_ms,
+            sign_service_auth_ms,
+            build_request_ms,
+            send_request_ms,
+            read_response_ms,
+        ));
+    }
 
     // If response is empty, return just the status code
     if response_body.is_empty() {
