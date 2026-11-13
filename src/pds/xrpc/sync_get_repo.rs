@@ -1,15 +1,15 @@
 //! com.atproto.sync.getRepo endpoint.
 //!
-//! Exports the full repository as a CAR file.
+//! Exports the full repository as a CAR file, cached in memory until the commit changes.
 
 use std::collections::HashMap;
 use std::io::Write;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use axum::{
-    body::Body,
+    body::{Body, Bytes},
     extract::{ConnectInfo, Query, State},
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
@@ -18,8 +18,9 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use crate::mst::{Mst, MstItem};
-use crate::pds::db::StatisticKey;
+use crate::pds::db::{DbRepoCommit, StatisticKey};
 use crate::pds::server::PdsState;
+use crate::pds::user_repo::REPO_LOCK;
 use super::{get_caller_info};
 use crate::repo::{CidV1, DagCborObject, RepoMst, VarInt};
 
@@ -89,6 +90,8 @@ pub async fn sync_get_repo(
     headers: HeaderMap,
     Query(query): Query<GetRepoQuery>,
 ) -> Response {
+    static CAR_CACHE: Mutex<Option<(String, Bytes)>> = Mutex::new(None);
+
     let request_start = Instant::now();
     let mut lap = request_start;
     let mut car_timings = CarTimings::default();
@@ -148,7 +151,28 @@ pub async fn sync_get_repo(
                 .into_response();
         }
 
-        let car_result = build_repo_car(&state, &mut car_timings);
+        let car_result: Result<Bytes, String> = (|| {
+            let mut cache = CAR_CACHE.lock()
+                .map_err(|e| format!("Failed to lock repo CAR cache: {}", e))?;
+            // Writes change records before publishing the commit; exclude them while
+            // checking or rebuilding the cache so the CAR matches its commit.
+            let _repo_lock = REPO_LOCK.lock()
+                .map_err(|e| format!("Failed to lock repository: {}", e))?;
+            let commit_start = Instant::now();
+            let repo_commit = state.db.get_repo_commit()
+                .map_err(|e| format!("Failed to get repo commit: {}", e))?;
+            car_timings.load_commit_ms = Some(commit_start.elapsed().as_millis());
+
+            if let Some((commit_cid, bytes)) = cache.as_ref() {
+                if commit_cid == &repo_commit.cid {
+                    return Ok(bytes.clone());
+                }
+            }
+
+            let bytes = Bytes::from(build_repo_car(&state, &repo_commit, &mut car_timings)?);
+            *cache = Some((repo_commit.cid, bytes.clone()));
+            Ok(bytes)
+        })();
         build_car_ms = lap_ms(&mut lap);
         match car_result {
             Ok(car_bytes) => {
@@ -205,16 +229,18 @@ pub async fn sync_get_repo(
 }
 
 /// Build the complete repository as a CAR file.
-fn build_repo_car(state: &PdsState, timings: &mut CarTimings) -> Result<Vec<u8>, String> {
+fn build_repo_car(
+    state: &PdsState,
+    repo_commit: &DbRepoCommit,
+    timings: &mut CarTimings,
+) -> Result<Vec<u8>, String> {
     let mut car_bytes: Vec<u8> = Vec::new();
     let mut lap = Instant::now();
 
-    // Get repo header and commit
+    // Get repo header; the caller loaded the commit under the repository lock.
     let repo_header = state.db.get_repo_header()
         .map_err(|e| format!("Failed to get repo header: {}", e))?;
-    let repo_commit = state.db.get_repo_commit()
-        .map_err(|e| format!("Failed to get repo commit: {}", e))?;
-    timings.load_commit_ms = Some(lap_ms(&mut lap));
+    timings.load_commit_ms = Some(timings.load_commit_ms.unwrap_or(0) + lap_ms(&mut lap));
 
     // Write CAR header
     write_car_header(&mut car_bytes, &repo_header.repo_commit_cid)
@@ -223,7 +249,7 @@ fn build_repo_car(state: &PdsState, timings: &mut CarTimings) -> Result<Vec<u8>,
     // Write commit block
     let commit_cid = CidV1::from_base32(&repo_commit.cid)
         .map_err(|e| format!("Invalid commit CID: {}", e))?;
-    let commit_dag_cbor = build_commit_dag_cbor(&state, &repo_commit)?;
+    let commit_dag_cbor = build_commit_dag_cbor(&state, repo_commit)?;
     write_car_block(&mut car_bytes, &commit_cid, &commit_dag_cbor)
         .map_err(|e| format!("Failed to write commit block: {}", e))?;
     timings.write_commit_ms = Some(lap_ms(&mut lap));
@@ -339,4 +365,143 @@ fn write_car_block_bytes<W: Write>(
     writer.write_all(&data_bytes)?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fs::LocalFileSystem;
+    use crate::log::Logger;
+    use crate::pds::db::{DbRepoHeader, PdsDb};
+    use crate::pds::installer::Installer;
+    use crate::repo::{MstNodeKey, RepoHeader, RepoRecord};
+    use std::collections::HashSet;
+    use std::io::Cursor;
+    use std::sync::LazyLock;
+
+    fn publish_commit(state: &PdsState, rev: &str) -> DbRepoCommit {
+        let records = state.db.get_all_repo_records().unwrap();
+        let items: Vec<_> = records.iter()
+            .map(|r| MstItem::new(format!("{}/{}", r.collection, r.rkey), &r.cid))
+            .collect();
+        let mst = Mst::assemble_tree_from_items(&items);
+        let nodes = RepoMst::convert_mst_to_dag_cbor(&mst).unwrap();
+        let root_cid = &nodes.get(&MstNodeKey::from_node(&mst.root)).unwrap().0;
+        let mut commit = DbRepoCommit {
+            version: 3,
+            cid: String::new(),
+            root_mst_node_cid: root_cid.base32.clone(),
+            rev: rev.to_string(),
+            prev_mst_node_cid: None,
+            signature: vec![1; 64],
+        };
+        commit.cid = CidV1::compute_cid_for_dag_cbor(
+            &build_commit_dag_cbor(state, &commit).unwrap(),
+        ).unwrap().base32;
+        state.db.insert_update_repo_commit(&commit).unwrap();
+        state.db.insert_update_repo_header(&DbRepoHeader {
+            repo_commit_cid: commit.cid.clone(),
+            version: 1,
+        }).unwrap();
+        commit
+    }
+
+    async fn get_repo(state: &Arc<PdsState>) -> Response {
+        sync_get_repo(
+            State(state.clone()),
+            ConnectInfo("127.0.0.1:1234".parse().unwrap()),
+            HeaderMap::new(),
+            Query(GetRepoQuery {
+                did: Some("did:plc:cachetest".to_string()),
+                since: None,
+            }),
+        ).await
+    }
+
+    fn assert_car(bytes: &Bytes, commit: &DbRepoCommit, record_cid: Option<&str>) {
+        let mut reader = Cursor::new(bytes.as_ref());
+        let header = RepoHeader::read_from_stream(&mut reader).unwrap();
+        assert_eq!(header.repo_commit_cid.base32, commit.cid);
+        let first = RepoRecord::read_from_stream(&mut reader).unwrap();
+        assert!(first.is_repo_commit());
+        assert_eq!(first.cid.base32, commit.cid);
+        let mut returned = HashSet::new();
+        let mut record_count = 0;
+        while reader.position() < bytes.len() as u64 {
+            let block = RepoRecord::read_from_stream(&mut reader).unwrap();
+            assert_eq!(
+                CidV1::compute_cid_for_dag_cbor(&block.data_block).unwrap(),
+                block.cid,
+            );
+            if !RepoMst::is_mst_node(&block) {
+                record_count += 1;
+                assert_eq!(Some(block.cid.base32.as_str()), record_cid);
+            }
+            returned.insert(block.cid.base32);
+        }
+        assert!(returned.contains(&commit.root_mst_node_cid));
+        assert_eq!(record_count, usize::from(record_cid.is_some()));
+    }
+
+    #[tokio::test]
+    async fn cache_reuses_bytes_and_refreshes_after_writes_without_caching_errors() {
+        static LOG: LazyLock<Logger> = LazyLock::new(Logger::default_logger);
+        let dir = tempfile::tempdir().unwrap();
+        let lfs = LocalFileSystem::initialize_with_create(dir.path()).unwrap();
+        Installer::install_db(&lfs, &LOG, false).unwrap();
+        let db = PdsDb::connect(&lfs).unwrap();
+        db.set_config_property("UserDid", "did:plc:cachetest").unwrap();
+        let state = Arc::new(PdsState { log: &LOG, lfs, db });
+        let mut previous: Option<Bytes> = None;
+
+        for (rev, value) in [("3cache1", Some("created")), ("3cache2", Some("updated")), ("3cache3", None)] {
+            let (commit, record_cid) = {
+                let _lock = REPO_LOCK.lock().unwrap();
+                if state.db.record_exists("app.bsky.feed.post", "one").unwrap() {
+                    state.db.delete_repo_record("app.bsky.feed.post", "one").unwrap();
+                }
+                let record_cid = value.map(|value| {
+                    let bytes = DagCborObject::new_text(value.to_string()).to_bytes().unwrap();
+                    let cid = CidV1::compute_cid_for_dag_cbor_bytes(&bytes).unwrap();
+                    state.db.insert_repo_record("app.bsky.feed.post", "one", &cid.base32, &bytes).unwrap();
+                    cid.base32
+                });
+                (publish_commit(&state, rev), record_cid)
+            };
+            let response = get_repo(&state).await;
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(response.headers()[header::CONTENT_TYPE], "application/vnd.ipld.car");
+            let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            assert_car(&bytes, &commit, record_cid.as_deref());
+            if let Some(previous) = &previous {
+                assert_ne!(bytes, *previous);
+            }
+
+            let response = get_repo(&state).await;
+            assert_eq!(response.status(), StatusCode::OK);
+            let cached = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            assert_eq!(bytes, cached);
+            assert_eq!(bytes.as_ptr(), cached.as_ptr(), "cache hits must share the buffer");
+            previous = Some(bytes);
+        }
+
+        let commit = {
+            let _lock = REPO_LOCK.lock().unwrap();
+            let commit = publish_commit(&state, "3cache4");
+            state.db.delete_repo_header().unwrap();
+            commit
+        };
+        assert_eq!(get_repo(&state).await.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        {
+            let _lock = REPO_LOCK.lock().unwrap();
+            state.db.insert_update_repo_header(&DbRepoHeader {
+                repo_commit_cid: commit.cid.clone(),
+                version: 1,
+            }).unwrap();
+        }
+        let response = get_repo(&state).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        assert_car(&bytes, &commit, None);
+    }
 }

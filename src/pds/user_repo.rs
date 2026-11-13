@@ -21,9 +21,8 @@ use crate::mst::{Mst, MstItem};
 use crate::pds::db::{DbRepoCommit, FirehoseEvent, PdsDb, PdsDbError, StatisticKey};
 use crate::repo::{CidV1, DagCborMajorType, DagCborObject, DagCborType, DagCborValue, RepoMst, MstNodeKey};
 
-/// Global lock for repository write operations.
-/// This ensures atomic updates to the repo state.
-static REPO_LOCK: Mutex<()> = Mutex::new(());
+/// Global lock for repository writes and consistent repository exports.
+pub(crate) static REPO_LOCK: Mutex<()> = Mutex::new(());
 
 /// Types of write operations.
 pub mod write_type {
