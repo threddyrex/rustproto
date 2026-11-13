@@ -257,9 +257,7 @@ fn build_repo_car(state: &PdsState, timings: &mut CarTimings) -> Result<Vec<u8>,
     for record in &all_records {
         let record_cid = CidV1::from_base32(&record.cid)
             .map_err(|e| format!("Invalid record CID: {}", e))?;
-        let record_dag_cbor = DagCborObject::from_bytes(&record.dag_cbor_bytes)
-            .map_err(|e| format!("Invalid record DAG-CBOR: {}", e))?;
-        write_car_block(&mut car_bytes, &record_cid, &record_dag_cbor)
+        write_car_block_bytes(&mut car_bytes, &record_cid, &record.dag_cbor_bytes)
             .map_err(|e| format!("Failed to write record block: {}", e))?;
     }
     timings.write_records_ms = Some(lap_ms(&mut lap));
@@ -321,6 +319,15 @@ fn write_car_header<W: Write>(writer: &mut W, root_cid_str: &str) -> Result<(), 
 /// Write a CAR block to a stream.
 fn write_car_block<W: Write>(writer: &mut W, cid: &CidV1, dag_cbor: &DagCborObject) -> Result<(), std::io::Error> {
     let data_bytes = dag_cbor.to_bytes()?;
+    write_car_block_bytes(writer, cid, &data_bytes)
+}
+
+/// Write a serialized CAR block to a stream.
+fn write_car_block_bytes<W: Write>(
+    writer: &mut W,
+    cid: &CidV1,
+    data_bytes: &[u8],
+) -> Result<(), std::io::Error> {
     let cid_bytes = &cid.all_bytes;
 
     // Block format: varint(cid_length + data_length) | cid | data
