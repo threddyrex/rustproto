@@ -353,7 +353,7 @@ fn verify_es256_signature(
 
     // Try to normalize the signature to low-S form if needed
     // Some clients send high-S signatures which some verifiers reject
-    let normalized_sig = sig.normalize_s().unwrap_or(sig);
+    let normalized_sig = sig.normalize_s();
 
     // Verify
     verifying_key
@@ -386,7 +386,7 @@ fn verify_es256k_signature(
 
     // Try to normalize the signature to low-S form if needed
     // Some clients send high-S signatures which some verifiers reject
-    let normalized_sig = sig.normalize_s().unwrap_or(sig);
+    let normalized_sig = sig.normalize_s();
 
     // Verify
     verifying_key

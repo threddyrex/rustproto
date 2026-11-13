@@ -13,6 +13,7 @@ use axum::{
     Form,
 };
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use p256::elliptic_curve::Generate;
 use p256::ecdsa::SigningKey;
 use pbkdf2::pbkdf2_hmac;
 use rand::Rng;
@@ -718,15 +719,14 @@ struct KeyPair {
 /// Returns public and private keys in multibase format (base58btc with 'z' prefix).
 fn generate_p256_key_pair() -> KeyPair {
     // Generate a new P-256 signing key
-    let signing_key = SigningKey::random(&mut p256::elliptic_curve::rand_core::OsRng);
+    let signing_key = SigningKey::generate();
     
     // Get private key bytes (32 bytes)
     let private_key_bytes = signing_key.to_bytes();
     
     // Get compressed public key (33 bytes: 0x02/0x03 prefix + 32-byte X coordinate)
     let verifying_key = signing_key.verifying_key();
-    let public_key_point = verifying_key.to_encoded_point(true); // compressed
-    let public_key_bytes = public_key_point.as_bytes();
+    let public_key_bytes = verifying_key.to_sec1_bytes();
     
     // Add multicodec prefix for private key
     let mut private_key_with_prefix = Vec::with_capacity(2 + private_key_bytes.len());
@@ -736,7 +736,7 @@ fn generate_p256_key_pair() -> KeyPair {
     // Add multicodec prefix for public key
     let mut public_key_with_prefix = Vec::with_capacity(2 + public_key_bytes.len());
     public_key_with_prefix.extend_from_slice(&P256_PUBLIC_KEY_PREFIX);
-    public_key_with_prefix.extend_from_slice(public_key_bytes);
+    public_key_with_prefix.extend_from_slice(&public_key_bytes);
     
     // Encode in multibase format (base58btc with 'z' prefix)
     let private_key_multibase = format!("z{}", bs58::encode(&private_key_with_prefix).into_string());

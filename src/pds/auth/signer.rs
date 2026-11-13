@@ -484,7 +484,7 @@ pub fn verify_service_auth_token(
                 .map_err(|e| SignerError::InvalidKey(format!("Invalid P-256 public key: {}", e)))?;
             let signature = p256::ecdsa::Signature::from_slice(&signature_bytes)
                 .map_err(|e| SignerError::EncodingError(format!("Invalid signature format: {}", e)))?;
-            let signature = signature.normalize_s().unwrap_or(signature);
+            let signature = signature.normalize_s();
             Ok(verifying_key.verify_prehash(&hash, &signature).is_ok())
         }
         Curve::K256 => {
@@ -494,7 +494,7 @@ pub fn verify_service_auth_token(
                 })?;
             let signature = k256::ecdsa::Signature::from_slice(&signature_bytes)
                 .map_err(|e| SignerError::EncodingError(format!("Invalid signature format: {}", e)))?;
-            let signature = signature.normalize_s().unwrap_or(signature);
+            let signature = signature.normalize_s();
             Ok(verifying_key.verify_prehash(&hash, &signature).is_ok())
         }
     }
@@ -629,7 +629,7 @@ mod tests {
         // The signature verifies against the account's public key.
         let verifying_key = signing_key.verifying_key();
         let mut pub_bytes = vec![0x80u8, 0x24u8];
-        pub_bytes.extend_from_slice(verifying_key.to_encoded_point(true).as_bytes());
+        pub_bytes.extend_from_slice(&verifying_key.to_sec1_bytes());
         let public_key = format!("z{}", bs58::encode(pub_bytes).into_string());
         assert!(verify_service_auth_token(&token, &public_key).unwrap());
     }
@@ -697,7 +697,7 @@ mod tests {
         // The signature verifies against the authority's public key.
         let verifying_key = signing_key.verifying_key();
         let mut pub_bytes = vec![0x80u8, 0x24u8];
-        pub_bytes.extend_from_slice(verifying_key.to_encoded_point(true).as_bytes());
+        pub_bytes.extend_from_slice(&verifying_key.to_sec1_bytes());
         let public_key = format!("z{}", bs58::encode(pub_bytes).into_string());
         assert!(verify_service_auth_token(&token, &public_key).unwrap());
     }
@@ -719,21 +719,21 @@ mod tests {
         hasher.update(signing_input.as_bytes());
         let hash: [u8; 32] = hasher.finalize().into();
         let signature: k256::ecdsa::Signature = signing_key.sign_prehash(&hash).unwrap();
-        let signature = signature.normalize_s().unwrap_or(signature);
+        let signature = signature.normalize_s();
         let token = format!("{}.{}", signing_input, BASE64URL.encode(signature.to_bytes()));
 
         // Encode the public key as multibase with the secp256k1 multicodec
         // prefix (0xe7 0x01), exactly as it appears in a DID document.
         let verifying_key = signing_key.verifying_key();
         let mut pub_bytes = vec![0xe7u8, 0x01u8];
-        pub_bytes.extend_from_slice(verifying_key.to_encoded_point(true).as_bytes());
+        pub_bytes.extend_from_slice(&verifying_key.to_sec1_bytes());
         let public_key = format!("z{}", bs58::encode(pub_bytes).into_string());
         assert!(verify_service_auth_token(&token, &public_key).unwrap());
 
         // A different secp256k1 key must not verify the same token.
         let other = k256::ecdsa::SigningKey::from_slice(&[0x25u8; 32]).unwrap();
         let mut other_bytes = vec![0xe7u8, 0x01u8];
-        other_bytes.extend_from_slice(other.verifying_key().to_encoded_point(true).as_bytes());
+        other_bytes.extend_from_slice(&other.verifying_key().to_sec1_bytes());
         let other_pub = format!("z{}", bs58::encode(other_bytes).into_string());
         assert!(!verify_service_auth_token(&token, &other_pub).unwrap());
     }
