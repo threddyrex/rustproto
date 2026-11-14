@@ -1,11 +1,12 @@
 //! com.atproto.sync.getBlocks endpoint.
 //!
 //! Returns the repository header and commit plus data blocks selected by CID.
+//! The converted MST is cached in memory until the repository commit changes.
 
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use axum::{
     Json,
@@ -20,7 +21,8 @@ use super::get_caller_info;
 use crate::mst::{Mst, MstItem};
 use crate::pds::db::{DbRepoCommit, StatisticKey};
 use crate::pds::server::PdsState;
-use crate::repo::{CidV1, DagCborObject, RepoHeader, RepoMst, VarInt};
+use crate::pds::user_repo::REPO_LOCK;
+use crate::repo::{CidV1, DagCborObject, MstNodeKey, RepoHeader, RepoMst, VarInt};
 
 /// Query parameters for getBlocks.
 pub struct GetBlocksQuery {
@@ -120,36 +122,76 @@ enum BlocksCarError {
     Internal(String),
 }
 
+type MstCache = HashMap<MstNodeKey, (CidV1, DagCborObject)>;
+
+struct CachedMst {
+    commit_cid: String,
+    nodes: Arc<MstCache>,
+}
+
 /// Build a CAR containing the header, commit, and requested data blocks.
 fn build_blocks_car(state: &PdsState, requested_cids: &[CidV1]) -> Result<Vec<u8>, BlocksCarError> {
+    static MST_CACHE: Mutex<Option<CachedMst>> = Mutex::new(None);
+
+    build_blocks_car_with_cache(state, requested_cids, &MST_CACHE)
+}
+
+fn build_blocks_car_with_cache(
+    state: &PdsState,
+    requested_cids: &[CidV1],
+    cache: &Mutex<Option<CachedMst>>,
+) -> Result<Vec<u8>, BlocksCarError> {
     let requested: HashSet<&str> = requested_cids
         .iter()
         .map(|cid| cid.base32.as_str())
         .collect();
     let mut blocks: HashMap<String, Vec<u8>> = HashMap::new();
 
-    let repo_commit = state
-        .db
-        .get_repo_commit()
-        .map_err(|e| BlocksCarError::Internal(format!("Failed to get repo commit: {}", e)))?;
+    let (repo_commit, all_records, mst_cache) = {
+        let mut cache = cache
+            .lock()
+            .map_err(|e| BlocksCarError::Internal(format!("Failed to lock MST cache: {}", e)))?;
+        // Writes change records before publishing the commit. Exclude them while
+        // loading records and checking or rebuilding the MST.
+        let _repo_lock = REPO_LOCK
+            .lock()
+            .map_err(|e| BlocksCarError::Internal(format!("Failed to lock repository: {}", e)))?;
+        let repo_commit = state
+            .db
+            .get_repo_commit()
+            .map_err(|e| BlocksCarError::Internal(format!("Failed to get repo commit: {}", e)))?;
+        let all_records = state
+            .db
+            .get_all_repo_records()
+            .map_err(|e| BlocksCarError::Internal(format!("Failed to get records: {}", e)))?;
 
-    let all_records = state
-        .db
-        .get_all_repo_records()
-        .map_err(|e| BlocksCarError::Internal(format!("Failed to get records: {}", e)))?;
-
-    let mst_items: Vec<MstItem> = all_records
-        .iter()
-        .map(|record| {
-            MstItem::new(
-                &format!("{}/{}", record.collection, record.rkey),
-                &record.cid,
-            )
-        })
-        .collect();
-    let mst = Mst::assemble_tree_from_items(&mst_items);
-    let mst_cache = RepoMst::convert_mst_to_dag_cbor(&mst)
-        .map_err(|e| BlocksCarError::Internal(format!("Failed to convert MST: {}", e)))?;
+        let mst_cache = match cache.as_ref() {
+            Some(cached) if cached.commit_cid == repo_commit.cid => {
+                Arc::clone(&cached.nodes)
+            }
+            _ => {
+                let mst_items: Vec<MstItem> = all_records
+                    .iter()
+                    .map(|record| {
+                        MstItem::new(
+                            &format!("{}/{}", record.collection, record.rkey),
+                            &record.cid,
+                        )
+                    })
+                    .collect();
+                let mst = Mst::assemble_tree_from_items(&mst_items);
+                let nodes = Arc::new(RepoMst::convert_mst_to_dag_cbor(&mst).map_err(|e| {
+                    BlocksCarError::Internal(format!("Failed to convert MST: {}", e))
+                })?);
+                *cache = Some(CachedMst {
+                    commit_cid: repo_commit.cid.clone(),
+                    nodes: Arc::clone(&nodes),
+                });
+                nodes
+            }
+        };
+        (repo_commit, all_records, mst_cache)
+    };
 
     for (cid, dag_cbor) in mst_cache.values() {
         if requested.contains(cid.base32.as_str()) {
@@ -160,9 +202,9 @@ fn build_blocks_car(state: &PdsState, requested_cids: &[CidV1]) -> Result<Vec<u8
         }
     }
 
-    for record in &all_records {
+    for record in all_records {
         if requested.contains(record.cid.as_str()) {
-            blocks.insert(record.cid.clone(), record.dag_cbor_bytes.clone());
+            blocks.insert(record.cid, record.dag_cbor_bytes);
         }
     }
 
@@ -298,9 +340,34 @@ mod tests {
     use crate::log::Logger;
     use crate::pds::db::PdsDb;
     use crate::pds::installer::Installer;
-    use crate::repo::{MstNodeKey, RepoRecord};
+    use crate::repo::RepoRecord;
     use std::io::Cursor;
     use std::sync::LazyLock;
+
+    fn publish_commit(state: &PdsState, rev: &str) -> DbRepoCommit {
+        let records = state.db.get_all_repo_records().unwrap();
+        let items: Vec<_> = records
+            .iter()
+            .map(|r| MstItem::new(format!("{}/{}", r.collection, r.rkey), &r.cid))
+            .collect();
+        let mst = Mst::assemble_tree_from_items(&items);
+        let nodes = RepoMst::convert_mst_to_dag_cbor(&mst).unwrap();
+        let root_cid = &nodes.get(&MstNodeKey::from_node(&mst.root)).unwrap().0;
+        let mut commit = DbRepoCommit {
+            version: 3,
+            cid: String::new(),
+            root_mst_node_cid: root_cid.base32.clone(),
+            rev: rev.to_string(),
+            prev_mst_node_cid: None,
+            signature: vec![1; 64],
+        };
+        commit.cid =
+            CidV1::compute_cid_for_dag_cbor(&build_commit_dag_cbor(state, &commit).unwrap())
+                .unwrap()
+                .base32;
+        state.db.insert_update_repo_commit(&commit).unwrap();
+        commit
+    }
 
     #[test]
     fn car_always_includes_header_and_commit_and_filters_data_blocks() {
@@ -330,29 +397,10 @@ mod tests {
         db.insert_repo_record("app.bsky.feed.post", "two", &other_cid.base32, &other_bytes)
             .unwrap();
 
-        let mst = Mst::assemble_tree_from_items(&[
-            MstItem::new("app.bsky.feed.post/one", &record_cid.base32),
-            MstItem::new("app.bsky.feed.post/two", &other_cid.base32),
-        ]);
-        let cache = RepoMst::convert_mst_to_dag_cbor(&mst).unwrap();
-        let mst_cid = cache
-            .get(&MstNodeKey::from_node(&mst.root))
-            .unwrap()
-            .0
-            .clone();
         let state = PdsState { log: &LOG, lfs, db };
-        let mut commit = DbRepoCommit {
-            version: 3,
-            cid: String::new(),
-            root_mst_node_cid: mst_cid.base32.clone(),
-            rev: "3testrevision".to_string(),
-            prev_mst_node_cid: None,
-            signature: vec![1; 64],
-        };
-        let commit_object = build_commit_dag_cbor(&state, &commit).unwrap();
-        let commit_cid = CidV1::compute_cid_for_dag_cbor(&commit_object).unwrap();
-        commit.cid = commit_cid.base32.clone();
-        state.db.insert_update_repo_commit(&commit).unwrap();
+        let commit = publish_commit(&state, "3testrevision");
+        let commit_cid = CidV1::from_base32(&commit.cid).unwrap();
+        let mst_cid = CidV1::from_base32(&commit.root_mst_node_cid).unwrap();
 
         for requested in [
             vec![],
@@ -393,6 +441,149 @@ mod tests {
             build_blocks_car(&state, &[missing.clone()]),
             Err(BlocksCarError::Missing(cids)) if cids == vec![missing.base32]
         ));
+    }
+
+    #[test]
+    fn cache_reuses_only_mst_and_refreshes_after_create_update_delete() {
+        static LOG: LazyLock<Logger> = LazyLock::new(Logger::default_logger);
+        let dir = tempfile::tempdir().unwrap();
+        let lfs = LocalFileSystem::initialize_with_create(dir.path()).unwrap();
+        Installer::install_db(&lfs, &LOG, false).unwrap();
+        let db = PdsDb::connect(&lfs).unwrap();
+        db.set_config_property("UserDid", "did:plc:blockscache")
+            .unwrap();
+        let state = PdsState { log: &LOG, lfs, db };
+        let cache = Mutex::new(None);
+        let mut previous: Option<Arc<MstCache>> = None;
+        let mut previous_record: Option<CidV1> = None;
+
+        for (rev, value) in [
+            ("3blocks1", Some("created")),
+            ("3blocks2", Some("updated")),
+            ("3blocks3", None),
+        ] {
+            let (commit, record_cid) = {
+                let _lock = REPO_LOCK.lock().unwrap();
+                if previous_record.is_some() {
+                    state
+                        .db
+                        .delete_repo_record("app.bsky.feed.post", "one")
+                        .unwrap();
+                }
+                let record_cid = value.map(|value| {
+                    let bytes = DagCborObject::new_text(value.to_string())
+                        .to_bytes()
+                        .unwrap();
+                    let cid = CidV1::compute_cid_for_dag_cbor_bytes(&bytes).unwrap();
+                    state
+                        .db
+                        .insert_repo_record("app.bsky.feed.post", "one", &cid.base32, &bytes)
+                        .unwrap();
+                    cid
+                });
+                (publish_commit(&state, rev), record_cid)
+            };
+
+            let root_cid = CidV1::from_base32(&commit.root_mst_node_cid).unwrap();
+            let requested: Vec<_> = std::iter::once(root_cid)
+                .chain(record_cid.clone())
+                .collect();
+            let bytes = build_blocks_car_with_cache(&state, &requested, &cache).unwrap();
+            let nodes = Arc::clone(&cache.lock().unwrap().as_ref().unwrap().nodes);
+            if let Some(previous) = &previous {
+                assert!(!Arc::ptr_eq(&nodes, previous));
+            }
+            if let Some(old_cid) = &previous_record {
+                assert!(matches!(
+                    build_blocks_car_with_cache(&state, std::slice::from_ref(old_cid), &cache),
+                    Err(BlocksCarError::Missing(cids)) if cids == vec![old_cid.base32.clone()]
+                ));
+            }
+
+            std::thread::scope(|scope| {
+                let readers: Vec<_> = (0..4)
+                    .map(|_| {
+                        scope.spawn(|| {
+                            build_blocks_car_with_cache(&state, &requested, &cache).unwrap()
+                        })
+                    })
+                    .collect();
+                for reader in readers {
+                    assert_eq!(reader.join().unwrap(), bytes);
+                }
+            });
+            assert!(
+                Arc::ptr_eq(&nodes, &cache.lock().unwrap().as_ref().unwrap().nodes),
+                "cache hits must reuse the converted MST"
+            );
+            let mut reader = Cursor::new(&bytes);
+            assert_eq!(
+                RepoHeader::read_from_stream(&mut reader)
+                    .unwrap()
+                    .repo_commit_cid
+                    .base32,
+                commit.cid,
+            );
+            let mut returned = HashSet::new();
+            while reader.position() < bytes.len() as u64 {
+                let block = RepoRecord::read_from_stream(&mut reader).unwrap();
+                assert_eq!(
+                    CidV1::compute_cid_for_dag_cbor(&block.data_block).unwrap(),
+                    block.cid
+                );
+                returned.insert(block.cid.base32);
+            }
+            let expected = std::iter::once(commit.cid.clone())
+                .chain(requested.iter().map(|cid| cid.base32.clone()))
+                .collect::<HashSet<_>>();
+            assert_eq!(returned, expected);
+            previous = Some(nodes);
+            previous_record = record_cid;
+        }
+
+        let commit = {
+            let _lock = REPO_LOCK.lock().unwrap();
+            let commit = publish_commit(&state, "3blocks4");
+            state
+                .db
+                .insert_repo_record("app.bsky.feed.post", "broken", "invalid", &[0])
+                .unwrap();
+            commit
+        };
+        assert!(matches!(
+            build_blocks_car_with_cache(&state, &[], &cache),
+            Err(BlocksCarError::Internal(_))
+        ));
+        assert!(Arc::ptr_eq(
+            &cache.lock().unwrap().as_ref().unwrap().nodes,
+            previous.as_ref().unwrap()
+        ));
+        {
+            let _lock = REPO_LOCK.lock().unwrap();
+            state
+                .db
+                .delete_repo_record("app.bsky.feed.post", "broken")
+                .unwrap();
+        }
+        build_blocks_car_with_cache(&state, &[], &cache).unwrap();
+        let recovered = Arc::clone(&cache.lock().unwrap().as_ref().unwrap().nodes);
+        assert!(!Arc::ptr_eq(&recovered, previous.as_ref().unwrap()));
+
+        let other_dir = tempfile::tempdir().unwrap();
+        let lfs = LocalFileSystem::initialize_with_create(other_dir.path()).unwrap();
+        Installer::install_db(&lfs, &LOG, false).unwrap();
+        let db = PdsDb::connect(&lfs).unwrap();
+        db.set_config_property("UserDid", "did:plc:blockscache")
+            .unwrap();
+        let other_state = PdsState { log: &LOG, lfs, db };
+        let other_commit = publish_commit(&other_state, "3blocks4");
+        assert_eq!(other_commit.cid, commit.cid);
+        build_blocks_car_with_cache(&other_state, &[], &cache).unwrap();
+        let other_nodes = Arc::clone(&cache.lock().unwrap().as_ref().unwrap().nodes);
+        assert!(
+            Arc::ptr_eq(&recovered, &other_nodes),
+            "the same commit can reuse its MST regardless of database path"
+        );
     }
 
     #[test]
