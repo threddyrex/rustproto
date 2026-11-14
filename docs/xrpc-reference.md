@@ -56,7 +56,7 @@ Quick reference for all XRPC endpoints supported by rustproto.
 |----------|--------|-------------|
 | `/xrpc/com.atproto.sync.getRepo` | GET | Exports a full repo as a CAR file for federation and backup. |
 | `/xrpc/com.atproto.sync.getRecord` | GET | Retrieves a single record as a CAR file, including its Merkle proof. |
-| `/xrpc/com.atproto.sync.getBlocks` | GET | Returns a CAR file with the repository header and current commit, plus only the MST nodes and records selected by CID. |
+| `/xrpc/com.atproto.sync.getBlocks` | GET | Returns a CAR file with the repository header and current commit, plus only the MST nodes and records selected by CID. Only the converted MST is cached for the latest commit; records are read per request, and only requested MST nodes are serialized. |
 | `/xrpc/com.atproto.sync.listRepos` | GET | Lists all hosted repos on this PDS with cursor-based pagination. |
 | `/xrpc/com.atproto.sync.getRepoStatus` | GET | Returns the sync status of a repo (active, deactivated, taken down). |
 | `/xrpc/com.atproto.sync.subscribeRepos` | WebSocket | Real-time firehose of repo commits. Used by relays and other downstream consumers. |
