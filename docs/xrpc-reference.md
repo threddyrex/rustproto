@@ -72,11 +72,14 @@ Quick reference for all XRPC endpoints supported by rustproto.
 
 ## 8. OAuth
 
+For the end-to-end flow, OAuth terminology, and implementation limitations,
+see the [OAuth in rustproto article](articles/oauth-flow.md).
+
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/.well-known/oauth-protected-resource` | GET | OAuth protected resource metadata (RFC 9728). Declares the authorization server. |
 | `/.well-known/oauth-authorization-server` | GET | OAuth authorization server metadata (RFC 8414). Advertises supported grants and endpoints. |
-| `/oauth/jwks` | GET | Publishes the server's public JSON Web Key Set for token signature verification. |
+| `/oauth/jwks` | GET | Returns an empty key set; access tokens currently use symmetric HS256 signing. |
 | `/oauth/par` | POST | Pushed Authorization Request (RFC 9126). Client pre-registers an authorization request. |
 | `/oauth/authorize` | GET | Renders the authorization/login page for the end user. |
 | `/oauth/authorize` | POST | Processes the authorization form submission (credential validation). |
