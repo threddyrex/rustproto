@@ -2,6 +2,7 @@
 
 pub mod backup_account;
 pub mod create_session;
+pub mod delete_activity_for_month;
 pub mod get_blob;
 pub mod get_pds_info;
 pub mod get_plc_history;

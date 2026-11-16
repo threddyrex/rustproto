@@ -14,6 +14,7 @@ use rustproto::cli::{
     parse_arguments,
     backup_account::cmd_backup_account,
     create_session::cmd_create_session,
+    delete_activity_for_month::cmd_delete_activity_for_month,
     get_blob::cmd_get_blob,
     get_pds_info::cmd_get_pds_info,
     get_plc_history::cmd_get_plc_history,
@@ -83,6 +84,7 @@ async fn main() {
     match command.to_lowercase().as_str() {
         "backupaccount" => cmd_backup_account(&arguments).await,
         "createsession" => cmd_create_session(&arguments).await,
+        "deleteactivityformonth" => cmd_delete_activity_for_month(&arguments).await,
         "getblob" => cmd_get_blob(&arguments).await,
         "getpdsinfo" => cmd_get_pds_info(&arguments).await,
         "getplchistory" => cmd_get_plc_history(&arguments).await,
@@ -138,6 +140,7 @@ fn print_usage() {
     println!("  SyncGetRecordLocal     Get a record from local pds.db and print details");
     println!("  BackupAccount          Backup an account (repo, blobs, prefs) to local directory");
     println!("  CreateSession          Create a session (log in) for an actor");
+    println!("  DeleteActivityForMonth Preview and delete activity for a month, keeping bookmarked posts");
     println!("  SyncRepo               Sync user repo data from one PDS data dir to another");
     println!("  VerifyRepo             Verify the on-disk repo CAR file for an actor");
     println!("  InstallDb              Create PDS database schema");
@@ -157,6 +160,11 @@ fn print_usage() {
     println!("  /repoFile <path>      Path to CAR file (for repo commands)");
     println!("  /collection <type>    Filter by collection type (e.g., app.bsky.feed.post)");
     println!("  /month <yyyy-MM>      Filter by month (e.g., 2024-01)");
+    println!("  /deleteLikes <bool>   Delete likes (default: false)");
+    println!("  /deleteReposts <bool> Delete reposts (default: false)");
+    println!("  /deletePosts <bool>   Delete non-bookmarked posts (default: false)");
+    println!("  /deleteBlocks <bool>  Delete blocks (default: false)");
+    println!("  /sleepSeconds <n>    Seconds between activity deletions (default: 2)");
     println!("  /cursor <int>         Firehose cursor position");
     println!("  /seq <int>            Sequence number (for InspectFirehoseEvent)");
     println!("  /showDagCborTypes     Show DAG-CBOR type debug info (true/false)");
@@ -201,5 +209,6 @@ fn print_usage() {
     println!("  rustproto /command BackupAccount /actor alice.bsky.social /dataDir ./data");
     println!("  rustproto /command GetBlob /actor alice.bsky.social /blobCid bafkrei... /dataDir ./data");
     println!("  rustproto /command CreateSession /actor alice.bsky.social /dataDir ./data /password mypass");
+    println!("  rustproto /command DeleteActivityForMonth /actor alice.bsky.social /dataDir ./data /month 2026-01 /deleteLikes true");
 }
 

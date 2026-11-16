@@ -1320,6 +1320,90 @@ impl BlueskyClient {
         Ok(json)
     }
 
+    /// Retrieves all bookmark URIs, failing rather than returning partial results.
+    pub async fn get_bookmarks(
+        &self,
+        pds: &str,
+        access_jwt: &str,
+    ) -> Result<Vec<String>, BlueskyClientError> {
+        let base = if pds.starts_with("https://") || pds.starts_with("http://") {
+            pds.trim_end_matches('/').to_string()
+        } else {
+            format!("https://{}", pds.trim_end_matches('/'))
+        };
+        let url = format!("{}/xrpc/app.bsky.bookmark.getBookmarks", base);
+        let mut bookmarks = Vec::new();
+        let mut cursor: Option<String> = None;
+        let mut seen_cursors = std::collections::HashSet::new();
+
+        loop {
+            let mut request = self.client.get(&url).bearer_auth(access_jwt);
+            if let Some(ref cursor) = cursor {
+                request = request.query(&[("cursor", cursor)]);
+            }
+            let json: Value = request.send().await?.error_for_status()?.json().await?;
+            let items = json["bookmarks"].as_array().ok_or_else(|| {
+                BlueskyClientError::ResolutionFailed("Invalid bookmarks response".to_string())
+            })?;
+            for item in items {
+                let uri = item["item"]["uri"].as_str().filter(|uri| {
+                    crate::uri::AtUri::from_at_uri(uri).is_some_and(|parsed| {
+                        !parsed.authority.is_empty()
+                            && !parsed.collection.is_empty()
+                            && !parsed.rkey.is_empty()
+                    })
+                }).ok_or_else(|| {
+                    BlueskyClientError::ResolutionFailed("Invalid bookmark URI".to_string())
+                })?;
+                bookmarks.push(uri.to_string());
+            }
+            cursor = match json.get("cursor") {
+                None | Some(Value::Null) => None,
+                Some(Value::String(value)) if value.is_empty() => None,
+                Some(Value::String(value)) => Some(value.clone()),
+                _ => return Err(BlueskyClientError::ResolutionFailed(
+                    "Invalid bookmarks cursor".to_string(),
+                )),
+            };
+            let Some(ref next) = cursor else { break };
+            if !seen_cursors.insert(next.clone()) {
+                return Err(BlueskyClientError::ResolutionFailed(
+                    "Repeated bookmarks cursor".to_string(),
+                ));
+            }
+            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        }
+        Ok(bookmarks)
+    }
+
+    /// Deletes a record from an authenticated repository.
+    pub async fn delete_record(
+        &self,
+        pds: &str,
+        did: &str,
+        access_jwt: &str,
+        collection: &str,
+        rkey: &str,
+    ) -> Result<(), BlueskyClientError> {
+        let base = if pds.starts_with("https://") || pds.starts_with("http://") {
+            pds.trim_end_matches('/').to_string()
+        } else {
+            format!("https://{}", pds.trim_end_matches('/'))
+        };
+        self.client
+            .post(format!("{}/xrpc/com.atproto.repo.deleteRecord", base))
+            .bearer_auth(access_jwt)
+            .json(&serde_json::json!({
+                "repo": did,
+                "collection": collection,
+                "rkey": rkey,
+            }))
+            .send()
+            .await?
+            .error_for_status()?;
+        Ok(())
+    }
+
     /// Creates a session (logs in) on a PDS.
     ///
     /// Calls `com.atproto.server.createSession` on the PDS.
@@ -1371,6 +1455,99 @@ impl BlueskyClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    async fn bookmark_test_server(router: axum::Router) -> (String, tokio::task::JoinHandle<()>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        (format!("http://{}", address), server)
+    }
+
+    #[tokio::test]
+    async fn bookmarks_paginate_with_encoded_cursor_and_auth() {
+        use axum::{Json, extract::Query, http::HeaderMap, routing::get};
+        let router = axum::Router::new().route("/xrpc/app.bsky.bookmark.getBookmarks", get(
+            |headers: HeaderMap, Query(query): Query<std::collections::HashMap<String, String>>| async move {
+                assert_eq!(headers["authorization"], "Bearer test-token");
+                if let Some(cursor) = query.get("cursor") {
+                    assert_eq!(cursor, "next&+ =?");
+                    Json(serde_json::json!({
+                        "bookmarks": [{"item": {"uri": "at://did:plc:alice/app.bsky.feed.post/two"}}]
+                    }))
+                } else {
+                    Json(serde_json::json!({
+                        "bookmarks": [{"item": {"uri": "at://did:plc:alice/app.bsky.feed.post/one"}}],
+                        "cursor": "next&+ =?"
+                    }))
+                }
+            }
+        ));
+        let (pds, server) = bookmark_test_server(router).await;
+        let bookmarks = BlueskyClient::default().get_bookmarks(&pds, "test-token").await.unwrap();
+        server.abort();
+        assert_eq!(bookmarks, [
+            "at://did:plc:alice/app.bsky.feed.post/one",
+            "at://did:plc:alice/app.bsky.feed.post/two",
+        ]);
+    }
+
+    #[tokio::test]
+    async fn bookmarks_reject_partial_failed_or_malformed_results() {
+        use axum::{Json, extract::Query, http::StatusCode, routing::get};
+        for second_page in [
+            (StatusCode::UNAUTHORIZED, serde_json::json!({"error": "ExpiredToken"})),
+            (StatusCode::OK, serde_json::json!({})),
+            (StatusCode::OK, serde_json::json!({"bookmarks": [{"item": {"uri": "invalid"}}]})),
+            (StatusCode::OK, serde_json::json!({"bookmarks": [], "cursor": "next"})),
+        ] {
+            let router = axum::Router::new().route("/xrpc/app.bsky.bookmark.getBookmarks", get(
+                move |Query(query): Query<std::collections::HashMap<String, String>>| {
+                    let second_page = second_page.clone();
+                    async move {
+                        if query.contains_key("cursor") {
+                            (second_page.0, Json(second_page.1))
+                        } else {
+                            (StatusCode::OK, Json(serde_json::json!({
+                                "bookmarks": [{"item": {"uri": "at://did:plc:alice/app.bsky.feed.post/one"}}],
+                                "cursor": "next"
+                            })))
+                        }
+                    }
+                }
+            ));
+            let (pds, server) = bookmark_test_server(router).await;
+            let result = BlueskyClient::default().get_bookmarks(&pds, "test-token").await;
+            server.abort();
+            assert!(result.is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn delete_record_sends_correct_body_and_propagates_failure() {
+        use axum::{Json, http::{HeaderMap, StatusCode}, routing::post};
+        let router = axum::Router::new().route("/xrpc/com.atproto.repo.deleteRecord", post(
+            |headers: HeaderMap, Json(body): Json<Value>| async move {
+                assert_eq!(headers["authorization"], "Bearer test-token");
+                assert_eq!(body["repo"], "did:plc:alice");
+                assert_eq!(body["collection"], "app.bsky.feed.like");
+                if body["rkey"] == "fail" {
+                    StatusCode::BAD_REQUEST
+                } else {
+                    assert_eq!(body["rkey"], "like-key");
+                    StatusCode::OK
+                }
+            }
+        ));
+        let (pds, server) = bookmark_test_server(router).await;
+        let client = BlueskyClient::default();
+        assert!(client.delete_record(&pds, "did:plc:alice", "test-token",
+            "app.bsky.feed.like", "like-key").await.is_ok());
+        assert!(client.delete_record(&pds, "did:plc:alice", "test-token",
+            "app.bsky.feed.like", "fail").await.is_err());
+        server.abort();
+    }
 
     fn sample_did_doc() -> &'static str {
         r##"{"id":"did:plc:abc123","alsoKnownAs":["at://alice.bsky.social"],"verificationMethod":[{"id":"did:plc:abc123#atproto","type":"Multikey","publicKeyMultibase":"zDnaekGxj2Fz4Cdf"}],"service":[{"id":"#atproto_pds","type":"AtprotoPersonalDataServer","serviceEndpoint":"https://bsky.social"}]}"##
