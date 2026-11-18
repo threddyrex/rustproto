@@ -7,7 +7,7 @@
 //! - Deleting old OAuth requests
 //! - Requesting crawls from configured crawlers
 //! - Deleting stale admin sessions
-//! - Backing up blobs to Azure storage
+//! - Backing up blobs and the database to Azure storage
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -19,13 +19,16 @@ use tokio::time::interval;
 use crate::fs::LocalFileSystem;
 use crate::log::{LogLevel, Logger};
 use crate::pds::blob_db::{create_blob_db, BlobDb};
-use crate::pds::db::PdsDb;
+use crate::pds::db::{PdsDb, PdsDbError};
 
 /// Configuration for retention periods (in hours for firehose events).
 const FIREHOSE_RETENTION_HOURS: i64 = 72;
 
 /// Admin session timeout in minutes.
 const ADMIN_SESSION_TIMEOUT_MINUTES: i32 = 120;
+
+const DB_BACKUP_SAS_URL: &str = "AzureStorageSASURL_Db";
+const LAST_DB_BACKUP_UTC_DATE: &str = "LastDbBackupUtcDate";
 
 /// Background jobs manager for the PDS.
 ///
@@ -68,6 +71,7 @@ impl BackgroundJobs {
     /// - Request crawl (if enabled): every 5 minutes (starts after 30 seconds)
     /// - Delete stale admin sessions: every hour (starts after 30 seconds)
     /// - Back up blobs to Azure storage: every day (starts after 60 seconds)
+    /// - Back up the database to Azure storage: once per UTC day (checked hourly)
     pub fn start(&mut self) {
         self.log.info("[BACKGROUND] Starting background jobs");
 
@@ -175,6 +179,38 @@ impl BackgroundJobs {
         });
         self.handles.push(handle);
 
+        // Check hourly so unsuccessful backups can be retried on the same UTC day.
+        let log = self.log;
+        let db = Arc::clone(&self.db);
+        let handle = tokio::spawn(async move {
+            let client = match reqwest::Client::builder()
+                .https_only(true)
+                .redirect(reqwest::redirect::Policy::none())
+                .timeout(Duration::from_secs(30 * 60))
+                .build()
+            {
+                Ok(client) => client,
+                Err(e) => {
+                    log.error(&format!(
+                        "[BACKGROUND][BACKUPDB] Failed to create HTTP client: {}",
+                        e
+                    ));
+                    return;
+                }
+            };
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            let mut timer = interval(Duration::from_secs(3600));
+            timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                timer.tick().await;
+                if let Err(e) =
+                    job_backup_db_to_azure(log, &client, &db, chrono::Utc::now().date_naive()).await
+                {
+                    log.error(&format!("[BACKGROUND][BACKUPDB] {}", e));
+                }
+            }
+        });
+        self.handles.push(handle);
 
         self.log.info("[BACKGROUND] Background jobs started");
     }
@@ -462,6 +498,83 @@ async fn job_backup_blobs_to_azure(log: &'static Logger, lfs: &LocalFileSystem, 
     ));
 }
 
+async fn job_backup_db_to_azure(
+    log: &Logger,
+    client: &reqwest::Client,
+    db: &Arc<PdsDb>,
+    date: chrono::NaiveDate,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let sas_url = match db.get_config_property(DB_BACKUP_SAS_URL) {
+        Ok(url) if !url.trim().is_empty() => url,
+        Ok(_) | Err(PdsDbError::ConfigPropertyNotFound(_)) => return Ok(()),
+        Err(e) => return Err(e.into()),
+    };
+    let utc_day = date.format("%Y-%m-%d").to_string();
+    match db.get_config_property(LAST_DB_BACKUP_UTC_DATE) {
+        Ok(last_date) if last_date == utc_day => return Ok(()),
+        Ok(_) | Err(PdsDbError::ConfigPropertyNotFound(_)) => {}
+        Err(e) => return Err(e.into()),
+    }
+
+    let hostname = db.get_config_property("PdsHostname")?;
+    let blob_name = format!("{}-{}-pds.db", hostname, date.format("%Y%m%d"));
+    let upload_url = azure_blob_url(sas_url.trim(), &urlencoding::encode(&blob_name));
+
+    let snapshot_db = Arc::clone(db);
+    let snapshot = tokio::task::spawn_blocking(move || snapshot_pds_db(&snapshot_db)).await??;
+    let file = tokio::fs::File::open(snapshot.path()).await?;
+    let content_length = file.metadata().await?.len();
+    let response = client
+        .put(upload_url)
+        .header("x-ms-blob-type", "BlockBlob")
+        .header("x-ms-version", "2021-08-06")
+        .header(reqwest::header::IF_NONE_MATCH, "*")
+        .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
+        .header(reqwest::header::CONTENT_LENGTH, content_length)
+        .body(file)
+        .send()
+        .await
+        .map_err(reqwest::Error::without_url)?;
+
+    let status = response.status();
+    let azure_error = response
+        .headers()
+        .get("x-ms-error-code")
+        .and_then(|v| v.to_str().ok());
+    // The blob may already exist if Azure committed a previous PUT before we saved the date.
+    let already_exists = matches!(
+        (status, azure_error),
+        (reqwest::StatusCode::PRECONDITION_FAILED, Some("ConditionNotMet"))
+            | (reqwest::StatusCode::CONFLICT, Some("BlobAlreadyExists"))
+    );
+    if status != reqwest::StatusCode::CREATED && !already_exists {
+        return Err(format!("Upload failed for {} with status {}", blob_name, status).into());
+    }
+
+    db.set_config_property(LAST_DB_BACKUP_UTC_DATE, &utc_day)?;
+    if already_exists {
+        log.info(&format!("[BACKGROUND][BACKUPDB] Backup already exists in Azure: {}", blob_name));
+    } else {
+        log.info(&format!("[BACKGROUND][BACKUPDB] Uploaded database backup: {}", blob_name));
+    }
+    Ok(())
+}
+
+fn snapshot_pds_db(db: &PdsDb) -> Result<tempfile::NamedTempFile, PdsDbError> {
+    let snapshot = tempfile::NamedTempFile::new()?;
+    let path = snapshot.path().to_str().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidData, "Snapshot path is not UTF-8")
+    })?;
+
+    // BEGIN IMMEDIATE waits for any active writer, then blocks other writers while
+    // a separate SQLite connection copies the committed state, including WAL data.
+    let mut lock_conn = db.get_connection()?;
+    let write_lock = lock_conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    db.get_connection_read_only()?.execute("VACUUM INTO ?1", [path])?;
+    write_lock.rollback()?;
+    Ok(snapshot)
+}
+
 /// Build the URL for a blob within a container SAS URL by inserting the blob
 /// name into the path, before the query string.
 fn azure_blob_url(container_sas_url: &str, blob_name: &str) -> String {
@@ -656,6 +769,95 @@ fn job_delete_old_statistics(log: &'static Logger, db: &PdsDb) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pds::installer::Installer;
+
+    fn test_backup_db() -> (tempfile::TempDir, LocalFileSystem, Arc<PdsDb>) {
+        let dir = tempfile::tempdir().unwrap();
+        let lfs = LocalFileSystem::initialize_with_create(dir.path()).unwrap();
+        Installer::install_db(&lfs, &Logger::default_logger(), false).unwrap();
+        let db = Arc::new(PdsDb::connect(&lfs).unwrap());
+        (dir, lfs, db)
+    }
+
+    #[test]
+    fn db_snapshot_includes_committed_wal_data_and_is_standalone() {
+        let (_dir, _lfs, db) = test_backup_db();
+        let conn = db.get_connection().unwrap();
+        conn.pragma_update(None, "journal_mode", "WAL").unwrap();
+        conn.pragma_update(None, "wal_autocheckpoint", 0).unwrap();
+        conn.execute("INSERT INTO ConfigProperty VALUES ('BackupTest', 'before')", []).unwrap();
+
+        let snapshot = snapshot_pds_db(&db).unwrap();
+        db.set_config_property("BackupTest", "after").unwrap();
+        let copy = crate::pds::db::SqliteDb::get_connection_read_only(snapshot.path()).unwrap();
+        let value: String = copy.query_row(
+            "SELECT Value FROM ConfigProperty WHERE Key = 'BackupTest'", [], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(value, "before");
+        let integrity: String = copy.query_row("PRAGMA integrity_check", [], |row| row.get(0)).unwrap();
+        assert_eq!(integrity, "ok");
+    }
+
+    #[tokio::test]
+    async fn db_backup_retries_failures_and_skips_days_already_written() {
+        use axum::{
+            body::Bytes,
+            extract::OriginalUri,
+            http::{HeaderMap, StatusCode},
+            response::IntoResponse,
+            routing::put,
+            Router,
+        };
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let (_dir, lfs, db) = test_backup_db();
+        let count = Arc::new(AtomicUsize::new(0));
+        let requests = Arc::clone(&count);
+        let mock = Router::new().route("/backup/{blob}", put(
+            move |OriginalUri(uri): OriginalUri, headers: HeaderMap, body: Bytes| {
+                let requests = Arc::clone(&requests);
+                async move {
+                    let request = requests.fetch_add(1, Ordering::SeqCst);
+                    let day = if request < 2 { "20261117" } else { "20261118" };
+                    assert_eq!(uri.path(), format!("/backup/pds.example.test-{day}-pds.db"));
+                    assert_eq!(uri.query(), Some("sp=c&sig=mock"));
+                    assert_eq!(headers["if-none-match"], "*");
+                    assert_eq!(headers["x-ms-blob-type"], "BlockBlob");
+                    assert_eq!(headers["content-length"].to_str().unwrap().parse::<usize>().unwrap(), body.len());
+                    assert!(body.starts_with(b"SQLite format 3\0"));
+                    match request {
+                        0 => StatusCode::FORBIDDEN.into_response(),
+                        1 => StatusCode::CREATED.into_response(),
+                        _ => (StatusCode::PRECONDITION_FAILED, [("x-ms-error-code", "ConditionNotMet")]).into_response(),
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, mock).await.unwrap() });
+        db.set_config_property("PdsHostname", "pds.example.test").unwrap();
+        db.set_config_property(DB_BACKUP_SAS_URL, &format!("http://{addr}/backup?sp=c&sig=mock")).unwrap();
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let log = Logger::default_logger();
+        let day = chrono::NaiveDate::from_ymd_opt(2026, 11, 17).unwrap();
+        assert!(job_backup_db_to_azure(&log, &client, &db, day).await.is_err());
+        assert!(!db.config_property_exists(LAST_DB_BACKUP_UTC_DATE).unwrap());
+        job_backup_db_to_azure(&log, &client, &db, day).await.unwrap();
+        drop(db);
+
+        let db = Arc::new(PdsDb::connect(&lfs).unwrap());
+        assert_eq!(db.get_config_property(LAST_DB_BACKUP_UTC_DATE).unwrap(), "2026-11-17");
+        job_backup_db_to_azure(&log, &client, &db, day).await.unwrap();
+        assert_eq!(count.load(Ordering::SeqCst), 2);
+
+        let next_day = day.succ_opt().unwrap();
+        job_backup_db_to_azure(&log, &client, &db, next_day).await.unwrap();
+        assert_eq!(db.get_config_property(LAST_DB_BACKUP_UTC_DATE).unwrap(), "2026-11-18");
+        job_backup_db_to_azure(&log, &client, &db, next_day).await.unwrap();
+        assert_eq!(count.load(Ordering::SeqCst), 3);
+        server.abort();
+    }
 
     #[test]
     fn test_azure_blob_url() {
