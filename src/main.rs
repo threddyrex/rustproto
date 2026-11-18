@@ -23,6 +23,7 @@ use rustproto::cli::{
     inspect_firehose_event::cmd_inspect_firehose_event,
     install_config::cmd_install_config,
     install_db::cmd_install_db,
+    list_config_properties::cmd_list_config_properties,
     list_passkeys::cmd_list_passkeys,
     print_db_mst::cmd_print_db_mst,
     print_repo_stats::cmd_print_repo_stats,
@@ -94,6 +95,12 @@ async fn main() {
         "inspectfirehoseevent" => cmd_inspect_firehose_event(&arguments),
         "installconfig" => cmd_install_config(&arguments),
         "installdb" => cmd_install_db(&arguments),
+        "listconfigproperties" | "list_config_properties" => {
+            if let Err(error) = cmd_list_config_properties(&arguments) {
+                eprintln!("{error}");
+                std::process::exit(1);
+            }
+        }
         "listpasskeys" => cmd_list_passkeys(&arguments),
         "printdbmst" => cmd_print_db_mst(&arguments),
         "printreporecords" => cmd_print_repo_records(&arguments).await,
@@ -145,6 +152,7 @@ fn print_usage() {
     println!("  VerifyRepo             Verify the on-disk repo CAR file for an actor");
     println!("  InstallDb              Create PDS database schema");
     println!("  InstallConfig          Configure PDS server settings");
+    println!("  ListConfigProperties   Print all stored PDS config properties, including secrets");
     println!("  RepairCommit           Re-sign repo commit after migration or format change");
     println!("  RunPds                 Run the PDS HTTP server");
     println!("  ListPasskeys           List WebAuthn passkeys stored in the PDS database");
@@ -200,6 +208,7 @@ fn print_usage() {
     println!("  rustproto /command GetLexiconSchema /schema my.bulletin.permissions");
     println!("  rustproto /command InstallDb /dataDir ./data");
     println!("  rustproto /command InstallConfig /dataDir ./data /listenScheme https /listenHost example.com /listenPort 443");
+    println!("  rustproto /command ListConfigProperties /dataDir ./data");
     println!("  rustproto /command RunPds /dataDir ./data");
     println!("  rustproto /command ListPasskeys /dataDir ./data");
     println!("  rustproto /command SyncGetRecord /actor alice.bsky.social /collection app.bsky.feed.post /rkey 3abc123");
