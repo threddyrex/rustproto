@@ -48,6 +48,7 @@ const ALLOWED_CONFIG_KEYS: &[&str] = &[
     "LogXrpcEndpoints",
     "AzureStorageSASURL",
     "AzureStorageSASURL_Blobs",
+    "AzureStorageSASURL_Db",
 ];
 
 /// Form data for setting a config property.
@@ -350,6 +351,12 @@ fn render_config_page(db: &PdsDb) -> Html<String> {
         <td><button class="set-btn" onclick="setConfig('AzureStorageSASURL_Blobs', '')">Set</button></td>
         <td>Azure Storage SAS URL for blob backups (secret - masked). Click Set to enter a new value.</td>
     </tr>
+    <tr>
+        <td class="key-name">AzureStorageSASURL_Db</td>
+        <td>{azure_storage_sas_url_db}</td>
+        <td><button class="set-btn" onclick="setConfig('AzureStorageSASURL_Db', '')">Set</button></td>
+        <td>Azure Storage SAS URL for database backups (secret - masked). Click Set to enter a new value.</td>
+    </tr>
 </table>
 <script>
 function setConfig(key, currentValue) {{
@@ -451,6 +458,7 @@ function setBoolConfig(key, value) {{
         // Backups section
         azure_storage_sas_url = get_masked_config_value(db, "AzureStorageSASURL"),
         azure_storage_sas_url_blobs = get_masked_config_value(db, "AzureStorageSASURL_Blobs"),
+        azure_storage_sas_url_db = get_masked_config_value(db, "AzureStorageSASURL_Db"),
     );
 
     Html(html)
@@ -532,27 +540,30 @@ mod tests {
     use crate::pds::installer::Installer;
 
     #[test]
-    fn blob_sas_url_is_editable_and_masked() {
+    fn backup_sas_urls_are_editable_and_masked() {
         let dir = tempfile::tempdir().unwrap();
         let lfs = LocalFileSystem::initialize_with_create(dir.path()).unwrap();
         Installer::install_db(&lfs, &Logger::default_logger(), false).unwrap();
         let db = PdsDb::connect(&lfs).unwrap();
-        let key = "AzureStorageSASURL_Blobs";
-        assert!(ALLOWED_CONFIG_KEYS.contains(&key));
-        assert!(!db.config_property_exists(key).unwrap());
+        for key in ["AzureStorageSASURL_Blobs", "AzureStorageSASURL_Db"] {
+            assert!(ALLOWED_CONFIG_KEYS.contains(&key));
+            assert!(!db.config_property_exists(key).unwrap());
 
-        let empty = render_config_page(&db).0;
-        assert!(empty.contains("setConfig('AzureStorageSASURL_Blobs', '')"));
-        assert!(empty.contains("AzureStorageSASURL_Blobs</td>\n        <td><span class=\"dimmed\">empty</span>"));
+            let empty = render_config_page(&db).0;
+            let empty_cell = format!("{key}</td>\n        <td><span class=\"dimmed\">empty</span>");
+            assert!(empty.contains(&format!("setConfig('{key}', '')")));
+            assert!(empty.contains(&empty_cell));
 
-        let secret = "https://example.test/container?sig=private1234";
-        db.set_config_property(key, secret).unwrap();
-        let set = render_config_page(&db).0;
-        assert!(set.contains("AzureStorageSASURL_Blobs</td>\n        <td><span class=\"dimmed\">••••••1234 (set)</span>"));
-        assert!(!set.contains(secret));
-        assert!(!set.contains("private"));
+            let secret = "https://example.test/container?sig=private1234";
+            db.set_config_property(key, secret).unwrap();
+            let set = render_config_page(&db).0;
+            assert!(set.contains(&format!("{key}</td>\n        <td><span class=\"dimmed\">••••••1234 (set)</span>")));
+            assert!(set.contains(&format!("setConfig('{key}', '')")));
+            assert!(!set.contains(secret));
+            assert!(!set.contains("private"));
 
-        db.set_config_property(key, "").unwrap();
-        assert_eq!(get_masked_config_value(&db, key), "<span class=\"dimmed\">empty</span>");
+            db.set_config_property(key, "").unwrap();
+            assert!(render_config_page(&db).0.contains(&empty_cell));
+        }
     }
 }
