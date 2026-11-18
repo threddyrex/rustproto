@@ -11,6 +11,7 @@ pub mod get_repo;
 pub mod inspect_firehose_event;
 pub mod install_config;
 pub mod install_db;
+pub mod list_config_properties;
 pub mod list_passkeys;
 pub mod print_db_mst;
 pub mod print_repo_records;

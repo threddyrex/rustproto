@@ -3,7 +3,7 @@
 //! This module provides the main database operations for the PDS,
 //! including table creation, configuration storage, and data access.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -96,8 +96,12 @@ impl PdsDb {
     ///
     /// A PdsDb instance if the database exists, or an error if not found.
     pub fn connect(lfs: &LocalFileSystem) -> Result<Self, PdsDbError> {
-        let db_dir = lfs.get_data_dir().join("pds");
-        let db_path = lfs.get_path_pds_db();
+        Self::connect_from_data_dir(lfs.get_data_dir())
+    }
+
+    pub(crate) fn connect_from_data_dir(data_dir: impl AsRef<Path>) -> Result<Self, PdsDbError> {
+        let db_dir = data_dir.as_ref().join("pds");
+        let db_path = db_dir.join("pds.db");
 
         if !db_dir.exists() {
             return Err(PdsDbError::DbDirNotFound(
