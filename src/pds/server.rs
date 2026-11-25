@@ -22,7 +22,7 @@ use super::background_jobs::BackgroundJobs;
 use super::db::{PdsDb};
 use crate::pds::xrpc::get_caller_info;
 use super::oauth;
-use super::spaces;
+use super::space;
 use super::xrpc;
 use crate::fs::LocalFileSystem;
 use crate::log::Logger;
@@ -189,15 +189,15 @@ impl PdsRunner {
             .route("/xrpc/com.atproto.sync.getRepoStatus", axum::routing::get(xrpc::sync_get_repo_status))
             .route("/xrpc/com.atproto.sync.subscribeRepos", axum::routing::get(xrpc::subscribe_repos))
             // Permissioned spaces
-            .route("/xrpc/com.atproto.space.getDelegationToken", axum::routing::get(spaces::get_delegation_token))
-            .route("/xrpc/com.atproto.space.getSpaceCredential", axum::routing::post(spaces::get_space_credential))
-            .route("/xrpc/com.atproto.space.createRecord", axum::routing::post(spaces::create_space_record))
-            .route("/xrpc/com.atproto.space.putRecord", axum::routing::post(spaces::put_space_record))
-            .route("/xrpc/com.atproto.space.registerNotify", axum::routing::post(spaces::register_notify))
-            .route("/xrpc/com.atproto.space.unregisterNotify", axum::routing::post(spaces::unregister_notify))
+            .route("/xrpc/com.atproto.space.getDelegationToken", axum::routing::get(space::get_delegation_token))
+            .route("/xrpc/com.atproto.space.getSpaceCredential", axum::routing::post(space::get_space_credential))
+            .route("/xrpc/com.atproto.space.createRecord", axum::routing::post(space::create_space_record))
+            .route("/xrpc/com.atproto.space.putRecord", axum::routing::post(space::put_space_record))
+            .route("/xrpc/com.atproto.space.registerNotify", axum::routing::post(space::register_notify))
+            .route("/xrpc/com.atproto.space.unregisterNotify", axum::routing::post(space::unregister_notify))
             // Simplespace management
-            .route("/xrpc/com.atproto.simplespace.createSpace", axum::routing::post(spaces::create_space))
-            .route("/xrpc/com.atproto.simplespace.getSpace", axum::routing::get(spaces::get_space))
+            .route("/xrpc/com.atproto.simplespace.createSpace", axum::routing::post(space::create_space))
+            .route("/xrpc/com.atproto.simplespace.getSpace", axum::routing::get(space::get_space))
             // App.bsky endpoints (preferences are handled locally, others proxy to AppView)
             .route("/xrpc/app.bsky.actor.getPreferences", axum::routing::get(xrpc::get_preferences))
             .route("/xrpc/app.bsky.actor.putPreferences", axum::routing::post(xrpc::put_preferences))

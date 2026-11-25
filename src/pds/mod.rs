@@ -12,7 +12,7 @@ pub mod firehose_event_generator;
 pub mod installer;
 pub mod oauth;
 pub mod server;
-pub mod spaces;
+pub mod space;
 pub mod user_repo;
 pub mod xrpc;
 

@@ -29,7 +29,7 @@ use crate::repo::{CidV1, DagCborObject, DagCborValue};
 use crate::uri::{SpaceUri, SpaceRecordUri};
 
 use crate::pds::auth::{auth_failure_response, check_user_auth, AuthType};
-use crate::pds::spaces::{is_spaces_enabled, spaces_disabled_response};
+use crate::pds::space::{is_spaces_enabled, spaces_disabled_response};
 use crate::pds::xrpc::{get_caller_info};
 
 /// Request body for putRecord.

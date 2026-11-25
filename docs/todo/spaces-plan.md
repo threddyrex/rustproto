@@ -13,7 +13,7 @@ should be split into several changes at the checkpoints listed.
 ## Plan-wide instructions
 
 - Place code by responsibility: reusable protocol types and algorithms outside
-  the PDS; PDS-specific services and orchestration in `src\pds\spaces`; and
+  the PDS; PDS-specific services and orchestration in `src\pds\space`; and
   integrations alongside the existing auth, database, server, and other
   subsystems they extend. The locations below are recommendations, not a
   requirement to move existing code before it is changed.
@@ -31,14 +31,14 @@ space type: the baseline policies are personal, member-based, and managed.
 | Location | Responsibility | Existing foundation and planned work |
 |---|---|---|
 | `src\uri` | Space references and record URIs, parsing, and validation alongside public AT URIs | The legacy parser is in `src\uri\space_uri.rs` start with that as base for impl |
-| `src\repo` or a new top-level `src\spaces` | Pure space-repo types and algorithms: commits, operations, record-set hashing, revisions, and validation | Record bytes and CIDs exist; LtHash, commits, and oplogs are planned. Keep space repos distinct from public MST repos |
+| `src\space` | Pure space-repo types and algorithms: commits, operations, record-set hashing, revisions, and validation | Record bytes and CIDs exist; LtHash, commits, and oplogs are planned. Keep space repos distinct from public MST repos |
 | `src\star` and space protocol code | Generic STAR framing in `src\star`; space-repo and space-meta profile adapters with the space protocol code | Planned |
 | Shared protocol/crypto modules | HTTP message signatures, HPKE key agreement, and response MACs, independent of PDS state | Planned; reuse vetted primitives and existing key handling where appropriate |
-| `src\pds\spaces` | PDS-specific lifecycle, policy evaluation, membership, writer tracking, credential issuance, sync orchestration, and XRPC handlers | Prototype handlers exist; current-alpha behavior is largely planned. Separate authority/space-host and repo-host responsibilities as the module grows |
+| `src\pds\space` | PDS-specific lifecycle, policy evaluation, membership, writer tracking, credential issuance, sync orchestration, and XRPC handlers | Prototype handlers exist; current-alpha behavior is largely planned. Separate authority/space-host and repo-host responsibilities as the module grows |
 | `src\pds\db` | Space and repo persistence, members, writers, revisions, oplogs, outbox, registrations, and revocations; transactional updates | Space configuration, records, and old notification registrations exist; the fuller schema is planned |
 | `src\pds\auth` and `src\pds\oauth` | Credential and delegation integration, OAuth `space:` scope matching, and consent display | Prototype auth exists; current signature-based credentials and granular scopes are planned. Preserve ordinary OAuth DPoP |
 | `src\pds\installer.rs` and DID/key handling | Provision, publish, and manage the separate KEM key | Planned |
-| `src\pds\background_jobs.rs` and `src\pds\spaces` | Schedule and execute durable notifications, retries, and cleanup; keep space-specific worker logic with the space service | Registration intent exists; delivery and writer sequencing are planned |
+| `src\pds\background_jobs.rs` and `src\pds\space` | Schedule and execute durable notifications, retries, and cleanup; keep space-specific worker logic with the space service | Registration intent exists; delivery and writer sequencing are planned |
 | `src\pds\server.rs` and `src\pds\admin` | Route registration, feature gating, and operational/admin visibility | Existing routes and admin page need updating |
 | `src\cli` and `tests` | Offline archive tools, a minimal syncer harness, fixtures, and interoperability tests | Planned; a production syncer/AppView is outside the first target |
 
@@ -328,8 +328,8 @@ and the current repo-method Lexicons.
 concurrency, recovery.
 
 **Source code examples:** `src\pds\db\pds_db.rs`,
-`src\pds\db\entities.rs`, `src\pds\spaces\create_space_record.rs`,
-`src\pds\spaces\put_space_record.rs`, `src\pds\user_repo.rs`,
+`src\pds\db\entities.rs`, `src\pds\space\create_space_record.rs`,
+`src\pds\space\put_space_record.rs`, `src\pds\user_repo.rs`,
 `src\pds\blob_db.rs`, and `tests\pds_db_tests.rs`.
 
 **Instructions:**
@@ -388,8 +388,8 @@ baseline policies, published records, and OAuth scopes.
 **Coding concepts:** Policy evaluation, permission matching, batched updates,
 policy lifecycle.
 
-**Source code examples:** `src\pds\spaces\create_space.rs`,
-`src\pds\spaces\get_space.rs`, `src\pds\oauth\scope_resolution.rs`,
+**Source code examples:** `src\pds\space\create_space.rs`,
+`src\pds\space\get_space.rs`, `src\pds\oauth\scope_resolution.rs`,
 `src\pds\oauth\authorize_get.rs`, `src\pds\admin\spaces.rs`.
 
 **Instructions:**
@@ -455,8 +455,8 @@ taking precedence; proposal sections on token types, key binding, and revocation
 **Coding concepts:** JWT claims, replay protection, DID key resolution,
 proof of possession, credential lifecycle.
 
-**Source code examples:** `src\pds\spaces\get_delegation_token.rs`,
-`src\pds\spaces\get_space_credential.rs`, `src\pds\auth\auth_flow.rs`,
+**Source code examples:** `src\pds\space\get_delegation_token.rs`,
+`src\pds\space\get_space_credential.rs`, `src\pds\auth\auth_flow.rs`,
 `src\pds\auth\signer.rs`, `src\pds\installer.rs`.
 
 **Instructions:**
@@ -522,7 +522,7 @@ sections on sync, writer sets, and space deletion. Upstream examples:
 webhook confirmation, durable checkpoints.
 
 **Source code examples:** `src\pds\background_jobs.rs`,
-`src\pds\spaces\register_notify.rs`, `src\pds\spaces\unregister_notify.rs`,
+`src\pds\space\register_notify.rs`, `src\pds\space\unregister_notify.rs`,
 `src\pds\server.rs`, and the Step 6 state/outbox.
 
 **Instructions:**
