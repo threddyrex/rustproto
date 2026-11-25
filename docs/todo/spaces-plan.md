@@ -1,6 +1,6 @@
 # Ten Steps to Spaces in rustproto
 
-Bring rustproto's existing Spaces prototype up to the **November 12, 2026
+Bring rustproto's existing Spaces prototype up to the **November 24, 2026
 Spaces alpha**, starting with small, independently testable libraries and ending
 with an interoperable PDS. Like `docs\articles\ten-steps-to-a-pds.md`, each step
 has reading, coding concepts, source examples, instructions, and something
@@ -21,9 +21,10 @@ should be split into several changes at the checkpoints listed.
   [October 22](https://github.com/bluesky-social/atproto/blob/16bfeba760aede46f0b87bf94febef9e6ea84b95/alpha-migrations/prompt-10-22-26.md),
   [October 29](https://github.com/bluesky-social/atproto/blob/16bfeba760aede46f0b87bf94febef9e6ea84b95/alpha-migrations/prompt-10-29-26.md),
   [November 5](https://github.com/bluesky-social/atproto/blob/16bfeba760aede46f0b87bf94febef9e6ea84b95/alpha-migrations/prompt-11-5-26.md),
-  [November 12](https://github.com/bluesky-social/atproto/blob/16bfeba760aede46f0b87bf94febef9e6ea84b95/alpha-migrations/prompt-11-12-26.md).
-- [Spaces proposal at the November 12 revision](https://github.com/bluesky-social/proposals/blob/b54ec6853bab77edd4fd373804a480633094b324/0016-permissioned-data/README.md).
-- [Reference implementation at the November 12 revision](https://github.com/bluesky-social/atproto/tree/d4def6e9f521896ed8222f576d54923d00b5fbeb).
+  [November 12](https://github.com/bluesky-social/atproto/blob/16bfeba760aede46f0b87bf94febef9e6ea84b95/alpha-migrations/prompt-11-12-26.md),
+  [November 24](https://github.com/bluesky-social/atproto/blob/355b73380411a24c751b9896ee9e17f5b593bca7/alpha-migrations/prompt-11-24-26.md).
+- [Spaces proposal at the November 24 URI update](https://github.com/bluesky-social/proposals/blob/1831b5db05b3caeef2397fdafaf3a16d91c98747/0016-permissioned-data/README.md).
+- [November 24 alpha reference implementation](https://github.com/bluesky-social/atproto/tree/1f510f8e36a973f6fd055da349b586918805ae66).
 - [Ongoing alpha updates](https://discourse.atmosphere.community/t/atproto-spaces-alpha-updates/1129).
 
 **Coding concepts:** Compatibility baselines, fixtures, schema migrations.
@@ -32,7 +33,7 @@ should be split into several changes at the checkpoints listed.
 
 | Area | Existing foundation | Work still needed for this target |
 |---|---|---|
-| Space identity | `src\pds\spaces\space_uri.rs` parses space and record URIs | Match upstream syntax validation; isolate possible future URI changes |
+| Space identity | `src\pds\spaces\space_uri.rs` parses and emits legacy space and record URIs | Adopt `at:space/`, strict validation, and migration of persisted references |
 | Space configuration | `Space` table; `simplespace.createSpace` and `getSpace` | New policy types, lifecycle methods, members, scopes, and data migration |
 | Record storage | `SpaceRepoRecord` stores DAG-CBOR and CIDs; create/put handlers | Set hashes, commits, revisions, oplog, remaining CRUD, reads, and blobs |
 | Credentials | Delegation JWTs, DPoP-bound space credentials, auth opt-in | HTTP signatures, current audiences and body fields, shorter expiry, revocations |
@@ -42,8 +43,10 @@ should be split into several changes at the checkpoints listed.
 The existing prototype predates even parts of October 1: it still uses `type`,
 a single simplespace `policy` plus `appAccess`, a two-hour credential default,
 and DPoP key binding. Do **not** implement each historical release in sequence.
-Use the older guides to understand missing mechanisms, but implement the final
-November 12 names and behavior directly.
+Use the older guides to understand missing mechanisms, but implement the
+November 24 behavior directly. The November 12 source links in individual
+steps are historical examples; check them against the November 24 reference
+before relying on their wire behavior.
 
 **Instructions:**
 
@@ -64,12 +67,12 @@ November 12 names and behavior directly.
 **Done when:** There is a fixed compatibility target, saved legacy fixtures,
 and a checklist distinguishing reused code from missing protocol behavior.
 
-**Moving target:** As of the latest thread posts checked (November 13), the
-possible move from `at://.../space/...` to `at:space/` is not final. Keep the
-pinned syntax for now and confine parsing/formatting to one place. Recheck the
-thread before implementation and rollout; update this baseline explicitly if
-choosing a newer release. November 13 also reports fixes to alpha SDK packaging;
-pin a verified compatible build when using a JavaScript interoperability client.
+**Moving target:** The proposal now specifies `at:space/`; the November 24 alpha
+ships it with temporary lenient validation for old URIs embedded in records.
+This is still a proposal, and the alpha read compatibility is expected to end
+before beta. Recheck the thread before implementation and rollout. For a
+JavaScript interoperability client, pin a compatible build such as the
+November 24 alpha snapshot `0.0.0-spaces-alpha-20261124235736`.
 
 ---
 
@@ -126,9 +129,13 @@ upstream [repo-commit.ts](https://github.com/bluesky-social/atproto/blob/d4def6e
 
 **Instructions:**
 
-1. Reuse and tighten space URI, record path, DID, NSID, record-key, and TID
-   validation against upstream fixtures. Keep library code independent of PDS
-   state; do not assume the existing permissive parsers are sufficient.
+1. Replace the legacy parser/formatter with validated space references
+   `at:space/{spaceDid}/{spaceType}/{skey}` and record URIs
+   `at:space/{spaceDid}/{spaceType}/{skey}/{authorDid}/{collection}/{rkey}`.
+   Both DIDs must be DIDs, not handles; reject partial/extra paths and invalid
+   NSIDs, keys, or DIDs. Both forms are `at-uri`; only the first is `space-ref`.
+   Keep public `at://` URIs unchanged and adapt shared `at-uri` validation.
+   Keep library code independent of PDS state.
 2. Define commit `{ ver: 1, repo, space, rev, data }` and operation
    `{ rev, collection, rkey, cid, prev }` models. `data` is 32 bytes, `cid` is
    null for deletion, and `prev` is null for creation.
@@ -137,8 +144,12 @@ upstream [repo-commit.ts](https://github.com/bluesky-social/atproto/blob/d4def6e
 4. Check existing DAG-CBOR/CID handling against canonical DRISL/DASL requirements,
    including byte strings and links. Reuse compatible behavior; add focused
    adapters or validation where necessary rather than rewriting the public repo.
-5. Test create/update/delete folding against full recomputation, invalid
-   identifiers, wrong commit version, and mismatched repo/space.
+5. Test both URI lengths and `did:web` examples, malformed parts, handles,
+   partial paths, strict rejection of old forms, and unchanged public URIs.
+   For alpha-era record values only, provide a temporary lenient reader that
+   recognizes and normalizes valid old references; never use it for new input.
+   Also test create/update/delete folding against full recomputation, wrong
+   commit version, and mismatched repo/space.
 
 **Done when:** An in-memory record set becomes a canonical commit with the same
 `data` as upstream. A space commit has **no embedded signature**, `ikm`, or `mac`;
@@ -287,22 +298,33 @@ and the current repo-method Lexicons.
    state), ordered operations, blob associations, and pending write notices.
    rustproto is single-account: the author is currently implicit in the DB.
    Keep `(author DID, space)` explicit in the model without adding multi-user hosting.
-2. Backfill state from each space's existing canonical record bytes/CIDs.
+2. Atomically and repeatably migrate old URI keys to the new form in `Space`,
+   `SpaceRepoRecord`, and any retained `SpaceNotifyRegistration` state, plus
+   other owned indexes, caches, or queues that actually store references. Detect
+   malformed values and collisions before changing state; fail without dropping
+   data. Use a migration-only legacy parser, not lenient protocol validation.
+   Migrate extracted backlink/reference indexes if present. Do not convert
+   obsolete registrations into confirmed webhooks.
+3. Backfill state from each space's existing canonical record bytes/CIDs.
    Create valid initial revisions; do not invent historical oplog entries.
    Unknown/inconsistent stored bytes must fail migration rather than be dropped.
-3. In one transaction, update records, subtract old/add new elements, advance
+   Do not rewrite URI strings inside record values: that changes their CIDs.
+   Normalize embedded old references when comparing or indexing alpha records,
+   while keeping their original bytes. Record CIDs and commit `data` do not
+   change merely because a space URI changes.
+4. In one transaction, update records, subtract old/add new elements, advance
    the repo TID, append operations, update blob references, and persist the
    outgoing notice. Serialize concurrent writes so no hash/revision is lost.
-4. Complete `createRecord`, `putRecord`, `deleteRecord`, `applyWrites`, and
+5. Complete `createRecord`, `putRecord`, `deleteRecord`, `applyWrites`, and
    `clearRecords`, including conditional-write fields defined by the Lexicons.
    First write implicitly creates a repo, not a space. If this account is the
    authority, the space must exist; remote-authority writes need no local space row.
-5. Add own-account OAuth reads: `getRecord`, `listRecords`, `getLatestCommit`,
+6. Add own-account reads: `getRecord`, `listRecords`, `getLatestCommit`,
    `getRepo`, `listRepoOps`, `getBlob`, and `listBlobs`. A commit is included on
    every oplog page; a full page has a cursor even if the next page is empty.
    Inline only current record values. Do not add removed `reverse`/`since`
    parameters to `listRecords`/`listBlobs`.
-6. Keep these records out of the public MST, public CAR exports, and firehose.
+7. Keep these records out of the public MST, public CAR exports, and firehose.
    Blob access must check references in the requested space; knowing a CID is
    not authorization. Audit public blob paths for private-only blob exposure.
 
@@ -312,6 +334,8 @@ storage engine first and wire it publicly only with Step 7.
 **Done when:** Transaction rollback and concurrent-write tests preserve
 records/hash/oplog/outbox consistency. A restart preserves state; recomputation
 matches incremental hashes; space data does not leak through public exports.
+An upgrade preserves record bytes/CIDs, finds records by new URI, survives a
+retry, and fails safely on invalid or conflicting stored keys.
 
 **Checkpoints:** schema/backfill; transactional mutations; own-account reads and
 blobs. Clearing advances the revision and clears the oplog, preserves
@@ -346,7 +370,8 @@ safe configuration migration.
    decision for non-equivalent configurations instead of broadening access.
 3. Implement `com.atproto.space.createSpace`, `updateSpace`, `getSpace`, and
    `deleteSpace`; use `spaceType` input and `space` output. `getSpace` is now
-   owner-only OAuth with `read_self`, not a space-credential method.
+   an owner-only session method (`read_self` for OAuth), not a space-credential
+   method.
    Update the admin UI and callers with the API/schema changes.
 4. Add memberspace `putMembers`, `removeMembers`, and `listMembers`.
    Mutations accept at most 100 entries atomically; duplicate puts use the last
@@ -365,7 +390,8 @@ safe configuration migration.
    and space declarations' optional `title` on consent screens.
 7. Respect declaration-based default collections, including their specified
    dynamic update behavior; do not freeze those defaults merely because
-   permission-set expansion currently occurs at session creation.
+   permission-set expansion currently occurs at session creation. Collections
+   in published space type declarations must resolve to record Lexicons.
 8. Maintain published policy/member records in the authority's space repo using
    the transactional engine. Reject direct CRUD of reserved configuration
    collections, withdraw records when flags clear, and discard old policy state
@@ -373,7 +399,10 @@ safe configuration migration.
 
 **Done when:** Personal, member-only, public-read/public-write, allowed-app, and
 managed spaces pass focused allow/deny tests. Test narrow scopes, owner
-exceptions, policy replacement, publications, and legacy migration with saved data.
+exceptions, policy replacement, publications, and legacy migration with saved
+data. Reject app-password sessions, including privileged app passwords, for
+account-authenticated space methods with `InvalidToken` / `Bad token scope`;
+full account sessions and appropriately scoped OAuth remain supported.
 
 **Checkpoints:** scope matcher; policy migration/lifecycle; membership; managed
 checks; published records. A member list is not the writer set, and accepting a
@@ -385,7 +414,7 @@ user's own write is distinct from the authority agreeing to track that writer.
 
 **T-shirt size:** Large
 
-**Reading:** Credential sections of all migration guides, with November 12
+**Reading:** Credential sections of all migration guides, with November 24
 taking precedence; proposal sections on token types, key binding, and revocation.
 
 **Coding concepts:** JWT claims, replay protection, DID key resolution,
@@ -414,8 +443,9 @@ proof of possession, credential lifecycle.
    preserve private-space existence hiding and current error names.
 4. Replace only the SpaceCredential auth path with Step 4. Keep acceptance
    opt-in per endpoint, validate the credential's space against the requested
-   space, and derive the correct audience DID. Reads accept covering own-account
-   OAuth or a space credential; mutations remain OAuth-only.
+   space, and derive the correct audience DID. Reads accept a full own-account
+   session, covering OAuth, or a space credential; account mutations accept a
+   full session or covering OAuth, never an app-password session.
 5. Provision a separate persistent P-256 `#atproto_kem` key for this account,
    publish it in DID documents/recommended credentials, and retain its private
    key on the repo host. Backfill existing accounts safely, including a manual
@@ -432,6 +462,9 @@ proof of possession, credential lifecycle.
 
 The optional `notify` branch depends on Step 9's confirmation/registration
 implementation; do not silently accept it before it works.
+Issue tokens with new-form space subjects and reject old-form subjects at
+protocol boundaries. Existing signed tokens cannot be rewritten: obtain new
+delegations and credentials during the coordinated peer upgrade.
 
 **Done when:** An independent client obtains a credential, signs a read, and
 verifies the response MAC. Bad space/audience/key/expiry/replay/revocation cases
@@ -490,6 +523,8 @@ webhook confirmation, durable checkpoints.
    writers, pull from their repo hosts, verify MACs and hashes, and persist safe
    checkpoints. Apply oplog pages through the terminal page and recover with
    STAR replacement on digest mismatch, including removal of absent records.
+   Normalize legacy embedded references before comparison or indexing without
+   modifying record bytes; use the new form for all protocol requests and state.
    Handle duplicates, gaps, concurrent writes, cleared repos, and missing repos.
 8. Exercise registration renewal, stale credentials, key changes, and authority
    migration. Reauthorize at the new PDS; refresh DID documents and retry with
@@ -516,7 +551,7 @@ to every PDS. That role distinction should stay visible in the route checklist.
 **T-shirt size:** Large
 
 **Reading:** October 22 key lifecycle, October 29 account migration, November 5
-takedowns, and November 12 archive/lifecycle changes; proposal sections on
+takedowns, and November 12/24 archive and lifecycle changes; proposal sections on
 account migration, moderation, and application access control.
 
 **Coding concepts:** Validated import, atomic replacement, key lifecycle,
@@ -536,7 +571,9 @@ operational recovery.
    and all grants before atomically replacing state. Space-meta sections are
    policy, policy-defined state, then writers; writer values use `repoRev`.
    Reject unknown policy-state keys rather than silently dropping access state.
-   Do not export removed writers.
+   Do not export removed writers. Require full space access for `importRepo`:
+   `read` plus `create`, `update`, and `delete` on every collection for OAuth.
+   Release blob references for removed records.
 3. Migrate hosted space metadata before the authority's own repo, then repos
    and referenced blobs. Imports preserve data but give repos new revisions and
    reset their oplogs; metadata preserves writer space revisions. Imports must
@@ -545,6 +582,10 @@ operational recovery.
    Verify sync after key/host changes; explicitly handle private-key provisioning
    and publication rather than assuming old credentials/registrations transfer.
    Registrations, revocations, and deletion tombstones are not migration exports.
+   For activation without an entryway, check the published key matches the
+   hosted key; `did:web` may omit it. If supporting an entryway that constructs
+   a genesis PLC operation, implement `reserveKemKey` (`{ did? }` to
+   `{ kemKey }`) so it can publish the reserved key before account creation.
 5. Apply account-status semantics: suspended authorities issue no credentials
    or writer listings, but keep accepting writer updates/registrations as
    specified. Suspended accounts cannot manage/write; authorized takedown
@@ -555,6 +596,8 @@ operational recovery.
 7. Test a real legacy rustproto DB upgrade and rollback/restore procedure.
    Use rustproto schema versions, not upstream Node PDS migration numbers.
    Remove obsolete routes when switching the feature to the new protocol.
+   Old-form archive metadata is not accepted by upgraded hosts; re-export from
+   an upgraded source rather than silently importing or rewriting an archive.
 8. Only after end-to-end checks, expose the alpha capability indicator used by
    `describeServer` and document the supported compatibility revision. Keep
    public broadcast behavior unchanged and the feature explicitly opt-in.
@@ -596,6 +639,13 @@ Final regression gates: public repo/OAuth behavior unchanged; no private data
 in public exports or blob reads; no writes beyond granted space scopes; legacy
 DB upgrade preserves content/access intent; interrupted delivery and sync heal;
 invalid archives and MACs never become accepted state.
+
+URI cutover gate: all hosts and peers use new-form parameters, token subjects,
+MAC headers, STAR metadata, and returned record URIs; strict boundaries reject
+old forms. Alpha record values remain byte-for-byte intact and are normalized
+only when read or indexed. Coordinate peer upgrades and reissue credentials;
+pre-upgrade archives require re-export, while existing record CIDs and set
+hashes do not require a resync solely due to the URI change.
 
 **Intentionally outside the first compatibility target:** a production syncer
 or AppView, a Spaces UI, encrypted-at-rest/E2EE features, relays for private data,
