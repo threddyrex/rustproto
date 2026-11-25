@@ -30,7 +30,7 @@ space type: the baseline policies are personal, member-based, and managed.
 
 | Location | Responsibility | Existing foundation and planned work |
 |---|---|---|
-| `src\uri` | Space references and record URIs, parsing, and validation alongside public AT URIs | The legacy parser is in `src\pds\spaces\space_uri.rs` start with that as base for impl |
+| `src\uri` | Space references and record URIs, parsing, and validation alongside public AT URIs | The legacy parser is in `src\uri\space_uri.rs` start with that as base for impl |
 | `src\repo` or a new top-level `src\spaces` | Pure space-repo types and algorithms: commits, operations, record-set hashing, revisions, and validation | Record bytes and CIDs exist; LtHash, commits, and oplogs are planned. Keep space repos distinct from public MST repos |
 | `src\star` and space protocol code | Generic STAR framing in `src\star`; space-repo and space-meta profile adapters with the space protocol code | Planned |
 | Shared protocol/crypto modules | HTTP message signatures, HPKE key agreement, and response MACs, independent of PDS state | Planned; reuse vetted primitives and existing key handling where appropriate |
@@ -70,7 +70,7 @@ alpha target, not a claim of completed protocol support.
 
 | Area | Existing foundation | Work still needed for this target |
 |---|---|---|
-| Space identity | `src\pds\spaces\space_uri.rs` parses and emits legacy space and record URIs | Adopt `at:space/` and strict validation |
+| Space identity | `src\uri\space_uri.rs` parses and emits legacy space and record URIs | Adopt `at:space/` and strict validation |
 | Space configuration | `Space` table; `simplespace.createSpace` and `getSpace` | New policy types, lifecycle methods, members, and scopes |
 | Record storage | `SpaceRepoRecord` stores DAG-CBOR and CIDs; create/put handlers | Set hashes, commits, revisions, oplog, remaining CRUD, reads, and blobs |
 | Credentials | Delegation JWTs, DPoP-bound space credentials, auth opt-in | HTTP signatures, current audiences and body fields, shorter expiry, revocations |
@@ -161,7 +161,7 @@ upstream [repo-commit.ts](https://github.com/bluesky-social/atproto/blob/d4def6e
 
 **Coding concepts:** Typed identifiers, canonical encoding, state transitions.
 
-**Source code examples:** `src\pds\spaces\space_uri.rs`,
+**Source code examples:** `src\uri\space_uri.rs`,
 `src\repo\dag_cbor.rs`, `src\repo\cid.rs`, and
 `src\pds\user_repo.rs` for existing JSON/CBOR conversion.
 
