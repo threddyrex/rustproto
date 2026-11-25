@@ -9,7 +9,6 @@ mod get_space;
 mod get_space_credential;
 mod put_space_record;
 mod register_notify;
-mod space_uri;
 mod unregister_notify;
 
 pub use create_space::create_space;
@@ -19,7 +18,6 @@ pub use get_space::get_space;
 pub use get_space_credential::get_space_credential;
 pub use put_space_record::put_space_record;
 pub use register_notify::register_notify;
-pub use space_uri::{SpaceUri, SpaceRecordUri};
 pub use unregister_notify::unregister_notify;
 
 

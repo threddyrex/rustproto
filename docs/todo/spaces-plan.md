@@ -12,10 +12,40 @@ should be split into several changes at the checkpoints listed.
 
 ## Plan-wide instructions
 
-- Keep all Spaces-related code in `src\pds\spaces`.
+- Place code by responsibility: reusable protocol types and algorithms outside
+  the PDS; PDS-specific services and orchestration in `src\pds\spaces`; and
+  integrations alongside the existing auth, database, server, and other
+  subsystems they extend. The locations below are recommendations, not a
+  requirement to move existing code before it is changed.
 - There is no need for a migration; any data in the current Spaces tables will
   be removed. On upgrade, clear those tables and initialize the new schema
   without backfilling or preserving their existing rows.
+
+### Suggested source locations
+
+A **space type** is an application-defined NSID that resolves to a space type
+Lexicon declaration; it identifies the modality and default collections, not a
+closed Rust enum. A **policy type** determines access independently of that
+space type: the baseline policies are personal, member-based, and managed.
+
+| Location | Responsibility | Existing foundation and planned work |
+|---|---|---|
+| `src\uri` | Space references and record URIs, parsing, and validation alongside public AT URIs | The legacy parser is in `src\pds\spaces\space_uri.rs` start with that as base for impl |
+| `src\repo` or a new top-level `src\spaces` | Pure space-repo types and algorithms: commits, operations, record-set hashing, revisions, and validation | Record bytes and CIDs exist; LtHash, commits, and oplogs are planned. Keep space repos distinct from public MST repos |
+| `src\star` and space protocol code | Generic STAR framing in `src\star`; space-repo and space-meta profile adapters with the space protocol code | Planned |
+| Shared protocol/crypto modules | HTTP message signatures, HPKE key agreement, and response MACs, independent of PDS state | Planned; reuse vetted primitives and existing key handling where appropriate |
+| `src\pds\spaces` | PDS-specific lifecycle, policy evaluation, membership, writer tracking, credential issuance, sync orchestration, and XRPC handlers | Prototype handlers exist; current-alpha behavior is largely planned. Separate authority/space-host and repo-host responsibilities as the module grows |
+| `src\pds\db` | Space and repo persistence, members, writers, revisions, oplogs, outbox, registrations, and revocations; transactional updates | Space configuration, records, and old notification registrations exist; the fuller schema is planned |
+| `src\pds\auth` and `src\pds\oauth` | Credential and delegation integration, OAuth `space:` scope matching, and consent display | Prototype auth exists; current signature-based credentials and granular scopes are planned. Preserve ordinary OAuth DPoP |
+| `src\pds\installer.rs` and DID/key handling | Provision, publish, and manage the separate KEM key | Planned |
+| `src\pds\background_jobs.rs` and `src\pds\spaces` | Schedule and execute durable notifications, retries, and cleanup; keep space-specific worker logic with the space service | Registration intent exists; delivery and writer sequencing are planned |
+| `src\pds\server.rs` and `src\pds\admin` | Route registration, feature gating, and operational/admin visibility | Existing routes and admin page need updating |
+| `src\cli` and `tests` | Offline archive tools, a minimal syncer harness, fixtures, and interoperability tests | Planned; a production syncer/AppView is outside the first target |
+
+Keep the space-host, repo-host, and syncer roles distinct: a PDS serves the
+first two roles, while a syncer need not be a PDS. Membership is not the same
+as the writer set. The locations and status above describe this plan's pinned
+alpha target, not a claim of completed protocol support.
 
 ## Step 0: Pick the destination and define the clean-state rollout
 
@@ -64,10 +94,9 @@ before relying on their wire behavior.
    `notifyCredentialsRevoked`, `putMembers`, `removeMembers`, and `checkAccess`
    are the current names. `registerNotify`, `unregisterNotify`, and
    `notifySpaceDeleted` are removed.
-3. Keep all new Spaces code, including pure Rust modules for the first five
-   steps, in `src\pds\spaces`. Keep Axum/SQLite orchestration there as well.
-   Suggested new modules below are proposals, not existing files. Use vetted
-   crypto primitives rather than implementing BLAKE3, ECDH, or HKDF ourselves.
+3. Follow the responsibility-based placement guidance above. Suggested new
+   modules below are proposals, not existing files. Use vetted crypto
+   primitives rather than implementing BLAKE3, ECDH, or HKDF ourselves.
 4. Capture upstream fixtures and their provenance. Rust self-round-trips alone
    will not establish compatibility with another implementation.
 
@@ -99,8 +128,8 @@ Start here. No server, database, OAuth session, or network is needed.
 **Coding concepts:** Fixed-size byte arrays, little-endian integers, wrapping
 arithmetic, incremental hashing.
 
-**Source code examples:** `src\repo\cid.rs`; proposed
-`src\pds\spaces\lthash.rs`.
+**Source code examples:** `src\repo\cid.rs`; proposed reusable space-repo
+LtHash module under `src\repo` or a new top-level `src\space`.
 
 **Instructions:**
 
@@ -256,8 +285,8 @@ and [mac.ts](https://github.com/bluesky-social/atproto/blob/d4def6e9f521896ed822
 **Coding concepts:** HPKE export, key agreement, HKDF, authenticated metadata.
 
 **Source code examples:** Existing multikey handling in
-`src\pds\auth\signer.rs`; proposed `src\pds\spaces\kem.rs` and
-`src\pds\spaces\mac.rs`.
+`src\pds\auth\signer.rs`; proposed reusable KEM and MAC modules independent
+of PDS state.
 
 **Instructions:**
 
